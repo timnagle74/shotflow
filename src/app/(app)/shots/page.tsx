@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ShotStatusBadge } from "@/components/status-badge";
 import { mockShots, mockSequences, mockUsers, mockProjects, getShotsForProject } from "@/lib/mock-data";
 import { shotStatusLabels, shotStatusColors, complexityColors, cn } from "@/lib/utils";
-import { LayoutGrid, List, Search, Clock, GripVertical } from "lucide-react";
+import { LayoutGrid, List, Search, Clock } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import type { ShotStatus } from "@/lib/database.types";
@@ -58,18 +58,15 @@ function DraggableShotCard({ shot }: { shot: EnrichedShot }) {
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes}>
-      <Card className="hover:border-primary/50 transition-colors cursor-pointer group">
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
+      <Card className="hover:border-primary/50 transition-colors group" onDoubleClick={() => window.location.href = `/shots/${shot.id}`}>
         <CardContent className="p-3">
           <div className="flex items-center justify-between mb-1">
-            <Link href={`/shots/${shot.id}`} className="text-xs font-mono font-bold hover:text-primary transition-colors flex-1">
+            <span className="text-xs font-mono font-bold flex-1">
               {shot.code}
-            </Link>
+            </span>
             <div className="flex items-center gap-1">
               <span className={cn("text-[10px] font-semibold", complexityColors[shot.complexity])}>{shot.complexity}</span>
-              <div {...listeners} className="cursor-grab active:cursor-grabbing p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <GripVertical className="h-3 w-3 text-muted-foreground" />
-              </div>
             </div>
           </div>
           {shot.description && (
