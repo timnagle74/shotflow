@@ -8,12 +8,41 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { mockProjects, getStatusCounts, getDeliverySpecsForProject } from "@/lib/mock-data";
-import { Plus, Settings, FolderKanban, Monitor } from "lucide-react";
+import { Plus, Settings, FolderKanban, Monitor, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [newProject, setNewProject] = useState({ name: "", code: "", status: "ACTIVE" });
+
+  const handleCreateProject = async () => {
+    if (!newProject.name || !newProject.code || !supabase) return;
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from("projects")
+        .insert([{ 
+          name: newProject.name, 
+          code: newProject.code.toUpperCase(), 
+          status: newProject.status
+        }] as any);
+      
+      if (error) throw error;
+      setShowCreate(false);
+      setNewProject({ name: "", code: "", status: "ACTIVE" });
+      router.refresh();
+    } catch (err) {
+      console.error("Failed to create project:", err);
+      alert("Failed to create project. Check if project code already exists.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -33,15 +62,25 @@ export default function ProjectsPage() {
             <div className="space-y-4 pt-4">
               <div>
                 <label className="text-sm font-medium">Project Name</label>
-                <Input placeholder="e.g. Nebula Rising" className="mt-1.5" />
+                <Input 
+                  placeholder="e.g. Nebula Rising" 
+                  className="mt-1.5" 
+                  value={newProject.name}
+                  onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                />
               </div>
               <div>
                 <label className="text-sm font-medium">Project Code</label>
-                <Input placeholder="e.g. NEB01" className="mt-1.5" />
+                <Input 
+                  placeholder="e.g. NEB01" 
+                  className="mt-1.5" 
+                  value={newProject.code}
+                  onChange={(e) => setNewProject({ ...newProject, code: e.target.value })}
+                />
               </div>
               <div>
                 <label className="text-sm font-medium">Status</label>
-                <Select defaultValue="ACTIVE">
+                <Select value={newProject.status} onValueChange={(v) => setNewProject({ ...newProject, status: v })}>
                   <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ACTIVE">Active</SelectItem>
@@ -51,7 +90,9 @@ export default function ProjectsPage() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button className="w-full" onClick={() => setShowCreate(false)}>Create Project</Button>
+              <Button className="w-full" onClick={handleCreateProject} disabled={loading || !newProject.name || !newProject.code}>
+                {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Creating...</> : "Create Project"}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
