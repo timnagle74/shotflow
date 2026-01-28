@@ -104,6 +104,37 @@ export function getDeliverySpecsForProject(projectId: string) {
   return mockDeliverySpecs.find(ds => ds.projectId === projectId) || null;
 }
 
+// Mock CDL data
+export const mockShotCDLs = [
+  { id: 'cdl1', shotId: 'sh1', slopeR: 1.0200, slopeG: 0.9800, slopeB: 1.0100, offsetR: 0.0050, offsetG: -0.0030, offsetB: 0.0010, powerR: 1.0000, powerG: 1.0000, powerB: 1.0000, saturation: 1.0500, source: 'ALE' as const, sourceFile: null },
+  { id: 'cdl2', shotId: 'sh2', slopeR: 0.9900, slopeG: 1.0100, slopeB: 1.0300, offsetR: -0.0020, offsetG: 0.0040, offsetB: -0.0010, powerR: 1.0100, powerG: 0.9900, powerB: 1.0000, saturation: 0.9800, source: 'manual' as const, sourceFile: null },
+  { id: 'cdl3', shotId: 'sh3', slopeR: 1.0500, slopeG: 1.0000, slopeB: 0.9700, offsetR: 0.0100, offsetG: 0.0000, offsetB: -0.0050, powerR: 1.0200, powerG: 1.0000, powerB: 0.9800, saturation: 1.0200, source: 'CDL file' as const, sourceFile: 'grade_v02.cdl' },
+  { id: 'cdl4', shotId: 'sh5', slopeR: 1.0000, slopeG: 1.0000, slopeB: 1.0000, offsetR: 0.0000, offsetG: 0.0000, offsetB: 0.0000, powerR: 1.0000, powerG: 1.0000, powerB: 1.0000, saturation: 1.0000, source: 'ALE' as const, sourceFile: null },
+  { id: 'cdl5', shotId: 'sh6', slopeR: 1.1000, slopeG: 1.0500, slopeB: 0.9500, offsetR: 0.0200, offsetG: 0.0100, offsetB: -0.0100, powerR: 1.0000, powerG: 1.0000, powerB: 1.0000, saturation: 1.1000, source: 'manual' as const, sourceFile: null },
+  { id: 'cdl6', shotId: 'sh7', slopeR: 0.9500, slopeG: 0.9800, slopeB: 1.0500, offsetR: -0.0050, offsetG: 0.0020, offsetB: 0.0080, powerR: 0.9900, powerG: 1.0100, powerB: 1.0000, saturation: 0.9500, source: 'ALE' as const, sourceFile: null },
+];
+
+// Mock LUT files
+export const mockLutFiles = [
+  { id: 'lut1', projectId: 'p1', shotId: null, name: 'NEB01_show_lut_v03', lutType: '3D', format: '.cube', filePath: '/luts/NEB01_show_lut_v03.cube', fileSize: 2456000, description: 'Show LUT for Nebula Rising — ACES to Rec.709', isDefault: true, uploadedById: '1', createdAt: new Date('2024-02-01') },
+  { id: 'lut2', projectId: 'p1', shotId: null, name: 'NEB01_hdr_grade', lutType: '3D', format: '.cube', filePath: '/luts/NEB01_hdr_grade.cube', fileSize: 2456000, description: 'HDR grading LUT', isDefault: false, uploadedById: '2', createdAt: new Date('2024-03-15') },
+  { id: 'lut3', projectId: 'p2', shotId: null, name: 'IRON02_show_lut_v01', lutType: '3D', format: '.cube', filePath: '/luts/IRON02_show_lut_v01.cube', fileSize: 1890000, description: 'Show LUT for Iron Citadel', isDefault: true, uploadedById: '1', createdAt: new Date('2024-03-10') },
+  { id: 'lut4', projectId: 'p1', shotId: 'sh1', name: 'SEQ010_0010_shot_lut', lutType: '3D', format: '.cube', filePath: '/luts/SEQ010_0010_shot_lut.cube', fileSize: 2456000, description: 'Shot-specific LUT for hero opening', isDefault: false, uploadedById: '2', createdAt: new Date('2024-04-01') },
+  { id: 'lut5', projectId: 'p1', shotId: null, name: 'NEB01_linearize', lutType: '1D', format: '.3dl', filePath: '/luts/NEB01_linearize.3dl', fileSize: 45000, description: '1D linearization LUT', isDefault: false, uploadedById: '1', createdAt: new Date('2024-02-01') },
+];
+
+export function getCDLForShot(shotId: string) {
+  return mockShotCDLs.find(c => c.shotId === shotId) || null;
+}
+
+export function getLutFilesForShot(shotId: string) {
+  return mockLutFiles.filter(l => l.shotId === shotId);
+}
+
+export function getLutFilesForProject(projectId: string) {
+  return mockLutFiles.filter(l => l.projectId === projectId);
+}
+
 // Helper to get enriched data
 export function getShotsForProject(projectId: string) {
   const seqs = mockSequences.filter(s => s.projectId === projectId);

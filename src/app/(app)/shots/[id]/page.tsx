@@ -8,9 +8,9 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
-import { mockShots, mockSequences, mockUsers, mockVersions, mockNotes, mockProjects, getDeliverySpecsForProject } from "@/lib/mock-data";
+import { mockShots, mockSequences, mockUsers, mockVersions, mockNotes, mockProjects, getDeliverySpecsForProject, getCDLForShot, getLutFilesForShot, getLutFilesForProject } from "@/lib/mock-data";
 import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
-import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor } from "lucide-react";
+import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download } from "lucide-react";
 import Link from "next/link";
 import { useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
@@ -50,6 +50,9 @@ export default function ShotDetailPage() {
   const sequence = mockSequences.find(s => s.id === shot.sequenceId);
   const project = sequence ? mockProjects.find(p => p.id === sequence.projectId) : null;
   const deliverySpecs = project ? getDeliverySpecsForProject(project.id) : null;
+  const shotCDL = getCDLForShot(shot.id);
+  const shotLuts = getLutFilesForShot(shot.id);
+  const projectLuts = project ? getLutFilesForProject(project.id).filter(l => !l.shotId) : [];
   const assignee = shot.assignedToId ? mockUsers.find(u => u.id === shot.assignedToId) : null;
   const versions = mockVersions.filter(v => v.shotId === shot.id).sort((a, b) => b.versionNumber - a.versionNumber);
   const [selectedVersion, setSelectedVersion] = useState(versions[0]?.id || "");
@@ -179,6 +182,68 @@ export default function ShotDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Color / CDL Card */}
+          {(shotCDL || shotLuts.length > 0 || projectLuts.length > 0) && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Palette className="h-3.5 w-3.5" />Color
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {shotCDL && (
+                  <>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Slope (R/G/B)</label>
+                      <p className="text-sm font-mono">{shotCDL.slopeR.toFixed(4)} / {shotCDL.slopeG.toFixed(4)} / {shotCDL.slopeB.toFixed(4)}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Offset (R/G/B)</label>
+                      <p className="text-sm font-mono">{shotCDL.offsetR.toFixed(4)} / {shotCDL.offsetG.toFixed(4)} / {shotCDL.offsetB.toFixed(4)}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Power (R/G/B)</label>
+                      <p className="text-sm font-mono">{shotCDL.powerR.toFixed(4)} / {shotCDL.powerG.toFixed(4)} / {shotCDL.powerB.toFixed(4)}</p>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Saturation</span>
+                      <span className="text-sm font-mono">{shotCDL.saturation.toFixed(4)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">Source</span>
+                      <Badge variant="outline" className="text-xs">{shotCDL.source}</Badge>
+                    </div>
+                    {shotCDL.sourceFile && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">Source File</span>
+                        <span className="text-xs font-mono">{shotCDL.sourceFile}</span>
+                      </div>
+                    )}
+                    <Separator />
+                  </>
+                )}
+                {(shotLuts.length > 0 || projectLuts.length > 0) && (
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-2 block">LUT Files</label>
+                    <div className="space-y-2">
+                      {[...shotLuts, ...projectLuts].map(lut => (
+                        <div key={lut.id} className="flex items-center justify-between gap-2 text-xs">
+                          <div className="min-w-0">
+                            <p className="font-mono truncate">{lut.name}</p>
+                            <p className="text-muted-foreground">{lut.lutType} • {lut.format}{lut.isDefault ? ' • Default' : ''}</p>
+                          </div>
+                          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
+                            <Download className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Assignment Card */}
           <Card>

@@ -12,6 +12,7 @@ import {
   Users,
   Monitor,
   Film,
+  Palette,
 } from "lucide-react";
 
 const navigation = [
@@ -19,6 +20,7 @@ const navigation = [
   { name: "Projects", href: "/projects", icon: FolderKanban },
   { name: "Shots Board", href: "/shots", icon: Clapperboard },
   { name: "Turnover Import", href: "/turnover", icon: Upload },
+  { name: "Color Mgmt", href: "/color", icon: Palette },
   { name: "Deliveries", href: "/deliveries", icon: Truck },
   { name: "Client Portal", href: "/client", icon: Monitor },
   { name: "Users", href: "/users", icon: Users },
