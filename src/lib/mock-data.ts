@@ -123,6 +123,17 @@ export const mockLutFiles = [
   { id: 'lut5', projectId: 'p1', shotId: null, name: 'NEB01_linearize', lutType: '1D', format: '.3dl', filePath: '/luts/NEB01_linearize.3dl', fileSize: 45000, description: '1D linearization LUT', isDefault: false, uploadedById: '1', createdAt: new Date('2024-02-01') },
 ];
 
+// Mock Shot Metadata (camera/production info from ALE imports)
+export const mockShotMetadata = [
+  { id: 'sm1', shotId: 'sh1', tape: 'A_0092_1DIW', scene: '28F', take: '6', circled: true, camera: 'ARRI ALEXA Mini', cameraRoll: 'A_0092', lens: 'ARRI ALFA 47', focalLength: '47.0 mm', focusDistance: '96.4 cm', fStop: null, tStop: '2.8 8/10', eiIso: '800', shutter: '1/50s', sensorFps: '24', whiteBalance: '4300', colorspace: null, lookInfo: 'VF_MM_101.alf4', codec: 'ProRes 422 (LT)', srcResolution: '4608 x 3164', srcFiletype: 'mxf', filepath: '/Volumes/MEDIA_50TB/MotherMary/_rushes/20230530_D01_editorial/A_0092C006.mov', soundRoll: '25Y05M28', soundTc: '12:03:55:08', dop: 'Andrew Droz Palermo', director: 'David Lowery', gpsPosition: null, shootDate: '20230706', dayNight: null, intExt: null, duration: '00:01:24:16', uuidRef: 'B3D7B5CA-B052-424D-BD06-50B3D97CFA83', lutNodes: null, customMetadata: null },
+  { id: 'sm2', shotId: 'sh2', tape: 'B_0004_1D4X', scene: '13', take: '4', circled: true, camera: 'ARRI ALEXA Mini', cameraRoll: 'B_0004', lens: 'ARRI ALFA 47', focalLength: '47.0 mm', focusDistance: '1.21 m', fStop: null, tStop: '2.8 9/10', eiIso: '800', shutter: '1/50s', sensorFps: '24', whiteBalance: '4300', colorspace: null, lookInfo: 'VF_MM_101.alf4', codec: 'ProRes 422 (LT)', srcResolution: '4608 x 3164', srcFiletype: 'mxf', filepath: '/Volumes/MEDIA_50TB/MotherMary/_rushes/20230530_D01_editorial/B_0004C007.mov', soundRoll: '25Y05M28', soundTc: '18:17:49:02', dop: 'Andrew Droz Palermo', director: 'David Lowery', gpsPosition: null, shootDate: '20230530', dayNight: null, intExt: null, duration: '00:01:03:01', uuidRef: '56BC4C41-E639-463C-9F0D-6397EA831FCC', lutNodes: null, customMetadata: null },
+  { id: 'sm3', shotId: 'sh3', tape: 'A_0003_1DIW', scene: '10G', take: '3', circled: true, camera: 'ARRI ALEXA 35', cameraRoll: 'A_0003', lens: 'Angenieux 36-435', focalLength: '35.3 mm', focusDistance: '1.75 m', fStop: null, tStop: '4 2/10', eiIso: '800', shutter: '1/50s', sensorFps: '24', whiteBalance: '4000', colorspace: null, lookInfo: 'VF_MM_101.alf4', codec: 'ProRes 422 (LT)', srcResolution: '4608 x 3164', srcFiletype: 'mxf', filepath: '/Volumes/MEDIA_50TB/MotherMary/_rushes/20230530_D01_editorial/A_0003C003.mov', soundRoll: '25Y05M28', soundTc: '15:29:28:12', dop: 'Andrew Droz Palermo', director: 'David Lowery', gpsPosition: null, shootDate: '20230530', dayNight: null, intExt: null, duration: '00:05:39:06', uuidRef: 'D1ABD5DD-54EC-40B1-9675-27D2F74F4722', lutNodes: null, customMetadata: null },
+];
+
+export function getMetadataForShot(shotId: string) {
+  return mockShotMetadata.find(m => m.shotId === shotId) || null;
+}
+
 export function getCDLForShot(shotId: string) {
   return mockShotCDLs.find(c => c.shotId === shotId) || null;
 }
