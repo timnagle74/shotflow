@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,7 +18,19 @@ export default function ProjectsPage() {
   const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [projects, setProjects] = useState<any[]>(mockProjects);
   const [newProject, setNewProject] = useState({ name: "", code: "", status: "ACTIVE" });
+
+  useEffect(() => {
+    async function fetchProjects() {
+      if (!supabase) return;
+      const { data, error } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
+      if (!error && data && data.length > 0) {
+        setProjects(data);
+      }
+    }
+    fetchProjects();
+  }, []);
 
   const handleCreateProject = async () => {
     if (!newProject.name || !newProject.code || !supabase) return;
@@ -33,9 +45,11 @@ export default function ProjectsPage() {
         }] as any);
       
       if (error) throw error;
+      // Refresh projects list
+      const { data: newProjects } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
+      if (newProjects) setProjects(newProjects);
       setShowCreate(false);
       setNewProject({ name: "", code: "", status: "ACTIVE" });
-      router.refresh();
     } catch (err) {
       console.error("Failed to create project:", err);
       alert("Failed to create project. Check if project code already exists.");
@@ -99,7 +113,7 @@ export default function ProjectsPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {mockProjects.map((project) => {
+        {projects.map((project) => {
           const counts = getStatusCounts(project.id);
           const total = Object.values(counts).reduce((a, b) => a + b, 0);
           const done = (counts.APPROVED || 0) + (counts.FINAL || 0);
