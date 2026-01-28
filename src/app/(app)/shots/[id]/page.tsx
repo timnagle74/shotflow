@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
-import { mockShots, mockSequences, mockUsers, mockVersions, mockNotes, mockProjects, getDeliverySpecsForProject, getCDLForShot, getLutFilesForShot, getLutFilesForProject } from "@/lib/mock-data";
+import { mockShots, mockSequences, mockUsers, mockVersions, mockNotes, mockProjects, getDeliverySpecsForProject, getCDLForShot, getLutFilesForShot, getLutFilesForProject, getMetadataForShot } from "@/lib/mock-data";
 import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
 import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download } from "lucide-react";
 import Link from "next/link";
@@ -50,6 +50,7 @@ export default function ShotDetailPage() {
   const sequence = mockSequences.find(s => s.id === shot.sequenceId);
   const project = sequence ? mockProjects.find(p => p.id === sequence.projectId) : null;
   const deliverySpecs = project ? getDeliverySpecsForProject(project.id) : null;
+  const shotMetadata = getMetadataForShot(shot.id);
   const shotCDL = getCDLForShot(shot.id);
   const shotLuts = getLutFilesForShot(shot.id);
   const projectLuts = project ? getLutFilesForProject(project.id).filter(l => !l.shotId) : [];
@@ -182,6 +183,50 @@ export default function ShotDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Camera / Metadata Card */}
+          {shotMetadata && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Camera className="h-3.5 w-3.5" />Camera / Metadata
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {[
+                  { label: "Camera", value: shotMetadata.camera },
+                  { label: "Lens", value: shotMetadata.lens },
+                  { label: "Focal Length", value: shotMetadata.focalLength },
+                  { label: "Focus Distance", value: shotMetadata.focusDistance },
+                  { label: "T-Stop", value: shotMetadata.tStop },
+                  { label: "F-Stop", value: shotMetadata.fStop },
+                  { label: "ISO", value: shotMetadata.eiIso },
+                  { label: "Shutter", value: shotMetadata.shutter },
+                  { label: "Sensor FPS", value: shotMetadata.sensorFps },
+                  { label: "White Balance", value: shotMetadata.whiteBalance },
+                  { label: "Colorspace", value: shotMetadata.colorspace },
+                  { label: "Codec", value: shotMetadata.codec },
+                  { label: "Src Resolution", value: shotMetadata.srcResolution },
+                  { label: "Look / LUT", value: shotMetadata.lookInfo },
+                  { label: "DOP", value: shotMetadata.dop },
+                  { label: "Director", value: shotMetadata.director },
+                  { label: "Shoot Date", value: shotMetadata.shootDate },
+                  { label: "Tape / Reel", value: shotMetadata.tape },
+                  { label: "Scene", value: shotMetadata.scene },
+                  { label: "Take", value: shotMetadata.take },
+                  { label: "Circled", value: shotMetadata.circled ? "Yes" : null },
+                  { label: "Sound Roll", value: shotMetadata.soundRoll },
+                  { label: "Sound TC", value: shotMetadata.soundTc },
+                  { label: "Duration", value: shotMetadata.duration },
+                ].filter(({ value }) => value != null && String(value).trim() !== '').map(({ label, value }) => (
+                  <div key={label} className="flex items-start justify-between gap-2">
+                    <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+                    <span className="text-sm text-right font-mono">{value}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Color / CDL Card */}
           {(shotCDL || shotLuts.length > 0 || projectLuts.length > 0) && (
