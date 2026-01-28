@@ -55,6 +55,55 @@ export const mockNotes = [
   { id: 'n4', versionId: 'v5', authorId: '2', content: 'Smoke trails are too uniform. Add variation in density and speed.', frameReference: 1100, createdAt: new Date('2024-06-06') },
 ];
 
+export const mockDeliverySpecs = [
+  {
+    id: 'ds1',
+    projectId: 'p1',
+    resolution: '2048x1080 (2K)',
+    format: 'OpenEXR',
+    frameRate: '23.976',
+    colorSpace: 'ACES AP0 (Linear)',
+    bitDepth: '16-bit Half Float',
+    handlesHead: 8,
+    handlesTail: 8,
+    namingConvention: '{PROJECT}_{SEQ}_{SHOT}_v{VER}.{FRAME}.exr',
+    audioRequirements: 'N/A — VFX only',
+    additionalNotes: 'All comps must include utility passes (depth, motion vectors, crypto)',
+  },
+  {
+    id: 'ds2',
+    projectId: 'p2',
+    resolution: '3840x2160 (4K UHD)',
+    format: 'OpenEXR',
+    frameRate: '24',
+    colorSpace: 'ACEScg',
+    bitDepth: '16-bit Half Float',
+    handlesHead: 12,
+    handlesTail: 12,
+    namingConvention: '{PROJECT}_{SEQ}_{SHOT}_v{VER}.{FRAME}.exr',
+    audioRequirements: 'Sync reference WAV required',
+    additionalNotes: 'HDR deliverables may be requested for select hero shots',
+  },
+  {
+    id: 'ds3',
+    projectId: 'p3',
+    resolution: '1920x1080 (HD)',
+    format: 'DPX',
+    frameRate: '23.976',
+    colorSpace: 'Rec.709',
+    bitDepth: '10-bit Log',
+    handlesHead: 8,
+    handlesTail: 8,
+    namingConvention: '{SHOW}_{SEQ}_{SHOT}_v{VER}.{FRAME}.dpx',
+    audioRequirements: 'N/A',
+    additionalNotes: null,
+  },
+];
+
+export function getDeliverySpecsForProject(projectId: string) {
+  return mockDeliverySpecs.find(ds => ds.projectId === projectId) || null;
+}
+
 // Helper to get enriched data
 export function getShotsForProject(projectId: string) {
   const seqs = mockSequences.filter(s => s.projectId === projectId);

@@ -241,6 +241,56 @@ export interface Database {
           status?: DeliveryStatus;
         };
       };
+      delivery_specs: {
+        Row: {
+          id: string;
+          project_id: string;
+          resolution: string | null;
+          format: string | null;
+          frame_rate: string | null;
+          color_space: string | null;
+          bit_depth: string | null;
+          handles_head: number;
+          handles_tail: number;
+          naming_convention: string | null;
+          audio_requirements: string | null;
+          additional_notes: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          resolution?: string | null;
+          format?: string | null;
+          frame_rate?: string | null;
+          color_space?: string | null;
+          bit_depth?: string | null;
+          handles_head?: number;
+          handles_tail?: number;
+          naming_convention?: string | null;
+          audio_requirements?: string | null;
+          additional_notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          resolution?: string | null;
+          format?: string | null;
+          frame_rate?: string | null;
+          color_space?: string | null;
+          bit_depth?: string | null;
+          handles_head?: number;
+          handles_tail?: number;
+          naming_convention?: string | null;
+          audio_requirements?: string | null;
+          additional_notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       turnovers: {
         Row: {
           id: string;

@@ -8,9 +8,9 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
-import { mockShots, mockSequences, mockUsers, mockVersions, mockNotes } from "@/lib/mock-data";
+import { mockShots, mockSequences, mockUsers, mockVersions, mockNotes, mockProjects, getDeliverySpecsForProject } from "@/lib/mock-data";
 import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
-import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2 } from "lucide-react";
+import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor } from "lucide-react";
 import Link from "next/link";
 import { useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
@@ -48,6 +48,8 @@ export default function ShotDetailPage() {
   }
 
   const sequence = mockSequences.find(s => s.id === shot.sequenceId);
+  const project = sequence ? mockProjects.find(p => p.id === sequence.projectId) : null;
+  const deliverySpecs = project ? getDeliverySpecsForProject(project.id) : null;
   const assignee = shot.assignedToId ? mockUsers.find(u => u.id === shot.assignedToId) : null;
   const versions = mockVersions.filter(v => v.shotId === shot.id).sort((a, b) => b.versionNumber - a.versionNumber);
   const [selectedVersion, setSelectedVersion] = useState(versions[0]?.id || "");
@@ -208,6 +210,43 @@ export default function ShotDetailPage() {
               </Select>
             </CardContent>
           </Card>
+
+          {/* Delivery Specs Card */}
+          {deliverySpecs && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <Monitor className="h-3.5 w-3.5" />Delivery Specs
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {[
+                  { label: "Resolution", value: deliverySpecs.resolution },
+                  { label: "Format", value: deliverySpecs.format },
+                  { label: "Frame Rate", value: deliverySpecs.frameRate ? `${deliverySpecs.frameRate} fps` : null },
+                  { label: "Color Space", value: deliverySpecs.colorSpace },
+                  { label: "Bit Depth", value: deliverySpecs.bitDepth },
+                  { label: "Handles", value: `H${deliverySpecs.handlesHead} / T${deliverySpecs.handlesTail}` },
+                  { label: "Naming", value: deliverySpecs.namingConvention },
+                  { label: "Audio", value: deliverySpecs.audioRequirements },
+                ].map(({ label, value }) => value ? (
+                  <div key={label} className="flex items-start justify-between gap-2">
+                    <span className="text-xs text-muted-foreground shrink-0">{label}</span>
+                    <span className="text-sm text-right font-mono">{value}</span>
+                  </div>
+                ) : null)}
+                {deliverySpecs.additionalNotes && (
+                  <>
+                    <Separator />
+                    <div>
+                      <label className="text-xs text-muted-foreground">Notes</label>
+                      <p className="text-sm mt-1 text-blue-300 bg-blue-600/10 rounded-md p-2">{deliverySpecs.additionalNotes}</p>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Right Column: Versions + Notes */}

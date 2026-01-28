@@ -6,8 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShotStatusBadge } from "@/components/status-badge";
-import { mockShots, mockVersions, mockUsers } from "@/lib/mock-data";
-import { Truck, Clock, CheckCircle, AlertTriangle, Package } from "lucide-react";
+import { mockShots, mockVersions, mockUsers, mockProjects, mockDeliverySpecs } from "@/lib/mock-data";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Truck, Clock, CheckCircle, AlertTriangle, Package, Monitor, Edit2, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type DeliveryStatus = "PENDING" | "DELIVERED" | "ACCEPTED";
@@ -237,6 +241,123 @@ export default function DeliveriesPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Per-Project Delivery Specs */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Monitor className="h-4 w-4" />Project Delivery Specs
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {mockProjects.map(project => {
+              const specs = mockDeliverySpecs.find(ds => ds.projectId === project.id);
+              return (
+                <div key={project.id} className="rounded-lg border border-border p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold">{project.name}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{project.code}</p>
+                    </div>
+                    <DeliverySpecsDialog project={project} specs={specs || null} />
+                  </div>
+                  {specs ? (
+                    <div className="space-y-1.5 text-xs">
+                      {[
+                        { label: "Resolution", value: specs.resolution },
+                        { label: "Format", value: specs.format },
+                        { label: "FPS", value: specs.frameRate },
+                        { label: "Color Space", value: specs.colorSpace },
+                        { label: "Bit Depth", value: specs.bitDepth },
+                        { label: "Handles", value: `H${specs.handlesHead} / T${specs.handlesTail}` },
+                      ].map(({ label, value }) => (
+                        <div key={label} className="flex justify-between">
+                          <span className="text-muted-foreground">{label}</span>
+                          <span className="font-mono">{value}</span>
+                        </div>
+                      ))}
+                      {specs.namingConvention && (
+                        <>
+                          <Separator />
+                          <div>
+                            <span className="text-muted-foreground">Naming:</span>
+                            <p className="font-mono mt-0.5 break-all">{specs.namingConvention}</p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No specs configured</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
     </div>
+  );
+}
+
+// Role check — in a real app this comes from auth context
+const CURRENT_USER_ROLE = "ADMIN"; // Simulated
+
+function DeliverySpecsDialog({ project, specs }: { project: { id: string; name: string }; specs: (typeof mockDeliverySpecs)[0] | null }) {
+  const canEdit = CURRENT_USER_ROLE === "ADMIN" || CURRENT_USER_ROLE === "SUPERVISOR";
+  const [open, setOpen] = useState(false);
+
+  const fields = [
+    { key: "resolution", label: "Resolution", value: specs?.resolution || "" },
+    { key: "format", label: "Format", value: specs?.format || "" },
+    { key: "frameRate", label: "Frame Rate", value: specs?.frameRate || "" },
+    { key: "colorSpace", label: "Color Space", value: specs?.colorSpace || "" },
+    { key: "bitDepth", label: "Bit Depth", value: specs?.bitDepth || "" },
+    { key: "handlesHead", label: "Handles (Head)", value: String(specs?.handlesHead ?? 8) },
+    { key: "handlesTail", label: "Handles (Tail)", value: String(specs?.handlesTail ?? 8) },
+    { key: "namingConvention", label: "Naming Convention", value: specs?.namingConvention || "" },
+    { key: "audioRequirements", label: "Audio Requirements", value: specs?.audioRequirements || "" },
+    { key: "additionalNotes", label: "Additional Notes", value: specs?.additionalNotes || "" },
+  ];
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="ghost">
+          {canEdit ? <Edit2 className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{canEdit ? "Edit" : "View"} Delivery Specs — {project.name}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 pt-2">
+          {fields.map(f => (
+            <div key={f.key}>
+              <label className="text-xs font-medium text-muted-foreground">{f.label}</label>
+              {f.key === "additionalNotes" ? (
+                <Textarea
+                  defaultValue={f.value}
+                  disabled={!canEdit}
+                  className="mt-1 text-sm"
+                  rows={3}
+                />
+              ) : (
+                <Input
+                  defaultValue={f.value}
+                  disabled={!canEdit}
+                  className="mt-1 text-sm"
+                />
+              )}
+            </div>
+          ))}
+          {canEdit && (
+            <Button className="w-full" onClick={() => setOpen(false)}>
+              Save Specs
+            </Button>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { mockProjects, getStatusCounts } from "@/lib/mock-data";
-import { Plus, Settings, FolderKanban } from "lucide-react";
+import { mockProjects, getStatusCounts, getDeliverySpecsForProject } from "@/lib/mock-data";
+import { Plus, Settings, FolderKanban, Monitor } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 
 export default function ProjectsPage() {
@@ -62,6 +63,7 @@ export default function ProjectsPage() {
           const total = Object.values(counts).reduce((a, b) => a + b, 0);
           const done = (counts.APPROVED || 0) + (counts.FINAL || 0);
           const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+          const specs = getDeliverySpecsForProject(project.id);
 
           return (
             <Card key={project.id} className="hover:border-primary/50 transition-colors">
@@ -106,6 +108,15 @@ export default function ProjectsPage() {
                       <div className="h-full rounded-full bg-green-600" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
+                  {specs && (
+                    <>
+                      <Separator />
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Monitor className="h-3 w-3" />
+                        <span>{specs.resolution} • {specs.format} • {specs.frameRate}fps • {specs.colorSpace}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex gap-2 pt-1">
                     <Link href={`/shots?project=${project.id}`} className="flex-1">
                       <Button variant="outline" size="sm" className="w-full">View Shots</Button>
