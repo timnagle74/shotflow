@@ -27,24 +27,24 @@
   }
 
   .dark {
-    --background: 224 10% 10%;
-    --foreground: 0 0% 95%;
-    --card: 224 10% 12%;
-    --card-foreground: 0 0% 95%;
-    --popover: 224 10% 12%;
-    --popover-foreground: 0 0% 95%;
+    --background: 0 0% 4%;
+    --foreground: 0 0% 93%;
+    --card: 0 0% 6.5%;
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 6.5%;
+    --popover-foreground: 0 0% 93%;
     --primary: 217.2 91.2% 59.8%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 224 10% 18%;
-    --secondary-foreground: 0 0% 95%;
-    --muted: 224 10% 18%;
-    --muted-foreground: 0 0% 55%;
-    --accent: 224 10% 18%;
-    --accent-foreground: 0 0% 95%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 93%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 50%;
+    --accent: 0 0% 12%;
+    --accent-foreground: 0 0% 93%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 95%;
-    --border: 224 10% 20%;
-    --input: 224 10% 20%;
+    --destructive-foreground: 0 0% 93%;
+    --border: 0 0% 14%;
+    --input: 0 0% 14%;
     --ring: 217.2 91.2% 59.8%;
   }
 }
@@ -55,5 +55,23 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+/* Scrollbar styling for dark mode */
+@layer utilities {
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 3px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground));
   }
 }

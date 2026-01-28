@@ -9,8 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
 import { mockShots, mockSequences, mockUsers, mockVersions, mockNotes } from "@/lib/mock-data";
-import { complexityColors, cn } from "@/lib/utils";
-import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, ChevronRight } from "lucide-react";
+import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
+import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
@@ -34,50 +34,54 @@ export default function ShotDetailPage() {
   const assignee = shot.assignedToId ? mockUsers.find(u => u.id === shot.assignedToId) : null;
   const versions = mockVersions.filter(v => v.shotId === shot.id).sort((a, b) => b.versionNumber - a.versionNumber);
   const [selectedVersion, setSelectedVersion] = useState(versions[0]?.id || "");
+  const [noteText, setNoteText] = useState("");
 
   const currentVersionNotes = mockNotes.filter(n => n.versionId === selectedVersion);
-
   const frameCount = shot.frameStart && shot.frameEnd ? shot.frameEnd - shot.frameStart : null;
 
   return (
     <div className="space-y-6">
+      {/* Breadcrumb + Title */}
       <div className="flex items-center gap-4">
         <Link href="/shots">
-          <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
+          <Button variant="ghost" size="icon" className="shrink-0"><ArrowLeft className="h-4 w-4" /></Button>
         </Link>
-        <div>
-          <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold font-mono">{shot.code}</h1>
             <ShotStatusBadge status={shot.status} />
-            <span className={cn("text-sm font-semibold", complexityColors[shot.complexity])}>{shot.complexity}</span>
+            <Badge variant="outline" className={cn("text-xs", complexityColors[shot.complexity])}>{shot.complexity}</Badge>
           </div>
           <p className="text-muted-foreground text-sm mt-0.5">
             {sequence?.name} • {sequence?.code}
           </p>
         </div>
-        <div className="ml-auto flex gap-2">
-          <Select defaultValue={shot.status}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Change status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="NOT_STARTED">Not Started</SelectItem>
-              <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-              <SelectItem value="INTERNAL_REVIEW">Internal Review</SelectItem>
-              <SelectItem value="CLIENT_REVIEW">Client Review</SelectItem>
-              <SelectItem value="APPROVED">Approved</SelectItem>
-              <SelectItem value="FINAL">Final</SelectItem>
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Status change buttons */}
+          {Object.entries(shotStatusLabels).map(([key, label]) => {
+            if (key === shot.status) return null;
+            const isNext = (
+              (shot.status === "NOT_STARTED" && key === "IN_PROGRESS") ||
+              (shot.status === "IN_PROGRESS" && key === "INTERNAL_REVIEW") ||
+              (shot.status === "INTERNAL_REVIEW" && key === "CLIENT_REVIEW") ||
+              (shot.status === "CLIENT_REVIEW" && (key === "APPROVED" || key === "IN_PROGRESS")) ||
+              (shot.status === "APPROVED" && key === "FINAL")
+            );
+            if (!isNext) return null;
+            return (
+              <Button key={key} size="sm" variant="outline">{label}</Button>
+            );
+          })}
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Shot Info */}
-        <div className="lg:col-span-1 space-y-4">
+        {/* Left Column: Metadata */}
+        <div className="space-y-4">
+          {/* Shot Info Card */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Shot Details</CardTitle>
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Shot Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {shot.description && (
@@ -87,44 +91,74 @@ export default function ShotDetailPage() {
                 </div>
               )}
               <Separator />
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground flex items-center gap-1"><User className="h-3 w-3" />Assignee</label>
-                  <p className="text-sm font-medium mt-0.5">{assignee?.name || "Unassigned"}</p>
+
+              {/* Metadata Grid */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Film className="h-3 w-3" />Frame Range</span>
+                  <span className="text-sm font-mono">{shot.frameStart}–{shot.frameEnd}</span>
                 </div>
-                <div>
-                  <label className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3" />Due Date</label>
-                  <p className="text-sm font-medium mt-0.5">{shot.dueDate?.toLocaleDateString() || "—"}</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Ruler className="h-3 w-3" />Duration</span>
+                  <span className="text-sm font-mono">{frameCount}f ({frameCount ? (frameCount / 24).toFixed(1) : 0}s)</span>
                 </div>
-                <div>
-                  <label className="text-xs text-muted-foreground flex items-center gap-1"><Film className="h-3 w-3" />Frames</label>
-                  <p className="text-sm font-mono mt-0.5">{shot.frameStart}–{shot.frameEnd} ({frameCount}f)</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Hash className="h-3 w-3" />Handles</span>
+                  <span className="text-sm font-mono">H{shot.handleHead} / T{shot.handleTail}</span>
                 </div>
-                <div>
-                  <label className="text-xs text-muted-foreground flex items-center gap-1"><Hash className="h-3 w-3" />Handles</label>
-                  <p className="text-sm font-mono mt-0.5">H{shot.handleHead} / T{shot.handleTail}</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Gauge className="h-3 w-3" />Complexity</span>
+                  <span className={cn("text-sm font-semibold", complexityColors[shot.complexity])}>{shot.complexity}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Calendar className="h-3 w-3" />Due Date</span>
+                  <span className="text-sm">{shot.dueDate?.toLocaleDateString() || "—"}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Camera className="h-3 w-3" />Plate Source</span>
+                  <span className="text-sm text-muted-foreground">—</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5"><FileVideo className="h-3 w-3" />Camera</span>
+                  <span className="text-sm text-muted-foreground">—</span>
                 </div>
               </div>
+
               {shot.notes && (
                 <>
                   <Separator />
                   <div>
                     <label className="text-xs text-muted-foreground">Shot Notes</label>
-                    <p className="text-sm mt-0.5 text-amber-300">{shot.notes}</p>
+                    <p className="text-sm mt-1 text-amber-300 bg-amber-600/10 rounded-md p-2">{shot.notes}</p>
                   </div>
                 </>
               )}
             </CardContent>
           </Card>
 
+          {/* Assignment Card */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Assignment</CardTitle>
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5" />Assignment
+              </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              {assignee && (
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="h-9 w-9 rounded-full bg-primary/20 flex items-center justify-center">
+                    <span className="text-sm font-bold text-primary">{assignee.name.split(" ").map(n => n[0]).join("")}</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{assignee.name}</p>
+                    <p className="text-xs text-muted-foreground">{assignee.role}</p>
+                  </div>
+                </div>
+              )}
               <Select defaultValue={assignee?.id || ""}>
                 <SelectTrigger><SelectValue placeholder="Assign artist" /></SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
                   {mockUsers.filter(u => u.role === "ARTIST" || u.role === "SUPERVISOR").map(u => (
                     <SelectItem key={u.id} value={u.id}>{u.name} ({u.role})</SelectItem>
                   ))}
@@ -134,12 +168,13 @@ export default function ShotDetailPage() {
           </Card>
         </div>
 
-        {/* Versions & Notes */}
+        {/* Right Column: Versions + Notes */}
         <div className="lg:col-span-2 space-y-4">
+          {/* Version Timeline */}
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                   <Layers className="h-4 w-4" />Version History
                 </CardTitle>
                 <Button size="sm">Submit New Version</Button>
@@ -147,42 +182,62 @@ export default function ShotDetailPage() {
             </CardHeader>
             <CardContent>
               {versions.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No versions yet</p>
+                <div className="text-center py-10">
+                  <Layers className="h-8 w-8 mx-auto mb-2 text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">No versions yet</p>
+                </div>
               ) : (
-                <div className="space-y-2">
-                  {versions.map(version => {
-                    const creator = mockUsers.find(u => u.id === version.createdById);
-                    const noteCount = mockNotes.filter(n => n.versionId === version.id).length;
-                    const isSelected = version.id === selectedVersion;
-                    return (
-                      <div
-                        key={version.id}
-                        onClick={() => setSelectedVersion(version.id)}
-                        className={cn(
-                          "flex items-center gap-4 p-3 rounded-md cursor-pointer transition-colors",
-                          isSelected ? "bg-primary/10 border border-primary/30" : "hover:bg-muted/50"
-                        )}
-                      >
-                        <div className="h-10 w-14 rounded bg-muted/50 flex items-center justify-center">
-                          <span className="text-sm font-mono font-bold">v{String(version.versionNumber).padStart(3, "0")}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{version.description || "No description"}</span>
-                            <VersionStatusBadge status={version.status} />
+                <div className="relative">
+                  {/* Timeline line */}
+                  <div className="absolute left-[27px] top-3 bottom-3 w-px bg-border" />
+
+                  <div className="space-y-1">
+                    {versions.map((version, idx) => {
+                      const creator = mockUsers.find(u => u.id === version.createdById);
+                      const noteCount = mockNotes.filter(n => n.versionId === version.id).length;
+                      const isSelected = version.id === selectedVersion;
+                      const isLatest = idx === 0;
+
+                      return (
+                        <div
+                          key={version.id}
+                          onClick={() => setSelectedVersion(version.id)}
+                          className={cn(
+                            "relative flex items-center gap-4 p-3 rounded-lg cursor-pointer transition-all",
+                            isSelected ? "bg-primary/10 border border-primary/30" : "hover:bg-muted/40"
+                          )}
+                        >
+                          {/* Timeline dot */}
+                          <div className={cn(
+                            "relative z-10 h-[14px] w-[14px] rounded-full border-2 shrink-0",
+                            isSelected ? "border-primary bg-primary" :
+                            version.status === "APPROVED" ? "border-green-500 bg-green-500" :
+                            version.status === "REVISE" ? "border-red-500 bg-red-500" :
+                            "border-border bg-background"
+                          )} />
+
+                          {/* Version info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-mono font-bold">v{String(version.versionNumber).padStart(3, "0")}</span>
+                              <VersionStatusBadge status={version.status} />
+                              {isLatest && <Badge variant="outline" className="text-[10px]">Latest</Badge>}
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-0.5">{version.description || "No description"}</p>
+                            <div className="flex items-center gap-3 mt-1">
+                              <span className="text-xs text-muted-foreground">{creator?.name}</span>
+                              <span className="text-xs text-muted-foreground">{version.createdAt.toLocaleDateString()}</span>
+                              {noteCount > 0 && (
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <MessageSquare className="h-3 w-3" />{noteCount}
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {creator?.name} • {version.createdAt.toLocaleDateString()}
-                          </p>
                         </div>
-                        <div className="flex items-center gap-1 text-muted-foreground">
-                          <MessageSquare className="h-3.5 w-3.5" />
-                          <span className="text-xs">{noteCount}</span>
-                        </div>
-                        <ChevronRight className={cn("h-4 w-4 transition-transform", isSelected && "rotate-90")} />
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -192,33 +247,33 @@ export default function ShotDetailPage() {
           {selectedVersion && (
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                   <MessageSquare className="h-4 w-4" />
                   Notes — v{String(versions.find(v => v.id === selectedVersion)?.versionNumber || 0).padStart(3, "0")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {currentVersionNotes.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-4">No notes on this version</p>
+                  <p className="text-sm text-muted-foreground text-center py-6">No notes on this version</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {currentVersionNotes.map(note => {
                       const author = mockUsers.find(u => u.id === note.authorId);
                       return (
                         <div key={note.id} className="flex gap-3">
-                          <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
+                          <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0 mt-0.5">
                             <span className="text-xs font-bold text-primary">{author?.name.split(" ").map(n => n[0]).join("")}</span>
                           </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-medium">{author?.name}</span>
                               <Badge variant="outline" className="text-[10px]">{author?.role}</Badge>
                               <span className="text-xs text-muted-foreground">{note.createdAt.toLocaleDateString()}</span>
                               {note.frameReference && (
-                                <Badge variant="secondary" className="text-[10px]">Frame {note.frameReference}</Badge>
+                                <Badge variant="secondary" className="text-[10px] font-mono">f{note.frameReference}</Badge>
                               )}
                             </div>
-                            <p className="text-sm mt-1">{note.content}</p>
+                            <p className="text-sm mt-1.5 leading-relaxed">{note.content}</p>
                           </div>
                         </div>
                       );
@@ -227,8 +282,13 @@ export default function ShotDetailPage() {
                 )}
                 <Separator />
                 <div className="flex gap-2">
-                  <Textarea placeholder="Add a note..." className="min-h-[60px]" />
-                  <Button className="self-end">Post</Button>
+                  <Textarea
+                    placeholder="Add a note..."
+                    className="min-h-[60px]"
+                    value={noteText}
+                    onChange={e => setNoteText(e.target.value)}
+                  />
+                  <Button className="self-end" disabled={!noteText.trim()}>Post</Button>
                 </div>
               </CardContent>
             </Card>

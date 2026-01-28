@@ -5,6 +5,9 @@ const nextConfig = {
       { protocol: 'https', hostname: 'lh3.googleusercontent.com' },
     ],
   },
+  // Production optimizations
+  poweredByHeader: false,
+  reactStrictMode: true,
 };
 
 export default nextConfig;
