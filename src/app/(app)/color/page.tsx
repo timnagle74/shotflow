@@ -1,15 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { mockShots, mockSequences, mockProjects, mockShotCDLs, mockLutFiles } from "@/lib/mock-data";
 import { exportCDL, exportCC, exportProjectCDL, downloadFile, type CDLData } from "@/lib/cdl-export";
-import { Palette, Download, Upload, FileText, Star, Package } from "lucide-react";
+import { parseCdlFile, getCdlIdentifier, formatCdlForDisplay, type CdlValues } from "@/lib/cdl-parser";
+import { Palette, Download, Upload, FileText, Star, Package, AlertCircle, CheckCircle2, X } from "lucide-react";
 
 function fmtVal(n: number) { return n.toFixed(4); }
 
@@ -23,8 +22,18 @@ function cdlToCDLData(cdl: typeof mockShotCDLs[0], shotCode: string): CDLData {
   };
 }
 
+interface ParsedCdlFile {
+  filename: string;
+  cdls: CdlValues[];
+  warnings: string[];
+  format: string;
+}
+
 export default function ColorManagementPage() {
   const [selectedProject, setSelectedProject] = useState<string>("all");
+  const [parsedFiles, setParsedFiles] = useState<ParsedCdlFile[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [importStatus, setImportStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const filteredShots = selectedProject === "all"
     ? mockShots
@@ -63,6 +72,103 @@ export default function ColorManagementPage() {
     downloadFile(exportProjectCDL(project.name, cdls), `${project.code}_CDLs.cdl`);
   };
 
+  // CDL Import handlers
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const processFiles = useCallback(async (files: FileList | File[]) => {
+    const newParsedFiles: ParsedCdlFile[] = [];
+    
+    for (const file of Array.from(files)) {
+      if (!file.name.toLowerCase().endsWith('.cdl') && 
+          !file.name.toLowerCase().endsWith('.cc') &&
+          !file.name.toLowerCase().endsWith('.ccc')) {
+        continue;
+      }
+      
+      try {
+        const content = await file.text();
+        const result = parseCdlFile(content);
+        newParsedFiles.push({
+          filename: file.name,
+          cdls: result.cdls,
+          warnings: result.warnings,
+          format: result.format,
+        });
+      } catch (err) {
+        newParsedFiles.push({
+          filename: file.name,
+          cdls: [],
+          warnings: [`Failed to read file: ${err instanceof Error ? err.message : 'Unknown error'}`],
+          format: 'unknown',
+        });
+      }
+    }
+    
+    if (newParsedFiles.length > 0) {
+      setParsedFiles(prev => [...prev, ...newParsedFiles]);
+      setImportStatus(null);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    if (e.dataTransfer.files?.length) {
+      processFiles(e.dataTransfer.files);
+    }
+  }, [processFiles]);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) {
+      processFiles(e.target.files);
+    }
+    e.target.value = ''; // Reset for re-selection
+  }, [processFiles]);
+
+  const handleRemoveFile = (index: number) => {
+    setParsedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleClearAll = () => {
+    setParsedFiles([]);
+    setImportStatus(null);
+  };
+
+  const handleImportCdls = async () => {
+    // In a real implementation, this would save to the database
+    // For now, we'll just simulate the import
+    const totalCdls = parsedFiles.reduce((sum, f) => sum + f.cdls.length, 0);
+    
+    if (totalCdls === 0) {
+      setImportStatus({ type: 'error', message: 'No valid CDL data to import' });
+      return;
+    }
+
+    // Simulate import
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    setImportStatus({ 
+      type: 'success', 
+      message: `Successfully imported ${totalCdls} CDL${totalCdls !== 1 ? 's' : ''} from ${parsedFiles.length} file${parsedFiles.length !== 1 ? 's' : ''}` 
+    });
+    setParsedFiles([]);
+  };
+
+  const totalParsedCdls = parsedFiles.reduce((sum, f) => sum + f.cdls.length, 0);
+  const totalWarnings = parsedFiles.reduce((sum, f) => sum + f.warnings.length, 0);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -91,6 +197,155 @@ export default function ColorManagementPage() {
           </Button>
         </div>
       </div>
+
+      {/* CDL Import Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Import CDL Files</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Drop Zone */}
+          <div
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              isDragging 
+                ? 'border-primary bg-primary/5' 
+                : 'border-border hover:border-muted-foreground/50'
+            }`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <Upload className={`h-10 w-10 mx-auto mb-3 ${isDragging ? 'text-primary' : 'text-muted-foreground'}`} />
+            <p className="text-sm font-medium mb-1">
+              {isDragging ? 'Drop CDL files here' : 'Drag & drop CDL files here'}
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Supports .cdl, .cc, and .ccc files
+            </p>
+            <label>
+              <input
+                type="file"
+                multiple
+                accept=".cdl,.cc,.ccc"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              <Button variant="outline" size="sm" asChild>
+                <span>Browse Files</span>
+              </Button>
+            </label>
+          </div>
+
+          {/* Import Status */}
+          {importStatus && (
+            <div className={`flex items-center gap-2 p-3 rounded-lg ${
+              importStatus.type === 'success' 
+                ? 'bg-green-500/10 text-green-600 dark:text-green-400' 
+                : 'bg-red-500/10 text-red-600 dark:text-red-400'
+            }`}>
+              {importStatus.type === 'success' ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 shrink-0" />
+              )}
+              <span className="text-sm">{importStatus.message}</span>
+            </div>
+          )}
+
+          {/* Parsed Files Preview */}
+          {parsedFiles.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium">
+                    {parsedFiles.length} file{parsedFiles.length !== 1 ? 's' : ''} • {totalParsedCdls} CDL{totalParsedCdls !== 1 ? 's' : ''}
+                  </span>
+                  {totalWarnings > 0 && (
+                    <Badge variant="outline" className="text-amber-600 border-amber-600/30">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      {totalWarnings} warning{totalWarnings !== 1 ? 's' : ''}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={handleClearAll}>
+                    Clear All
+                  </Button>
+                  <Button size="sm" onClick={handleImportCdls} disabled={totalParsedCdls === 0}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Import {totalParsedCdls} CDL{totalParsedCdls !== 1 ? 's' : ''}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {parsedFiles.map((file, fileIndex) => (
+                  <div key={fileIndex} className="border border-border rounded-lg overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">{file.filename}</span>
+                        <Badge variant="secondary" className="text-[10px]">{file.format.toUpperCase()}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {file.cdls.length} CDL{file.cdls.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleRemoveFile(fileIndex)}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    
+                    {/* Warnings */}
+                    {file.warnings.length > 0 && (
+                      <div className="px-3 py-2 bg-amber-500/5 border-t border-amber-500/20">
+                        {file.warnings.map((warning, i) => (
+                          <p key={i} className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                            <AlertCircle className="h-3 w-3 mt-0.5 shrink-0" />
+                            {warning}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* CDL Preview Table */}
+                    {file.cdls.length > 0 && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-t border-border text-muted-foreground">
+                              <th className="text-left py-1.5 px-3 font-medium">ID/Description</th>
+                              <th className="text-left py-1.5 px-3 font-medium">Slope</th>
+                              <th className="text-left py-1.5 px-3 font-medium">Offset</th>
+                              <th className="text-left py-1.5 px-3 font-medium">Power</th>
+                              <th className="text-center py-1.5 px-3 font-medium">Sat</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {file.cdls.map((cdl, cdlIndex) => {
+                              const formatted = formatCdlForDisplay(cdl);
+                              return (
+                                <tr key={cdlIndex} className="border-t border-border/50 hover:bg-muted/20">
+                                  <td className="py-1.5 px-3 font-mono truncate max-w-[200px]" title={getCdlIdentifier(cdl)}>
+                                    {getCdlIdentifier(cdl)}
+                                  </td>
+                                  <td className="py-1.5 px-3 font-mono">{formatted.slope}</td>
+                                  <td className="py-1.5 px-3 font-mono">{formatted.offset}</td>
+                                  <td className="py-1.5 px-3 font-mono">{formatted.power}</td>
+                                  <td className="py-1.5 px-3 text-center font-mono">{formatted.saturation}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* CDL Table */}
       <Card>
