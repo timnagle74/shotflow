@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, Suspense } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { shotStatusLabels, shotStatusColors, complexityColors, cn } from "@/lib/
 import { LayoutGrid, List, Search, Clock } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useSearchParams } from "next/navigation";
 import type { ShotStatus } from "@/lib/database.types";
 import {
   DndContext,
@@ -116,8 +117,17 @@ function ShotCardOverlay({ shot }: { shot: EnrichedShot }) {
   );
 }
 
-export default function ShotsPage() {
-  const [selectedProject, setSelectedProject] = useState("p1");
+function ShotsPageContent() {
+  const searchParams = useSearchParams();
+  const projectFromUrl = searchParams.get("project");
+  const [selectedProject, setSelectedProject] = useState(projectFromUrl || mockProjects[0]?.id || "p1");
+  
+  // Update selected project when URL changes
+  useEffect(() => {
+    if (projectFromUrl) {
+      setSelectedProject(projectFromUrl);
+    }
+  }, [projectFromUrl]);
   const [filterSequence, setFilterSequence] = useState("all");
   const [filterAssignee, setFilterAssignee] = useState("all");
   const [filterComplexity, setFilterComplexity] = useState("all");
@@ -317,5 +327,13 @@ export default function ShotsPage() {
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+export default function ShotsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-64"><span className="text-muted-foreground">Loading shots...</span></div>}>
+      <ShotsPageContent />
+    </Suspense>
   );
 }
