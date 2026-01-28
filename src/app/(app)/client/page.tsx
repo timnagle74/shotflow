@@ -5,18 +5,22 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
-import { mockShots, mockSequences, mockVersions, mockNotes, mockUsers, getShotsForProject } from "@/lib/mock-data";
+import { ShotStatusBadge } from "@/components/status-badge";
+import { mockShots, mockVersions, mockNotes, mockUsers, mockProjects, getShotsForProject } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
-import { Monitor, Check, RotateCcw, MessageSquare, Film, Eye, ChevronRight } from "lucide-react";
+import { Monitor, Check, RotateCcw, MessageSquare, Film, Eye, Folder, Clock, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 
 export default function ClientPortalPage() {
+  const [selectedProject, setSelectedProject] = useState<string>("p1");
   const [selectedShot, setSelectedShot] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
 
+  // Get projects (in real app, filter by client access)
+  const clientProjects = mockProjects.filter(p => p.status === "ACTIVE");
+
   // Client can only see CLIENT_REVIEW and APPROVED shots
-  const allShots = getShotsForProject("p1");
+  const allShots = getShotsForProject(selectedProject);
   const clientShots = allShots.filter(s => s.status === "CLIENT_REVIEW" || s.status === "APPROVED");
 
   const reviewCount = clientShots.filter(s => s.status === "CLIENT_REVIEW").length;
@@ -29,40 +33,89 @@ export default function ClientPortalPage() {
   const viewingVersion = selectedVersions.find(v => v.id === activeVersionId) || latestVersion;
   const versionNotes = viewingVersion ? mockNotes.filter(n => n.versionId === viewingVersion.id) : [];
 
+  const currentProject = mockProjects.find(p => p.id === selectedProject);
+
   return (
     <div className="space-y-6">
       {/* Client Portal Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Monitor className="h-5 w-5 text-primary" />
+          <div className="h-10 w-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
+            <Monitor className="h-5 w-5 text-purple-500" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Client Review</h1>
-            <p className="text-muted-foreground mt-0.5">Nebula Rising — Review shots and provide feedback</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1.5">
-                <div className="h-2.5 w-2.5 rounded-full bg-purple-500" />
-                <span className="text-sm">{reviewCount} for review</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
-                <span className="text-sm">{approvedCount} approved</span>
-              </div>
-            </div>
+            <h1 className="text-3xl font-bold tracking-tight">Client Review Portal</h1>
+            <p className="text-muted-foreground mt-0.5">Review and approve VFX shots</p>
           </div>
         </div>
       </div>
+
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Projects</CardTitle>
+            <Folder className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{clientProjects.length}</div>
+            <p className="text-xs text-muted-foreground">Active projects</p>
+          </CardContent>
+        </Card>
+        <Card className="border-purple-500/30 bg-purple-500/5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Awaiting Review</CardTitle>
+            <Clock className="h-4 w-4 text-purple-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-purple-400">{reviewCount}</div>
+            <p className="text-xs text-muted-foreground">Shots need your feedback</p>
+          </CardContent>
+        </Card>
+        <Card className="border-green-500/30 bg-green-500/5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Approved</CardTitle>
+            <CheckCircle2 className="h-4 w-4 text-green-400" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-green-400">{approvedCount}</div>
+            <p className="text-xs text-muted-foreground">Shots approved by you</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Project Selector */}
+      {clientProjects.length > 1 && (
+        <div className="flex gap-2">
+          {clientProjects.map(project => (
+            <Button
+              key={project.id}
+              variant={selectedProject === project.id ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setSelectedProject(project.id);
+                setSelectedShot(null);
+              }}
+            >
+              {project.name}
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {/* Project Title */}
+      {currentProject && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">{currentProject.code}</span>
+          <span>{currentProject.name}</span>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Shot List */}
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-3">
-            {clientShots.length} Shot{clientShots.length !== 1 ? 's' : ''}
+            {clientShots.length} Shot{clientShots.length !== 1 ? 's' : ''} Ready for Review
           </p>
           {clientShots.map(shot => {
             const isSelected = selectedShot === shot.id;
@@ -72,7 +125,7 @@ export default function ClientPortalPage() {
                 key={shot.id}
                 className={cn(
                   "cursor-pointer transition-all",
-                  isSelected ? "border-primary bg-primary/5 shadow-sm shadow-primary/10" : "hover:border-primary/40"
+                  isSelected ? "border-purple-500 bg-purple-500/5 shadow-sm shadow-purple-500/10" : "hover:border-purple-500/40"
                 )}
                 onClick={() => { setSelectedShot(shot.id); setActiveVersionId(""); setFeedback(""); }}
               >
@@ -200,8 +253,8 @@ export default function ClientPortalPage() {
                     const author = mockUsers.find(u => u.id === note.authorId);
                     return (
                       <div key={note.id} className="flex gap-3">
-                        <div className="h-8 w-8 rounded-full bg-primary/20 flex items-center justify-center shrink-0">
-                          <span className="text-xs font-bold text-primary">{author?.name.split(" ").map(n => n[0]).join("")}</span>
+                        <div className="h-8 w-8 rounded-full bg-purple-500/20 flex items-center justify-center shrink-0">
+                          <span className="text-xs font-bold text-purple-400">{author?.name.split(" ").map(n => n[0]).join("")}</span>
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
@@ -225,7 +278,7 @@ export default function ClientPortalPage() {
                       value={feedback}
                       onChange={e => setFeedback(e.target.value)}
                     />
-                    <Button className="self-end" disabled={!feedback.trim()}>Send</Button>
+                    <Button className="self-end bg-purple-600 hover:bg-purple-700" disabled={!feedback.trim()}>Send</Button>
                   </div>
                 </CardContent>
               </Card>
