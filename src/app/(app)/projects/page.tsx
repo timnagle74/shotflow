@@ -1,0 +1,125 @@
+"use client";
+
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { mockProjects, getStatusCounts } from "@/lib/mock-data";
+import { Plus, Settings, FolderKanban } from "lucide-react";
+import Link from "next/link";
+
+export default function ProjectsPage() {
+  const [showCreate, setShowCreate] = useState(false);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
+          <p className="text-muted-foreground mt-1">Manage VFX projects and their settings</p>
+        </div>
+        <Dialog open={showCreate} onOpenChange={setShowCreate}>
+          <DialogTrigger asChild>
+            <Button><Plus className="h-4 w-4 mr-2" />New Project</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Project</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 pt-4">
+              <div>
+                <label className="text-sm font-medium">Project Name</label>
+                <Input placeholder="e.g. Nebula Rising" className="mt-1.5" />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Project Code</label>
+                <Input placeholder="e.g. NEB01" className="mt-1.5" />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Status</label>
+                <Select defaultValue="ACTIVE">
+                  <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVE">Active</SelectItem>
+                    <SelectItem value="ON_HOLD">On Hold</SelectItem>
+                    <SelectItem value="COMPLETED">Completed</SelectItem>
+                    <SelectItem value="ARCHIVED">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button className="w-full" onClick={() => setShowCreate(false)}>Create Project</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {mockProjects.map((project) => {
+          const counts = getStatusCounts(project.id);
+          const total = Object.values(counts).reduce((a, b) => a + b, 0);
+          const done = (counts.APPROVED || 0) + (counts.FINAL || 0);
+          const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+
+          return (
+            <Card key={project.id} className="hover:border-primary/50 transition-colors">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <FolderKanban className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-base">{project.name}</CardTitle>
+                      <p className="text-xs text-muted-foreground font-mono">{project.code}</p>
+                    </div>
+                  </div>
+                  <Badge variant={project.status === "ACTIVE" ? "default" : "secondary"}>
+                    {project.status.replace("_", " ")}
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-md bg-muted/50 p-2">
+                      <p className="text-lg font-bold">{total}</p>
+                      <p className="text-[10px] text-muted-foreground">SHOTS</p>
+                    </div>
+                    <div className="rounded-md bg-muted/50 p-2">
+                      <p className="text-lg font-bold text-amber-400">{counts.IN_PROGRESS + counts.INTERNAL_REVIEW + counts.CLIENT_REVIEW}</p>
+                      <p className="text-[10px] text-muted-foreground">ACTIVE</p>
+                    </div>
+                    <div className="rounded-md bg-muted/50 p-2">
+                      <p className="text-lg font-bold text-green-400">{done}</p>
+                      <p className="text-[10px] text-muted-foreground">DONE</p>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-muted-foreground">Progress</span>
+                      <span>{pct}%</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-green-600" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Link href={`/shots?project=${project.id}`} className="flex-1">
+                      <Button variant="outline" size="sm" className="w-full">View Shots</Button>
+                    </Link>
+                    <Button variant="ghost" size="icon" className="shrink-0">
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
