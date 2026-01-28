@@ -40,7 +40,7 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   // Public routes that don't require authentication
-  const publicRoutes = ["/login", "/signup", "/auth/callback"];
+  const publicRoutes = ["/login", "/signup", "/auth/callback", "/client-login"];
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route));
 
   // If user is not authenticated and trying to access protected route
@@ -50,11 +50,65 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // If user is authenticated and trying to access login/signup, redirect to home
-  if (user && (pathname === "/login" || pathname === "/signup")) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    return NextResponse.redirect(url);
+  // If user is authenticated, check their role for route access
+  if (user) {
+    // Get user role from public.users table
+    const { data: userData } = await supabase
+      .from("users")
+      .select("role")
+      .eq("auth_id", user.id)
+      .single();
+
+    const userRole = userData?.role;
+    const isClient = userRole === "CLIENT";
+
+    // Internal-only routes (not for clients)
+    const internalOnlyRoutes = [
+      "/dashboard",
+      "/projects",
+      "/shots",
+      "/artists",
+      "/vendors",
+      "/deliverables",
+      "/settings",
+    ];
+    const isInternalOnlyRoute = internalOnlyRoutes.some((route) => 
+      pathname.startsWith(route)
+    );
+
+    // If client tries to access internal routes, redirect to client portal
+    if (isClient && isInternalOnlyRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/client";
+      return NextResponse.redirect(url);
+    }
+
+    // If client hits root, redirect to client portal
+    if (isClient && pathname === "/") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/client";
+      return NextResponse.redirect(url);
+    }
+
+    // If non-client hits root, redirect to dashboard
+    if (!isClient && pathname === "/") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/dashboard";
+      return NextResponse.redirect(url);
+    }
+
+    // If user is authenticated and trying to access login pages, redirect appropriately
+    if (pathname === "/login" || pathname === "/signup") {
+      const url = request.nextUrl.clone();
+      url.pathname = isClient ? "/client" : "/dashboard";
+      return NextResponse.redirect(url);
+    }
+
+    if (pathname === "/client-login") {
+      const url = request.nextUrl.clone();
+      url.pathname = isClient ? "/client" : "/dashboard";
+      return NextResponse.redirect(url);
+    }
   }
 
   return response;
