@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,15 +10,32 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
 import { mockShots, mockSequences, mockUsers, mockVersions, mockNotes } from "@/lib/mock-data";
 import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
-import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo } from "lucide-react";
+import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { supabase } from "@/lib/supabase";
+import type { ShotStatus } from "@/lib/database.types";
+
+// Allowed status transitions
+const STATUS_TRANSITIONS: Record<string, string[]> = {
+  NOT_STARTED: ["IN_PROGRESS"],
+  IN_PROGRESS: ["INTERNAL_REVIEW"],
+  INTERNAL_REVIEW: ["CLIENT_REVIEW"],
+  CLIENT_REVIEW: ["APPROVED", "REVISIONS"],
+  REVISIONS: ["IN_PROGRESS"],
+  APPROVED: ["FINAL"],
+  FINAL: [],
+};
 
 export default function ShotDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const shotId = params.id as string;
 
   const shot = mockShots.find(s => s.id === shotId);
+  const [currentStatus, setCurrentStatus] = useState<string>(shot?.status || "NOT_STARTED");
+  const [updating, setUpdating] = useState(false);
+
   if (!shot) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -39,6 +56,35 @@ export default function ShotDetailPage() {
   const currentVersionNotes = mockNotes.filter(n => n.versionId === selectedVersion);
   const frameCount = shot.frameStart && shot.frameEnd ? shot.frameEnd - shot.frameStart : null;
 
+  const allowedTransitions = STATUS_TRANSITIONS[currentStatus] || [];
+
+  const handleStatusChange = useCallback(async (newStatus: string) => {
+    setUpdating(true);
+    try {
+      if (supabase) {
+        const { error } = await (supabase as any)
+          .from("shots")
+          .update({ status: newStatus })
+          .eq("id", shotId);
+        if (error) {
+          console.error("Failed to update status:", error);
+          setUpdating(false);
+          return;
+        }
+      }
+      // Update local state (works for both mock and Supabase modes)
+      setCurrentStatus(newStatus);
+      // Also update mock data in memory so navigation stays consistent
+      const idx = mockShots.findIndex(s => s.id === shotId);
+      if (idx !== -1) {
+        (mockShots[idx] as { status: string }).status = newStatus;
+      }
+    } catch (err) {
+      console.error("Status update error:", err);
+    }
+    setUpdating(false);
+  }, [shotId]);
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb + Title */}
@@ -49,7 +95,7 @@ export default function ShotDetailPage() {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold font-mono">{shot.code}</h1>
-            <ShotStatusBadge status={shot.status} />
+            <ShotStatusBadge status={currentStatus} />
             <Badge variant="outline" className={cn("text-xs", complexityColors[shot.complexity])}>{shot.complexity}</Badge>
           </div>
           <p className="text-muted-foreground text-sm mt-0.5">
@@ -57,21 +103,18 @@ export default function ShotDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/* Status change buttons */}
-          {Object.entries(shotStatusLabels).map(([key, label]) => {
-            if (key === shot.status) return null;
-            const isNext = (
-              (shot.status === "NOT_STARTED" && key === "IN_PROGRESS") ||
-              (shot.status === "IN_PROGRESS" && key === "INTERNAL_REVIEW") ||
-              (shot.status === "INTERNAL_REVIEW" && key === "CLIENT_REVIEW") ||
-              (shot.status === "CLIENT_REVIEW" && (key === "APPROVED" || key === "IN_PROGRESS")) ||
-              (shot.status === "APPROVED" && key === "FINAL")
-            );
-            if (!isNext) return null;
-            return (
-              <Button key={key} size="sm" variant="outline">{label}</Button>
-            );
-          })}
+          {updating && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          {allowedTransitions.map(key => (
+            <Button
+              key={key}
+              size="sm"
+              variant={key === "REVISIONS" ? "destructive" : "outline"}
+              disabled={updating}
+              onClick={() => handleStatusChange(key)}
+            >
+              {shotStatusLabels[key] || key}
+            </Button>
+          ))}
         </div>
       </div>
 
@@ -92,7 +135,6 @@ export default function ShotDetailPage() {
               )}
               <Separator />
 
-              {/* Metadata Grid */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Film className="h-3 w-3" />Frame Range</span>
@@ -170,7 +212,6 @@ export default function ShotDetailPage() {
 
         {/* Right Column: Versions + Notes */}
         <div className="lg:col-span-2 space-y-4">
-          {/* Version Timeline */}
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -188,9 +229,7 @@ export default function ShotDetailPage() {
                 </div>
               ) : (
                 <div className="relative">
-                  {/* Timeline line */}
                   <div className="absolute left-[27px] top-3 bottom-3 w-px bg-border" />
-
                   <div className="space-y-1">
                     {versions.map((version, idx) => {
                       const creator = mockUsers.find(u => u.id === version.createdById);
@@ -207,7 +246,6 @@ export default function ShotDetailPage() {
                             isSelected ? "bg-primary/10 border border-primary/30" : "hover:bg-muted/40"
                           )}
                         >
-                          {/* Timeline dot */}
                           <div className={cn(
                             "relative z-10 h-[14px] w-[14px] rounded-full border-2 shrink-0",
                             isSelected ? "border-primary bg-primary" :
@@ -215,8 +253,6 @@ export default function ShotDetailPage() {
                             version.status === "REVISE" ? "border-red-500 bg-red-500" :
                             "border-border bg-background"
                           )} />
-
-                          {/* Version info */}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-mono font-bold">v{String(version.versionNumber).padStart(3, "0")}</span>
@@ -243,7 +279,6 @@ export default function ShotDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Notes for selected version */}
           {selectedVersion && (
             <Card>
               <CardHeader className="pb-3">

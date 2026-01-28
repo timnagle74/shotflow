@@ -10,6 +10,7 @@ export const shotStatusColors: Record<string, string> = {
   IN_PROGRESS: "bg-blue-600",
   INTERNAL_REVIEW: "bg-amber-600",
   CLIENT_REVIEW: "bg-purple-600",
+  REVISIONS: "bg-red-600",
   APPROVED: "bg-green-600",
   FINAL: "bg-emerald-700",
 };
@@ -19,8 +20,27 @@ export const shotStatusLabels: Record<string, string> = {
   IN_PROGRESS: "In Progress",
   INTERNAL_REVIEW: "Internal Review",
   CLIENT_REVIEW: "Client Review",
+  REVISIONS: "Revisions",
   APPROVED: "Approved",
   FINAL: "Final",
+};
+
+export const roleLabels: Record<string, string> = {
+  ADMIN: "Admin",
+  SUPERVISOR: "Supervisor",
+  COORDINATOR: "Coordinator",
+  ARTIST: "Artist",
+  CLIENT: "Client",
+  VFX_VENDOR: "VFX Vendor",
+};
+
+export const roleColors: Record<string, { color: string; bg: string }> = {
+  ADMIN: { color: "text-amber-400", bg: "bg-amber-400/10" },
+  SUPERVISOR: { color: "text-blue-400", bg: "bg-blue-400/10" },
+  COORDINATOR: { color: "text-cyan-400", bg: "bg-cyan-400/10" },
+  ARTIST: { color: "text-purple-400", bg: "bg-purple-400/10" },
+  CLIENT: { color: "text-green-400", bg: "bg-green-400/10" },
+  VFX_VENDOR: { color: "text-orange-400", bg: "bg-orange-400/10" },
 };
 
 export const complexityColors: Record<string, string> = {

@@ -5,6 +5,8 @@ export const mockUsers = [
   { id: '3', name: 'Alex Rivera', email: 'alex@studio.com', role: 'ARTIST' as const, image: null },
   { id: '4', name: 'Jordan Mills', email: 'jordan@client.com', role: 'CLIENT' as const, image: null },
   { id: '5', name: 'Casey Brooks', email: 'casey@studio.com', role: 'ARTIST' as const, image: null },
+  { id: '6', name: 'Morgan Lee', email: 'morgan@studio.com', role: 'COORDINATOR' as const, image: null },
+  { id: '7', name: 'Pixel Perfect VFX', email: 'team@pixelperfect.com', role: 'VFX_VENDOR' as const, image: null },
 ];
 
 export const mockProjects = [
@@ -32,6 +34,7 @@ export const mockShots = [
   { id: 'sh8', sequenceId: 's4', code: 'SEQ010_0010', description: 'Fortress wide shot', status: 'NOT_STARTED' as const, complexity: 'HERO' as const, assignedToId: null, dueDate: new Date('2024-07-15'), frameStart: 1001, frameEnd: 1250, handleHead: 8, handleTail: 8, notes: null },
   { id: 'sh9', sequenceId: 's4', code: 'SEQ010_0020', description: 'Gate mechanism CU', status: 'IN_PROGRESS' as const, complexity: 'COMPLEX' as const, assignedToId: '3', dueDate: new Date('2024-07-10'), frameStart: 1001, frameEnd: 1080, handleHead: 8, handleTail: 8, notes: null },
   { id: 'sh10', sequenceId: 's5', code: 'SEQ020_0010', description: 'Throne room reveal', status: 'NOT_STARTED' as const, complexity: 'HERO' as const, assignedToId: null, dueDate: new Date('2024-07-20'), frameStart: 1001, frameEnd: 1350, handleHead: 8, handleTail: 8, notes: 'CG set extension + FX torch fire' },
+  { id: 'sh11', sequenceId: 's2', code: 'SEQ020_0030', description: 'Airlock decompression', status: 'REVISIONS' as const, complexity: 'COMPLEX' as const, assignedToId: '3', dueDate: new Date('2024-06-28'), frameStart: 1001, frameEnd: 1140, handleHead: 8, handleTail: 8, notes: 'Client wants more dramatic lighting on the decompression effect' },
 ];
 
 export const mockVersions = [
@@ -72,6 +75,7 @@ export function getStatusCounts(projectId: string) {
     IN_PROGRESS: 0,
     INTERNAL_REVIEW: 0,
     CLIENT_REVIEW: 0,
+    REVISIONS: 0,
     APPROVED: 0,
     FINAL: 0,
   };

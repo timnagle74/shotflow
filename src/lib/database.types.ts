@@ -1,9 +1,9 @@
 // Generated types for Supabase — matches the migration schema.
 // In production, generate with: npx supabase gen types typescript
 
-export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'ARTIST' | 'CLIENT';
+export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'COORDINATOR' | 'ARTIST' | 'CLIENT' | 'VFX_VENDOR';
 export type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'ARCHIVED';
-export type ShotStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'INTERNAL_REVIEW' | 'CLIENT_REVIEW' | 'APPROVED' | 'FINAL';
+export type ShotStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'INTERNAL_REVIEW' | 'CLIENT_REVIEW' | 'REVISIONS' | 'APPROVED' | 'FINAL';
 export type ShotComplexity = 'SIMPLE' | 'MEDIUM' | 'COMPLEX' | 'HERO';
 export type VersionStatus = 'WIP' | 'PENDING_REVIEW' | 'APPROVED' | 'REVISE' | 'CBB';
 export type DeliveryStatus = 'PENDING' | 'DELIVERED' | 'ACCEPTED';
@@ -18,15 +18,30 @@ export interface Database {
           email: string;
           role: UserRole;
           avatar: string | null;
+          can_view_all_shots: boolean;
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database['public']['Tables']['users']['Row'], 'id' | 'created_at' | 'updated_at'> & {
+        Insert: {
           id?: string;
+          name?: string | null;
+          email: string;
+          role: UserRole;
+          avatar?: string | null;
+          can_view_all_shots?: boolean;
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<Database['public']['Tables']['users']['Insert']>;
+        Update: {
+          id?: string;
+          name?: string | null;
+          email?: string;
+          role?: UserRole;
+          avatar?: string | null;
+          can_view_all_shots?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
       };
       projects: {
         Row: {
@@ -37,12 +52,22 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database['public']['Tables']['projects']['Row'], 'id' | 'created_at' | 'updated_at'> & {
+        Insert: {
           id?: string;
+          name: string;
+          code: string;
+          status: ProjectStatus;
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<Database['public']['Tables']['projects']['Insert']>;
+        Update: {
+          id?: string;
+          name?: string;
+          code?: string;
+          status?: ProjectStatus;
+          created_at?: string;
+          updated_at?: string;
+        };
       };
       sequences: {
         Row: {
@@ -52,8 +77,20 @@ export interface Database {
           code: string;
           sort_order: number;
         };
-        Insert: Omit<Database['public']['Tables']['sequences']['Row'], 'id'> & { id?: string };
-        Update: Partial<Database['public']['Tables']['sequences']['Insert']>;
+        Insert: {
+          id?: string;
+          project_id: string;
+          name: string;
+          code: string;
+          sort_order: number;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          name?: string;
+          code?: string;
+          sort_order?: number;
+        };
       };
       shots: {
         Row: {
@@ -76,12 +113,46 @@ export interface Database {
           created_at: string;
           updated_at: string;
         };
-        Insert: Omit<Database['public']['Tables']['shots']['Row'], 'id' | 'created_at' | 'updated_at'> & {
+        Insert: {
           id?: string;
+          sequence_id: string;
+          code: string;
+          description?: string | null;
+          status: ShotStatus;
+          complexity: ShotComplexity;
+          assigned_to_id?: string | null;
+          due_date?: string | null;
+          frame_start?: number | null;
+          frame_end?: number | null;
+          handle_head?: number | null;
+          handle_tail?: number | null;
+          plate_source?: string | null;
+          camera_data?: Record<string, unknown> | null;
+          edit_ref?: string | null;
+          notes?: string | null;
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<Database['public']['Tables']['shots']['Insert']>;
+        Update: {
+          id?: string;
+          sequence_id?: string;
+          code?: string;
+          description?: string | null;
+          status?: ShotStatus;
+          complexity?: ShotComplexity;
+          assigned_to_id?: string | null;
+          due_date?: string | null;
+          frame_start?: number | null;
+          frame_end?: number | null;
+          handle_head?: number | null;
+          handle_tail?: number | null;
+          plate_source?: string | null;
+          camera_data?: Record<string, unknown> | null;
+          edit_ref?: string | null;
+          notes?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
       };
       versions: {
         Row: {
@@ -95,11 +166,28 @@ export interface Database {
           description: string | null;
           created_at: string;
         };
-        Insert: Omit<Database['public']['Tables']['versions']['Row'], 'id' | 'created_at'> & {
+        Insert: {
           id?: string;
+          shot_id: string;
+          version_number: number;
+          created_by_id: string;
+          status: VersionStatus;
+          file_path?: string | null;
+          thumbnail_path?: string | null;
+          description?: string | null;
           created_at?: string;
         };
-        Update: Partial<Database['public']['Tables']['versions']['Insert']>;
+        Update: {
+          id?: string;
+          shot_id?: string;
+          version_number?: number;
+          created_by_id?: string;
+          status?: VersionStatus;
+          file_path?: string | null;
+          thumbnail_path?: string | null;
+          description?: string | null;
+          created_at?: string;
+        };
       };
       notes: {
         Row: {
@@ -110,11 +198,22 @@ export interface Database {
           frame_reference: number | null;
           created_at: string;
         };
-        Insert: Omit<Database['public']['Tables']['notes']['Row'], 'id' | 'created_at'> & {
+        Insert: {
           id?: string;
+          version_id: string;
+          author_id: string;
+          content: string;
+          frame_reference?: number | null;
           created_at?: string;
         };
-        Update: Partial<Database['public']['Tables']['notes']['Insert']>;
+        Update: {
+          id?: string;
+          version_id?: string;
+          author_id?: string;
+          content?: string;
+          frame_reference?: number | null;
+          created_at?: string;
+        };
       };
       deliveries: {
         Row: {
@@ -125,8 +224,22 @@ export interface Database {
           specs: Record<string, unknown> | null;
           status: DeliveryStatus;
         };
-        Insert: Omit<Database['public']['Tables']['deliveries']['Row'], 'id'> & { id?: string };
-        Update: Partial<Database['public']['Tables']['deliveries']['Insert']>;
+        Insert: {
+          id?: string;
+          shot_id: string;
+          version_id: string;
+          delivered_at?: string | null;
+          specs?: Record<string, unknown> | null;
+          status: DeliveryStatus;
+        };
+        Update: {
+          id?: string;
+          shot_id?: string;
+          version_id?: string;
+          delivered_at?: string | null;
+          specs?: Record<string, unknown> | null;
+          status?: DeliveryStatus;
+        };
       };
       turnovers: {
         Row: {
@@ -137,11 +250,22 @@ export interface Database {
           imported_by_id: string;
           shot_count: number;
         };
-        Insert: Omit<Database['public']['Tables']['turnovers']['Row'], 'id' | 'imported_at'> & {
+        Insert: {
           id?: string;
+          project_id: string;
+          source_file: string;
           imported_at?: string;
+          imported_by_id: string;
+          shot_count: number;
         };
-        Update: Partial<Database['public']['Tables']['turnovers']['Insert']>;
+        Update: {
+          id?: string;
+          project_id?: string;
+          source_file?: string;
+          imported_at?: string;
+          imported_by_id?: string;
+          shot_count?: number;
+        };
       };
     };
     Views: Record<string, never>;

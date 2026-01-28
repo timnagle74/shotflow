@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,10 +10,114 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ShotStatusBadge } from "@/components/status-badge";
 import { mockShots, mockSequences, mockUsers, mockProjects, getShotsForProject } from "@/lib/mock-data";
 import { shotStatusLabels, shotStatusColors, complexityColors, cn } from "@/lib/utils";
-import { LayoutGrid, List, Filter, Search, Clock, User } from "lucide-react";
+import { LayoutGrid, List, Search, Clock, GripVertical } from "lucide-react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabase";
+import type { ShotStatus } from "@/lib/database.types";
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+  type DragOverEvent,
+} from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
+import { useDroppable } from "@dnd-kit/core";
+import { CSS } from "@dnd-kit/utilities";
 
-const STATUSES = ["NOT_STARTED", "IN_PROGRESS", "INTERNAL_REVIEW", "CLIENT_REVIEW", "APPROVED", "FINAL"] as const;
+const STATUSES: ShotStatus[] = ["NOT_STARTED", "IN_PROGRESS", "INTERNAL_REVIEW", "CLIENT_REVIEW", "REVISIONS", "APPROVED", "FINAL"];
+
+// Droppable column wrapper
+function KanbanColumn({ id, children }: { id: string; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} className={cn("space-y-2 min-h-[200px] rounded-lg transition-colors", isOver && "bg-primary/5")}>
+      {children}
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type EnrichedShot = Omit<ReturnType<typeof getShotsForProject>[number], 'status'> & { status: string };
+
+// Draggable shot card
+function DraggableShotCard({ shot }: { shot: EnrichedShot }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: shot.id,
+    data: { status: shot.status },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <Card className="hover:border-primary/50 transition-colors cursor-pointer group">
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between mb-1">
+            <Link href={`/shots/${shot.id}`} className="text-xs font-mono font-bold hover:text-primary transition-colors flex-1">
+              {shot.code}
+            </Link>
+            <div className="flex items-center gap-1">
+              <span className={cn("text-[10px] font-semibold", complexityColors[shot.complexity])}>{shot.complexity}</span>
+              <div {...listeners} className="cursor-grab active:cursor-grabbing p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <GripVertical className="h-3 w-3 text-muted-foreground" />
+              </div>
+            </div>
+          </div>
+          {shot.description && (
+            <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{shot.description}</p>
+          )}
+          <div className="flex items-center justify-between">
+            {shot.assignedTo ? (
+              <div className="flex items-center gap-1.5">
+                <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center">
+                  <span className="text-[9px] font-bold text-primary">{shot.assignedTo.name.split(" ").map(n => n[0]).join("")}</span>
+                </div>
+                <span className="text-[10px] text-muted-foreground">{shot.assignedTo.name.split(" ")[0]}</span>
+              </div>
+            ) : (
+              <span className="text-[10px] text-muted-foreground italic">Unassigned</span>
+            )}
+            {shot.versions.length > 0 && (
+              <Badge variant="outline" className="text-[9px] px-1">v{shot.versions.length}</Badge>
+            )}
+          </div>
+          {shot.dueDate && (
+            <div className="flex items-center gap-1 mt-2">
+              <Clock className="h-3 w-3 text-muted-foreground" />
+              <span className="text-[10px] text-muted-foreground">{shot.dueDate.toLocaleDateString()}</span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// Overlay card shown while dragging
+function ShotCardOverlay({ shot }: { shot: EnrichedShot }) {
+  return (
+    <Card className="border-primary shadow-lg shadow-primary/20 w-[200px]">
+      <CardContent className="p-3">
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-mono font-bold">{shot.code}</span>
+          <span className={cn("text-[10px] font-semibold", complexityColors[shot.complexity])}>{shot.complexity}</span>
+        </div>
+        {shot.description && (
+          <p className="text-xs text-muted-foreground line-clamp-2">{shot.description}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function ShotsPage() {
   const [selectedProject, setSelectedProject] = useState("p1");
@@ -21,8 +125,17 @@ export default function ShotsPage() {
   const [filterAssignee, setFilterAssignee] = useState("all");
   const [filterComplexity, setFilterComplexity] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [shotStatuses, setShotStatuses] = useState<Record<string, string>>({});
 
-  const allShots = getShotsForProject(selectedProject);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  const allShots: EnrichedShot[] = getShotsForProject(selectedProject).map(s => ({
+    ...s,
+    status: shotStatuses[s.id] || s.status,
+  }));
   const projectSequences = mockSequences.filter(s => s.projectId === selectedProject);
 
   const filteredShots = allShots.filter(shot => {
@@ -32,6 +145,51 @@ export default function ShotsPage() {
     if (searchQuery && !shot.code.toLowerCase().includes(searchQuery.toLowerCase()) && !shot.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
+
+  const activeShot = activeId ? allShots.find(s => s.id === activeId) : null;
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  }, []);
+
+  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+    setActiveId(null);
+    const { active, over } = event;
+    if (!over) return;
+
+    const shotId = active.id as string;
+    // The over target could be a column ID (status) or another shot card
+    let newStatus: string;
+    if (STATUSES.includes(over.id as ShotStatus)) {
+      newStatus = over.id as string;
+    } else {
+      // Dropped on a shot card — find that shot's status
+      const overShot = allShots.find(s => s.id === over.id);
+      if (!overShot) return;
+      newStatus = overShot.status;
+    }
+
+    const shot = allShots.find(s => s.id === shotId);
+    if (!shot || shot.status === newStatus) return;
+
+    // Update local state immediately
+    setShotStatuses(prev => ({ ...prev, [shotId]: newStatus }));
+
+    // Also update mock data in memory
+    const idx = mockShots.findIndex(s => s.id === shotId);
+    if (idx !== -1) {
+      (mockShots[idx] as { status: string }).status = newStatus;
+    }
+
+    // Update Supabase if configured
+    if (supabase) {
+      const { error } = await (supabase as any)
+        .from("shots")
+        .update({ status: newStatus })
+        .eq("id", shotId);
+      if (error) console.error("Failed to update shot status:", error);
+    }
+  }, [allShots]);
 
   return (
     <div className="space-y-6">
@@ -92,58 +250,35 @@ export default function ShotsPage() {
 
         {/* Kanban View */}
         <TabsContent value="kanban">
-          <div className="grid grid-cols-6 gap-3">
-            {STATUSES.map(status => {
-              const shotsInStatus = filteredShots.filter(s => s.status === status);
-              return (
-                <div key={status} className="space-y-2">
-                  <div className="flex items-center gap-2 px-2 py-1.5">
-                    <div className={cn("h-2.5 w-2.5 rounded-full", shotStatusColors[status])} />
-                    <span className="text-xs font-semibold uppercase tracking-wide">{shotStatusLabels[status]}</span>
-                    <Badge variant="secondary" className="ml-auto text-[10px] px-1.5">{shotsInStatus.length}</Badge>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="grid grid-cols-7 gap-3">
+              {STATUSES.map(status => {
+                const shotsInStatus = filteredShots.filter(s => s.status === status);
+                return (
+                  <div key={status}>
+                    <div className="flex items-center gap-2 px-2 py-1.5 mb-2">
+                      <div className={cn("h-2.5 w-2.5 rounded-full", shotStatusColors[status])} />
+                      <span className="text-xs font-semibold uppercase tracking-wide">{shotStatusLabels[status]}</span>
+                      <Badge variant="secondary" className="ml-auto text-[10px] px-1.5">{shotsInStatus.length}</Badge>
+                    </div>
+                    <KanbanColumn id={status}>
+                      {shotsInStatus.map(shot => (
+                        <DraggableShotCard key={shot.id} shot={shot} />
+                      ))}
+                    </KanbanColumn>
                   </div>
-                  <div className="space-y-2 min-h-[200px]">
-                    {shotsInStatus.map(shot => (
-                      <Link key={shot.id} href={`/shots/${shot.id}`}>
-                        <Card className="hover:border-primary/50 transition-colors cursor-pointer">
-                          <CardContent className="p-3">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs font-mono font-bold">{shot.code}</span>
-                              <span className={cn("text-[10px] font-semibold", complexityColors[shot.complexity])}>{shot.complexity}</span>
-                            </div>
-                            {shot.description && (
-                              <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{shot.description}</p>
-                            )}
-                            <div className="flex items-center justify-between">
-                              {shot.assignedTo ? (
-                                <div className="flex items-center gap-1.5">
-                                  <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center">
-                                    <span className="text-[9px] font-bold text-primary">{shot.assignedTo.name.split(" ").map(n => n[0]).join("")}</span>
-                                  </div>
-                                  <span className="text-[10px] text-muted-foreground">{shot.assignedTo.name.split(" ")[0]}</span>
-                                </div>
-                              ) : (
-                                <span className="text-[10px] text-muted-foreground italic">Unassigned</span>
-                              )}
-                              {shot.versions.length > 0 && (
-                                <Badge variant="outline" className="text-[9px] px-1">v{shot.versions.length}</Badge>
-                              )}
-                            </div>
-                            {shot.dueDate && (
-                              <div className="flex items-center gap-1 mt-2">
-                                <Clock className="h-3 w-3 text-muted-foreground" />
-                                <span className="text-[10px] text-muted-foreground">{shot.dueDate.toLocaleDateString()}</span>
-                              </div>
-                            )}
-                          </CardContent>
-                        </Card>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+            <DragOverlay>
+              {activeShot ? <ShotCardOverlay shot={activeShot} /> : null}
+            </DragOverlay>
+          </DndContext>
         </TabsContent>
 
         {/* Table View */}
