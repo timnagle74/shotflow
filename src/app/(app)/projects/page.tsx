@@ -17,6 +17,8 @@ import { useRouter } from "next/navigation";
 export default function ProjectsPage() {
   const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [editingProject, setEditingProject] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [projects, setProjects] = useState<any[]>(mockProjects);
   const [newProject, setNewProject] = useState({ name: "", code: "", status: "ACTIVE" });
@@ -53,6 +55,38 @@ export default function ProjectsPage() {
     } catch (err) {
       console.error("Failed to create project:", err);
       alert("Failed to create project. Check if project code already exists.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenSettings = (project: any) => {
+    setEditingProject({ ...project });
+    setShowSettings(true);
+  };
+
+  const handleSaveSettings = async () => {
+    if (!editingProject || !supabase) return;
+    setLoading(true);
+    try {
+      const { error } = await (supabase as any)
+        .from("projects")
+        .update({ 
+          name: editingProject.name, 
+          code: editingProject.code.toUpperCase(), 
+          status: editingProject.status
+        })
+        .eq("id", editingProject.id);
+      
+      if (error) throw error;
+      // Refresh projects list
+      const { data: newProjects } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
+      if (newProjects) setProjects(newProjects);
+      setShowSettings(false);
+      setEditingProject(null);
+    } catch (err) {
+      console.error("Failed to update project:", err);
+      alert("Failed to update project settings.");
     } finally {
       setLoading(false);
     }
@@ -176,7 +210,7 @@ export default function ProjectsPage() {
                     <Link href={`/shots?project=${project.id}`} className="flex-1">
                       <Button variant="outline" size="sm" className="w-full">View Shots</Button>
                     </Link>
-                    <Button variant="ghost" size="icon" className="shrink-0">
+                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => handleOpenSettings(project)}>
                       <Settings className="h-4 w-4" />
                     </Button>
                   </div>
@@ -186,6 +220,50 @@ export default function ProjectsPage() {
           );
         })}
       </div>
+
+      {/* Project Settings Dialog */}
+      <Dialog open={showSettings} onOpenChange={setShowSettings}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Project Settings</DialogTitle>
+          </DialogHeader>
+          {editingProject && (
+            <div className="space-y-4 pt-4">
+              <div>
+                <label className="text-sm font-medium">Project Name</label>
+                <Input 
+                  className="mt-1.5" 
+                  value={editingProject.name}
+                  onChange={(e) => setEditingProject({ ...editingProject, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Project Code</label>
+                <Input 
+                  className="mt-1.5" 
+                  value={editingProject.code}
+                  onChange={(e) => setEditingProject({ ...editingProject, code: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Status</label>
+                <Select value={editingProject.status} onValueChange={(v) => setEditingProject({ ...editingProject, status: v })}>
+                  <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ACTIVE">Active</SelectItem>
+                    <SelectItem value="ON_HOLD">On Hold</SelectItem>
+                    <SelectItem value="COMPLETED">Completed</SelectItem>
+                    <SelectItem value="ARCHIVED">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button className="w-full" onClick={handleSaveSettings} disabled={loading || !editingProject.name || !editingProject.code}>
+                {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</> : "Save Settings"}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
