@@ -29,7 +29,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 
-const STATUSES: ShotStatus[] = ["NOT_STARTED", "IN_PROGRESS", "INTERNAL_REVIEW", "CLIENT_REVIEW", "REVISIONS", "APPROVED", "FINAL"];
+const STATUSES: ShotStatus[] = ["NOT_STARTED", "IN_PROGRESS", "REVISIONS", "INTERNAL_REVIEW", "CLIENT_REVIEW", "APPROVED", "FINAL"];
 
 // Droppable column wrapper
 function KanbanColumn({ id, children }: { id: string; children: React.ReactNode }) {
