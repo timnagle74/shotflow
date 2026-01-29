@@ -7,27 +7,77 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
+const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
+const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
+
 /**
  * POST /api/webhooks/coconut
  * Receives webhook notifications from Coconut when transcoding completes
+ * Then tells Bunny Stream to fetch the transcoded video
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const url = new URL(request.url);
+    const bunnyVideoId = url.searchParams.get('bunnyVideoId');
+    const transcodedPath = url.searchParams.get('transcodedPath');
     
-    console.log('Coconut webhook received:', JSON.stringify(body, null, 2));
+    console.log('Coconut webhook received:', {
+      event: body.status,
+      jobId: body.id,
+      bunnyVideoId,
+      transcodedPath,
+      body: JSON.stringify(body, null, 2),
+    });
 
-    // Coconut sends different event types
-    const { event, job_id, output_urls, error } = body;
+    // Check if job completed successfully
+    if (body.status === 'job.completed' && bunnyVideoId && transcodedPath) {
+      console.log(`Transcode job ${body.id} completed. Triggering Bunny Stream fetch...`);
 
-    if (event === 'job.completed') {
-      console.log(`Transcode job ${job_id} completed successfully`);
-      // The video is now available in Bunny Stream
-      // We could update the version record here if needed
-    } else if (event === 'job.failed') {
-      console.error(`Transcode job ${job_id} failed:`, error);
-    } else if (event === 'output.completed') {
-      console.log(`Output completed for job ${job_id}:`, output_urls);
+      // Tell Bunny Stream to fetch the transcoded video
+      if (BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY && BUNNY_STORAGE_CDN_URL) {
+        const transcodedUrl = `${BUNNY_STORAGE_CDN_URL}${transcodedPath}`;
+        
+        console.log('Fetching video into Bunny Stream:', transcodedUrl);
+
+        // Use Bunny Stream's fetch endpoint
+        const fetchResponse = await fetch(
+          `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos/${bunnyVideoId}/fetch`,
+          {
+            method: 'POST',
+            headers: {
+              'AccessKey': BUNNY_STREAM_API_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              url: transcodedUrl,
+            }),
+          }
+        );
+
+        if (fetchResponse.ok) {
+          console.log('Bunny Stream fetch initiated successfully');
+          
+          // Update version record to mark transcoding as complete
+          // Find version by bunny_video_id
+          const { error: updateError } = await supabaseAdmin
+            .from('versions')
+            .update({ 
+              status: 'WIP', // Keep as WIP, transcoding done
+            })
+            .eq('bunny_video_id', bunnyVideoId);
+
+          if (updateError) {
+            console.error('Failed to update version:', updateError);
+          }
+        } else {
+          const errorText = await fetchResponse.text();
+          console.error('Bunny Stream fetch failed:', fetchResponse.status, errorText);
+        }
+      }
+    } else if (body.status === 'job.failed') {
+      console.error(`Transcode job ${body.id} failed:`, body.errors);
     }
 
     // Always return 200 to acknowledge receipt

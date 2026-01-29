@@ -6,30 +6,19 @@
 const COCONUT_API_KEY = process.env.COCONUT_API_KEY;
 const COCONUT_API_URL = 'https://api.coconut.co/v2/jobs';
 
-export interface CoconutJobInput {
-  url: string;
-}
-
-export interface CoconutJobOutput {
-  key: string;
-  format: string;
-  url?: string; // For httpstream output
-  credentials?: {
-    access_key?: string;
-  };
-}
-
-export interface CoconutJob {
-  input: CoconutJobInput;
-  outputs: Record<string, any>;
-  webhook?: string;
-}
-
 export interface CoconutJobResponse {
   id: string;
   status: string;
   created_at: string;
-  outputs?: Record<string, any>;
+  completed_at: string | null;
+  progress: string;
+  outputs?: Array<{
+    key: string;
+    type: string;
+    format: string;
+    status: string;
+    url?: string;
+  }>;
 }
 
 /**
@@ -40,103 +29,63 @@ export function isCoconutConfigured(): boolean {
 }
 
 /**
- * Create a transcoding job
- * Takes a source video URL and outputs H.264 1080p to the specified destination
+ * Create a transcoding job that outputs to Bunny Storage
+ * The transcoded file can then be fetched by Bunny Stream
  */
 export async function createTranscodeJob(
   sourceUrl: string,
-  outputUrl: string,
-  outputAccessKey: string,
+  outputPath: string,
+  bunnyStorageZone: string,
+  bunnyStoragePassword: string,
   webhookUrl?: string
 ): Promise<CoconutJobResponse> {
   if (!COCONUT_API_KEY) {
     throw new Error('Coconut API key not configured');
   }
 
-  const job: CoconutJob = {
+  const job: Record<string, any> = {
     input: {
       url: sourceUrl,
     },
+    storage: {
+      service: 's3other',
+      endpoint: 'https://storage.bunnycdn.com',
+      bucket: bunnyStorageZone,
+      credentials: {
+        access_key_id: bunnyStorageZone,
+        secret_access_key: bunnyStoragePassword,
+      },
+    },
     outputs: {
       'mp4:1080p': {
-        url: outputUrl,
-        credentials: {
-          access_key: outputAccessKey,
-        },
+        path: outputPath,
       },
     },
   };
 
   if (webhookUrl) {
-    job.webhook = webhookUrl;
+    job.notification = {
+      type: 'http',
+      url: webhookUrl,
+    };
   }
+
+  // Coconut uses HTTP Basic Auth with API key as username
+  const authString = Buffer.from(`${COCONUT_API_KEY}:`).toString('base64');
 
   const response = await fetch(COCONUT_API_URL, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${COCONUT_API_KEY}`,
+      'Authorization': `Basic ${authString}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(job),
   });
 
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Coconut API error:', errorText);
-    throw new Error(`Coconut API error: ${response.status} - ${errorText}`);
-  }
-
-  return response.json();
-}
-
-/**
- * Create a transcoding job that outputs to Bunny Stream
- * Uses httpstream:// protocol to upload directly
- */
-export async function createBunnyStreamTranscodeJob(
-  sourceUrl: string,
-  bunnyLibraryId: string,
-  bunnyVideoId: string,
-  bunnyApiKey: string,
-  webhookUrl?: string
-): Promise<CoconutJobResponse> {
-  if (!COCONUT_API_KEY) {
-    throw new Error('Coconut API key not configured');
-  }
-
-  // Bunny Stream upload URL
-  const bunnyUploadUrl = `https://video.bunnycdn.com/library/${bunnyLibraryId}/videos/${bunnyVideoId}`;
-
-  const job = {
-    input: {
-      url: sourceUrl,
-    },
-    outputs: {
-      'mp4:1080p': {
-        url: `httpstream://${bunnyUploadUrl}`,
-        credentials: {
-          headers: {
-            'AccessKey': bunnyApiKey,
-          },
-        },
-      },
-    },
-    webhook: webhookUrl,
-  };
-
-  const response = await fetch(COCONUT_API_URL, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${COCONUT_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(job),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Coconut API error:', errorText);
-    throw new Error(`Coconut API error: ${response.status} - ${errorText}`);
+    const errorData = await response.json();
+    console.error('Coconut API error:', errorData);
+    throw new Error(`Coconut API error: ${errorData.message || response.status}`);
   }
 
   return response.json();
@@ -150,9 +99,11 @@ export async function getJobStatus(jobId: string): Promise<CoconutJobResponse> {
     throw new Error('Coconut API key not configured');
   }
 
+  const authString = Buffer.from(`${COCONUT_API_KEY}:`).toString('base64');
+
   const response = await fetch(`${COCONUT_API_URL}/${jobId}`, {
     headers: {
-      'Authorization': `Bearer ${COCONUT_API_KEY}`,
+      'Authorization': `Basic ${authString}`,
     },
   });
 
