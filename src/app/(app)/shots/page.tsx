@@ -8,9 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ShotStatusBadge } from "@/components/status-badge";
-import { mockShots, mockSequences, mockUsers, mockProjects, getShotsForProject } from "@/lib/mock-data";
 import { shotStatusLabels, shotStatusColors, complexityColors, cn } from "@/lib/utils";
-import { LayoutGrid, List, Search, Clock } from "lucide-react";
+import { LayoutGrid, List, Search, Clock, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useSearchParams } from "next/navigation";
@@ -24,13 +23,50 @@ import {
   useSensors,
   type DragStartEvent,
   type DragEndEvent,
-  type DragOverEvent,
 } from "@dnd-kit/core";
 import { useSortable } from "@dnd-kit/sortable";
 import { useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 
 const STATUSES: ShotStatus[] = ["NOT_STARTED", "IN_PROGRESS", "REVISIONS", "INTERNAL_REVIEW", "CLIENT_REVIEW", "APPROVED", "FINAL"];
+
+interface Project {
+  id: string;
+  name: string;
+}
+
+interface Sequence {
+  id: string;
+  name: string;
+  code: string;
+  project_id: string;
+}
+
+interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+}
+
+interface Shot {
+  id: string;
+  code: string;
+  description: string | null;
+  status: string;
+  complexity: string;
+  assigned_to_id: string | null;
+  due_date: string | null;
+  frame_start: number | null;
+  frame_end: number | null;
+  sequence_id: string;
+}
+
+interface EnrichedShot extends Shot {
+  assignedTo: UserProfile | null;
+  sequence: Sequence | null;
+  versionCount: number;
+}
 
 // Droppable column wrapper
 function KanbanColumn({ id, children }: { id: string; children: React.ReactNode }) {
@@ -41,9 +77,6 @@ function KanbanColumn({ id, children }: { id: string; children: React.ReactNode 
     </div>
   );
 }
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type EnrichedShot = Omit<ReturnType<typeof getShotsForProject>[number], 'status'> & { status: string };
 
 // Draggable shot card
 function DraggableShotCard({ shot }: { shot: EnrichedShot }) {
@@ -67,7 +100,7 @@ function DraggableShotCard({ shot }: { shot: EnrichedShot }) {
               {shot.code}
             </span>
             <div className="flex items-center gap-1">
-              <span className={cn("text-[10px] font-semibold", complexityColors[shot.complexity])}>{shot.complexity}</span>
+              <span className={cn("text-[10px] font-semibold", complexityColors[shot.complexity as keyof typeof complexityColors])}>{shot.complexity}</span>
             </div>
           </div>
           {shot.description && (
@@ -84,14 +117,14 @@ function DraggableShotCard({ shot }: { shot: EnrichedShot }) {
             ) : (
               <span className="text-[10px] text-muted-foreground italic">Unassigned</span>
             )}
-            {shot.versions.length > 0 && (
-              <Badge variant="outline" className="text-[9px] px-1">v{shot.versions.length}</Badge>
+            {shot.versionCount > 0 && (
+              <Badge variant="outline" className="text-[9px] px-1">v{shot.versionCount}</Badge>
             )}
           </div>
-          {shot.dueDate && (
+          {shot.due_date && (
             <div className="flex items-center gap-1 mt-2">
               <Clock className="h-3 w-3 text-muted-foreground" />
-              <span className="text-[10px] text-muted-foreground">{shot.dueDate.toLocaleDateString()}</span>
+              <span className="text-[10px] text-muted-foreground">{new Date(shot.due_date).toLocaleDateString()}</span>
             </div>
           )}
         </CardContent>
@@ -107,7 +140,7 @@ function ShotCardOverlay({ shot }: { shot: EnrichedShot }) {
       <CardContent className="p-3">
         <div className="flex items-center justify-between mb-1">
           <span className="text-xs font-mono font-bold">{shot.code}</span>
-          <span className={cn("text-[10px] font-semibold", complexityColors[shot.complexity])}>{shot.complexity}</span>
+          <span className={cn("text-[10px] font-semibold", complexityColors[shot.complexity as keyof typeof complexityColors])}>{shot.complexity}</span>
         </div>
         {shot.description && (
           <p className="text-xs text-muted-foreground line-clamp-2">{shot.description}</p>
@@ -120,40 +153,143 @@ function ShotCardOverlay({ shot }: { shot: EnrichedShot }) {
 function ShotsPageContent() {
   const searchParams = useSearchParams();
   const projectFromUrl = searchParams.get("project");
-  const [selectedProject, setSelectedProject] = useState(projectFromUrl || mockProjects[0]?.id || "p1");
   
-  // Update selected project when URL changes
-  useEffect(() => {
-    if (projectFromUrl) {
-      setSelectedProject(projectFromUrl);
-    }
-  }, [projectFromUrl]);
+  const [loading, setLoading] = useState(true);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [sequences, setSequences] = useState<Sequence[]>([]);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [shots, setShots] = useState<Shot[]>([]);
+  const [versionCounts, setVersionCounts] = useState<Record<string, number>>({});
+  
+  const [selectedProject, setSelectedProject] = useState<string>("");
   const [filterSequence, setFilterSequence] = useState("all");
   const [filterAssignee, setFilterAssignee] = useState("all");
   const [filterComplexity, setFilterComplexity] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [shotStatuses, setShotStatuses] = useState<Record<string, string>>({});
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
-  const allShots: EnrichedShot[] = getShotsForProject(selectedProject).map(s => ({
-    ...s,
-    status: shotStatuses[s.id] || s.status,
-  }));
-  const projectSequences = mockSequences.filter(s => s.projectId === selectedProject);
+  // Load initial data
+  useEffect(() => {
+    async function fetchData() {
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
 
-  const filteredShots = allShots.filter(shot => {
-    if (filterSequence !== "all" && shot.sequenceId !== filterSequence) return false;
-    if (filterAssignee !== "all" && shot.assignedToId !== filterAssignee) return false;
+      try {
+        // Fetch projects
+        const { data: projectsData } = await supabase
+          .from("projects")
+          .select("*")
+          .order("name") as { data: Project[] | null; error: any };
+        
+        if (projectsData) {
+          setProjects(projectsData);
+          // Set initial project from URL or first project
+          const initialProject = projectFromUrl || projectsData[0]?.id || "";
+          setSelectedProject(initialProject);
+        }
+
+        // Fetch all sequences
+        const { data: seqData } = await supabase
+          .from("sequences")
+          .select("*") as { data: Sequence[] | null; error: any };
+        if (seqData) setSequences(seqData);
+
+        // Fetch all users
+        const { data: usersData } = await supabase
+          .from("users")
+          .select("*") as { data: UserProfile[] | null; error: any };
+        if (usersData) setUsers(usersData);
+
+      } catch (err) {
+        console.error("Error loading data:", err);
+      }
+      setLoading(false);
+    }
+
+    fetchData();
+  }, [projectFromUrl]);
+
+  // Load shots when project changes
+  useEffect(() => {
+    async function fetchShots() {
+      if (!supabase || !selectedProject) return;
+
+      try {
+        // Get sequence IDs for this project
+        const projectSeqs = sequences.filter(s => s.project_id === selectedProject);
+        const seqIds = projectSeqs.map(s => s.id);
+
+        if (seqIds.length === 0) {
+          setShots([]);
+          return;
+        }
+
+        // Fetch shots for these sequences
+        const { data: shotsData } = await supabase
+          .from("shots")
+          .select("*")
+          .in("sequence_id", seqIds) as { data: Shot[] | null; error: any };
+
+        if (shotsData) {
+          setShots(shotsData);
+
+          // Fetch version counts
+          const shotIds = shotsData.map(s => s.id);
+          if (shotIds.length > 0) {
+            const { data: versionsData } = await supabase
+              .from("versions")
+              .select("shot_id")
+              .in("shot_id", shotIds) as { data: { shot_id: string }[] | null; error: any };
+
+            if (versionsData) {
+              const counts: Record<string, number> = {};
+              versionsData.forEach(v => {
+                counts[v.shot_id] = (counts[v.shot_id] || 0) + 1;
+              });
+              setVersionCounts(counts);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Error loading shots:", err);
+      }
+    }
+
+    fetchShots();
+  }, [selectedProject, sequences]);
+
+  // Update selected project when URL changes
+  useEffect(() => {
+    if (projectFromUrl && projects.some(p => p.id === projectFromUrl)) {
+      setSelectedProject(projectFromUrl);
+    }
+  }, [projectFromUrl, projects]);
+
+  // Enrich shots with related data
+  const enrichedShots: EnrichedShot[] = shots.map(shot => ({
+    ...shot,
+    assignedTo: shot.assigned_to_id ? users.find(u => u.id === shot.assigned_to_id) || null : null,
+    sequence: sequences.find(s => s.id === shot.sequence_id) || null,
+    versionCount: versionCounts[shot.id] || 0,
+  }));
+
+  const projectSequences = sequences.filter(s => s.project_id === selectedProject);
+
+  const filteredShots = enrichedShots.filter(shot => {
+    if (filterSequence !== "all" && shot.sequence_id !== filterSequence) return false;
+    if (filterAssignee !== "all" && shot.assigned_to_id !== filterAssignee) return false;
     if (filterComplexity !== "all" && shot.complexity !== filterComplexity) return false;
     if (searchQuery && !shot.code.toLowerCase().includes(searchQuery.toLowerCase()) && !shot.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
 
-  const activeShot = activeId ? allShots.find(s => s.id === activeId) : null;
+  const activeShot = activeId ? enrichedShots.find(s => s.id === activeId) : null;
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(event.active.id as string);
@@ -165,30 +301,22 @@ function ShotsPageContent() {
     if (!over) return;
 
     const shotId = active.id as string;
-    // The over target could be a column ID (status) or another shot card
     let newStatus: string;
     if (STATUSES.includes(over.id as ShotStatus)) {
       newStatus = over.id as string;
     } else {
-      // Dropped on a shot card — find that shot's status
-      const overShot = allShots.find(s => s.id === over.id);
+      const overShot = enrichedShots.find(s => s.id === over.id);
       if (!overShot) return;
       newStatus = overShot.status;
     }
 
-    const shot = allShots.find(s => s.id === shotId);
+    const shot = enrichedShots.find(s => s.id === shotId);
     if (!shot || shot.status === newStatus) return;
 
     // Update local state immediately
-    setShotStatuses(prev => ({ ...prev, [shotId]: newStatus }));
+    setShots(prev => prev.map(s => s.id === shotId ? { ...s, status: newStatus } : s));
 
-    // Also update mock data in memory
-    const idx = mockShots.findIndex(s => s.id === shotId);
-    if (idx !== -1) {
-      (mockShots[idx] as { status: string }).status = newStatus;
-    }
-
-    // Update Supabase if configured
+    // Update Supabase
     if (supabase) {
       const { error } = await (supabase as any)
         .from("shots")
@@ -196,7 +324,15 @@ function ShotsPageContent() {
         .eq("id", shotId);
       if (error) console.error("Failed to update shot status:", error);
     }
-  }, [allShots]);
+  }, [enrichedShots]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -210,7 +346,7 @@ function ShotsPageContent() {
             <SelectValue placeholder="Select project" />
           </SelectTrigger>
           <SelectContent>
-            {mockProjects.map(p => (
+            {projects.map(p => (
               <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
             ))}
           </SelectContent>
@@ -234,7 +370,7 @@ function ShotsPageContent() {
           <SelectTrigger className="w-40"><SelectValue placeholder="Assignee" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Artists</SelectItem>
-            {mockUsers.filter(u => u.role === "ARTIST").map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+            {users.filter(u => u.role === "ARTIST").map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterComplexity} onValueChange={setFilterComplexity}>
@@ -313,11 +449,11 @@ function ShotsPageContent() {
                       </td>
                       <td className="p-3 text-sm text-muted-foreground max-w-[200px] truncate">{shot.description || "—"}</td>
                       <td className="p-3"><ShotStatusBadge status={shot.status} /></td>
-                      <td className="p-3"><span className={cn("text-sm font-medium", complexityColors[shot.complexity])}>{shot.complexity}</span></td>
+                      <td className="p-3"><span className={cn("text-sm font-medium", complexityColors[shot.complexity as keyof typeof complexityColors])}>{shot.complexity}</span></td>
                       <td className="p-3 text-sm">{shot.assignedTo?.name || <span className="text-muted-foreground italic">Unassigned</span>}</td>
-                      <td className="p-3 text-sm">{shot.versions.length > 0 ? `v${String(shot.versions.length).padStart(3, "0")}` : "—"}</td>
-                      <td className="p-3 text-sm font-mono text-muted-foreground">{shot.frameStart && shot.frameEnd ? `${shot.frameEnd - shot.frameStart}f` : "—"}</td>
-                      <td className="p-3 text-sm text-muted-foreground">{shot.dueDate?.toLocaleDateString() || "—"}</td>
+                      <td className="p-3 text-sm">{shot.versionCount > 0 ? `v${String(shot.versionCount).padStart(3, "0")}` : "—"}</td>
+                      <td className="p-3 text-sm font-mono text-muted-foreground">{shot.frame_start && shot.frame_end ? `${shot.frame_end - shot.frame_start}f` : "—"}</td>
+                      <td className="p-3 text-sm text-muted-foreground">{shot.due_date ? new Date(shot.due_date).toLocaleDateString() : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -332,7 +468,7 @@ function ShotsPageContent() {
 
 export default function ShotsPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-64"><span className="text-muted-foreground">Loading shots...</span></div>}>
+    <Suspense fallback={<div className="flex items-center justify-center h-64"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
       <ShotsPageContent />
     </Suspense>
   );
