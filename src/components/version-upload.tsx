@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -34,10 +34,9 @@ interface VersionUploadProps {
 
 interface FileState {
   file: File | null;
-  preview?: string;
 }
 
-type UploadStatus = "idle" | "uploading" | "processing" | "success" | "error";
+type UploadStatus = "idle" | "preparing" | "uploading-prores" | "uploading-preview" | "finalizing" | "success" | "error";
 
 export function VersionUpload({
   shotId,
@@ -53,6 +52,7 @@ export function VersionUpload({
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
 
   const proresInputRef = useRef<HTMLInputElement>(null);
   const previewInputRef = useRef<HTMLInputElement>(null);
@@ -64,6 +64,7 @@ export function VersionUpload({
     setUploadStatus("idle");
     setUploadProgress(0);
     setErrorMessage("");
+    setStatusMessage("");
   }, []);
 
   const handleFileSelect = useCallback(
@@ -90,58 +91,151 @@ export function VersionUpload({
     }
   }, []);
 
+  // Upload file with progress using XMLHttpRequest
+  const uploadWithProgress = (
+    url: string,
+    file: File,
+    headers: Record<string, string>,
+    onProgress: (progress: number) => void
+  ): Promise<Response> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      
+      xhr.upload.addEventListener("progress", (e) => {
+        if (e.lengthComputable) {
+          const percent = Math.round((e.loaded / e.total) * 100);
+          onProgress(percent);
+        }
+      });
+
+      xhr.addEventListener("load", () => {
+        resolve(new Response(xhr.response, {
+          status: xhr.status,
+          statusText: xhr.statusText,
+        }));
+      });
+
+      xhr.addEventListener("error", () => {
+        reject(new Error("Upload failed"));
+      });
+
+      xhr.open("PUT", url);
+      Object.entries(headers).forEach(([key, value]) => {
+        xhr.setRequestHeader(key, value);
+      });
+      xhr.send(file);
+    });
+  };
+
   const handleUpload = useCallback(async () => {
     if (!proresFile.file && !previewFile.file) {
       setErrorMessage("Please select at least one file to upload");
       return;
     }
 
-    setUploadStatus("uploading");
-    setUploadProgress(10);
+    setUploadStatus("preparing");
+    setUploadProgress(0);
     setErrorMessage("");
+    setStatusMessage("Preparing upload...");
 
     try {
-      const formData = new FormData();
-
-      // Add metadata
-      formData.append(
-        "metadata",
-        JSON.stringify({
+      // Step 1: Get upload URLs from API
+      const prepareResponse = await fetch("/api/versions/prepare-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           shotId,
           versionNumber: nextVersionNumber,
           description: description.trim() || undefined,
           createdById,
-        })
-      );
-
-      // Add files
-      if (proresFile.file) {
-        formData.append("prores", proresFile.file);
-      }
-      if (previewFile.file) {
-        formData.append("preview", previewFile.file);
-      }
-
-      setUploadProgress(30);
-
-      // Upload using fetch with streaming (no native progress for fetch)
-      // For better progress, we'd need XMLHttpRequest or a library like axios
-      const response = await fetch("/api/versions/upload", {
-        method: "POST",
-        body: formData,
+          hasProres: !!proresFile.file,
+          hasPreview: !!previewFile.file,
+          proresFilename: proresFile.file?.name,
+          previewFilename: previewFile.file?.name,
+        }),
       });
 
-      setUploadProgress(90);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Upload failed");
+      if (!prepareResponse.ok) {
+        const errorData = await prepareResponse.json();
+        throw new Error(errorData.error || "Failed to prepare upload");
       }
 
-      const result = await response.json();
+      const prepareData = await prepareResponse.json();
+      let storagePath: string | undefined;
+      let streamVideoId: string | undefined;
 
+      // Step 2: Upload ProRes directly to Bunny Storage
+      if (proresFile.file && prepareData.storageUpload) {
+        setUploadStatus("uploading-prores");
+        setStatusMessage(`Uploading ProRes (${formatFileSize(proresFile.file.size)})...`);
+
+        const response = await uploadWithProgress(
+          prepareData.storageUpload.url,
+          proresFile.file,
+          {
+            "AccessKey": prepareData.storageUpload.accessKey,
+            "Content-Type": "application/octet-stream",
+          },
+          (progress) => setUploadProgress(progress)
+        );
+
+        if (!response.ok && response.status !== 201) {
+          throw new Error(`ProRes upload failed: ${response.status}`);
+        }
+
+        storagePath = prepareData.storageUpload.path;
+      }
+
+      // Step 3: Upload preview directly to Bunny Stream
+      if (previewFile.file && prepareData.streamUpload) {
+        setUploadStatus("uploading-preview");
+        setUploadProgress(0);
+        setStatusMessage(`Uploading preview (${formatFileSize(previewFile.file.size)})...`);
+
+        const response = await uploadWithProgress(
+          prepareData.streamUpload.uploadUrl,
+          previewFile.file,
+          {
+            "AccessKey": prepareData.streamUpload.accessKey,
+          },
+          (progress) => setUploadProgress(progress)
+        );
+
+        if (!response.ok && response.status !== 200) {
+          console.warn(`Preview upload status: ${response.status}`);
+          // Bunny Stream may return different status codes, continue anyway
+        }
+
+        streamVideoId = prepareData.streamUpload.videoId;
+      }
+
+      // Step 4: Finalize - create version record
+      setUploadStatus("finalizing");
       setUploadProgress(100);
+      setStatusMessage("Creating version record...");
+
+      const finalizeResponse = await fetch("/api/versions/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shotId,
+          versionNumber: nextVersionNumber,
+          description: description.trim() || undefined,
+          createdById,
+          storagePath,
+          streamVideoId,
+        }),
+      });
+
+      if (!finalizeResponse.ok) {
+        const errorData = await finalizeResponse.json();
+        throw new Error(errorData.error || "Failed to finalize upload");
+      }
+
+      const result = await finalizeResponse.json();
+
       setUploadStatus("success");
+      setStatusMessage("Upload complete!");
 
       // Notify parent
       if (onUploadComplete) {
@@ -179,7 +273,7 @@ export function VersionUpload({
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
-  const isUploading = uploadStatus === "uploading" || uploadStatus === "processing";
+  const isUploading = ["preparing", "uploading-prores", "uploading-preview", "finalizing"].includes(uploadStatus);
 
   return (
     <Dialog open={open} onOpenChange={(o) => {
@@ -340,22 +434,16 @@ export function VersionUpload({
 
               {/* Status message */}
               <div className="flex items-center justify-center gap-2 text-sm">
-                {uploadStatus === "uploading" && (
+                {isUploading && (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Uploading... {uploadProgress}%</span>
-                  </>
-                )}
-                {uploadStatus === "processing" && (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Processing...</span>
+                    <span>{statusMessage} {uploadStatus.includes("uploading") ? `${uploadProgress}%` : ""}</span>
                   </>
                 )}
                 {uploadStatus === "success" && (
                   <>
                     <CheckCircle className="h-4 w-4 text-green-500" />
-                    <span className="text-green-500">Upload complete!</span>
+                    <span className="text-green-500">{statusMessage}</span>
                   </>
                 )}
                 {uploadStatus === "error" && (
@@ -372,7 +460,7 @@ export function VersionUpload({
           <div className="flex flex-wrap gap-2">
             {proresFile.file && (
               <Badge variant="outline" className="text-xs">
-                <Film className="h-3 w-3 mr-1" /> ProRes → Bunny Storage
+                <Film className="h-3 w-3 mr-1" /> ProRes → Bunny Storage (direct)
               </Badge>
             )}
             {previewFile.file && (
