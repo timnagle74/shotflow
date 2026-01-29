@@ -75,3 +75,24 @@
     background: hsl(var(--muted-foreground));
   }
 }
+
+/* Video.js custom styling */
+.video-js {
+  background-color: black;
+}
+
+.video-js .vjs-big-play-button {
+  display: none !important;
+}
+
+.video-js .vjs-control-bar {
+  display: none !important;
+}
+
+.video-js .vjs-poster {
+  background-size: cover;
+}
+
+.video-js video {
+  object-fit: contain;
+}

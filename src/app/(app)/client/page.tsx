@@ -10,6 +10,7 @@ import { mockShots, mockVersions, mockNotes, mockUsers, mockProjects, getShotsFo
 import { cn } from "@/lib/utils";
 import { Monitor, Check, RotateCcw, MessageSquare, Film, Eye, Folder, Clock, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
+import { VideoPlayer } from "@/components/video-player";
 
 export default function ClientPortalPage() {
   const [selectedProject, setSelectedProject] = useState<string>("p1");
@@ -200,18 +201,18 @@ export default function ClientPortalPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {/* Media Placeholder */}
-                  <div className="aspect-video bg-black/40 rounded-lg flex items-center justify-center border border-border/50">
-                    <div className="text-center text-muted-foreground">
-                      <Film className="h-10 w-10 mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">Review media</p>
-                      {viewingVersion && (
-                        <p className="text-xs mt-1 font-mono">
-                          v{String(viewingVersion.versionNumber).padStart(3, "0")} — {viewingVersion.description}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                  {/* Video Player */}
+                  <VideoPlayer
+                    shotCode={selected.code}
+                    projectName={currentProject?.name || "Project"}
+                    clientName="Client Review"
+                    watermarkText="CONFIDENTIAL - FOR REVIEW ONLY"
+                    frameRate={24}
+                    frameStart={selected.frameStart || 1001}
+                    clientMode={true}
+                    showBurnInControls={false}
+                    showAspectRatioControls={true}
+                  />
 
                   {/* Version Selector */}
                   {selectedVersions.length > 1 && (

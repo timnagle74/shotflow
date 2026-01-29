@@ -10,11 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
 import { mockShots, mockSequences, mockUsers, mockVersions, mockNotes, mockProjects, getDeliverySpecsForProject, getCDLForShot, getLutFilesForShot, getLutFilesForProject, getMetadataForShot } from "@/lib/mock-data";
 import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
-import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download } from "lucide-react";
+import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download, Play } from "lucide-react";
 import Link from "next/link";
 import { useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { ShotStatus } from "@/lib/database.types";
+import { VideoPlayer } from "@/components/video-player";
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -359,8 +360,35 @@ export default function ShotDetailPage() {
           )}
         </div>
 
-        {/* Right Column: Versions + Notes */}
+        {/* Right Column: Video Player, Versions + Notes */}
         <div className="lg:col-span-2 space-y-4">
+          {/* Video Player */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <Play className="h-4 w-4" />
+                  Review Player
+                  {versions.length > 0 && (
+                    <span className="text-muted-foreground font-normal">
+                      — v{String(versions.find(v => v.id === selectedVersion)?.versionNumber || versions[0]?.versionNumber || 0).padStart(3, "0")}
+                    </span>
+                  )}
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <VideoPlayer
+                shotCode={shot.code}
+                projectName={project?.name || "Project"}
+                frameRate={24}
+                frameStart={shot.frameStart || 1001}
+                showBurnInControls={true}
+                showAspectRatioControls={true}
+              />
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
