@@ -45,8 +45,12 @@ export const DEFAULT_BURN_IN_SETTINGS: BurnInSettings = {
 };
 
 export interface VideoPlayerProps {
-  /** Video source URL */
+  /** Video source URL (MP4 or HLS) */
   src?: string;
+  /** HLS playlist URL (alternative to src, for Bunny Stream) */
+  hlsUrl?: string;
+  /** Bunny Stream video ID (will construct HLS URL automatically) */
+  bunnyVideoId?: string;
   /** Poster/thumbnail image URL */
   poster?: string;
   /** Shot code for burn-in */

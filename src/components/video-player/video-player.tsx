@@ -52,8 +52,15 @@ function formatTime(seconds: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 }
 
+// Helper to get Bunny Stream CDN URL
+const BUNNY_STREAM_CDN = typeof window !== 'undefined' 
+  ? (process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN || 'https://vz-3b0f7864-a89.b-cdn.net')
+  : '';
+
 export function VideoPlayer({
   src,
+  hlsUrl,
+  bunnyVideoId,
   poster,
   shotCode = 'SHOT_0000',
   projectName = 'Project',
@@ -67,6 +74,16 @@ export function VideoPlayer({
   onFrameChange,
   className,
 }: VideoPlayerProps) {
+  // Determine the video source - prioritize HLS for Bunny Stream
+  const videoSource = React.useMemo(() => {
+    if (hlsUrl) return hlsUrl;
+    if (bunnyVideoId && BUNNY_STREAM_CDN) {
+      return `${BUNNY_STREAM_CDN}/${bunnyVideoId}/playlist.m3u8`;
+    }
+    return src;
+  }, [src, hlsUrl, bunnyVideoId]);
+
+  const isHLS = videoSource?.includes('.m3u8');
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<Player | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -95,13 +112,23 @@ export function VideoPlayer({
     videoElement.classList.add('vjs-big-play-centered', 'vjs-fluid');
     videoRef.current.appendChild(videoElement);
 
+    // Determine source type
+    const sourceType = isHLS ? 'application/x-mpegURL' : 'video/mp4';
+    
     const player = videojs(videoElement, {
       controls: false, // We use custom controls
       responsive: true,
       fluid: true,
       preload: 'auto',
-      sources: src ? [{ src, type: 'video/mp4' }] : [],
+      sources: videoSource ? [{ src: videoSource, type: sourceType }] : [],
       poster,
+      html5: {
+        vhs: {
+          overrideNative: true, // Better HLS handling
+        },
+        nativeAudioTracks: false,
+        nativeVideoTracks: false,
+      },
     });
 
     player.on('play', () => setIsPlaying(true));
@@ -125,7 +152,7 @@ export function VideoPlayer({
         playerRef.current = null;
       }
     };
-  }, [src, poster, frameRate, frameStart, onFrameChange]);
+  }, [videoSource, isHLS, poster, frameRate, frameStart, onFrameChange]);
 
   // Keyboard controls
   useEffect(() => {
@@ -340,7 +367,7 @@ export function VideoPlayer({
       {renderBurnIn('center')}
 
       {/* No video placeholder */}
-      {!src && (
+      {!videoSource && (
         <div className="absolute inset-0 flex items-center justify-center bg-zinc-900">
           <div className="text-center text-muted-foreground">
             <Play className="h-12 w-12 mx-auto mb-2 opacity-30" />

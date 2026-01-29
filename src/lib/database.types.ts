@@ -168,6 +168,9 @@ export interface Database {
           file_path: string | null;
           thumbnail_path: string | null;
           description: string | null;
+          preview_url: string | null;
+          download_url: string | null;
+          bunny_video_id: string | null;
           created_at: string;
         };
         Insert: {
@@ -179,6 +182,9 @@ export interface Database {
           file_path?: string | null;
           thumbnail_path?: string | null;
           description?: string | null;
+          preview_url?: string | null;
+          download_url?: string | null;
+          bunny_video_id?: string | null;
           created_at?: string;
         };
         Update: {
@@ -190,6 +196,9 @@ export interface Database {
           file_path?: string | null;
           thumbnail_path?: string | null;
           description?: string | null;
+          preview_url?: string | null;
+          download_url?: string | null;
+          bunny_video_id?: string | null;
           created_at?: string;
         };
       };

@@ -16,6 +16,8 @@ import { useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import type { ShotStatus } from "@/lib/database.types";
 import { VideoPlayer } from "@/components/video-player";
+import { VersionUpload } from "@/components/version-upload";
+import { DownloadButton, VideoStatusBadge } from "@/components/bunny-player";
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -375,6 +377,19 @@ export default function ShotDetailPage() {
                     </span>
                   )}
                 </CardTitle>
+                <div className="flex items-center gap-2">
+                  {/* Video transcoding status */}
+                  {selectedVersion && versions.find(v => v.id === selectedVersion)?.bunnyVideoId && (
+                    <VideoStatusBadge versionId={selectedVersion} />
+                  )}
+                  {/* ProRes download button */}
+                  {selectedVersion && versions.find(v => v.id === selectedVersion)?.downloadUrl && (
+                    <DownloadButton 
+                      versionId={selectedVersion} 
+                      filename={`${shot.code}_v${String(versions.find(v => v.id === selectedVersion)?.versionNumber || 0).padStart(3, '0')}.mov`}
+                    />
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent className="pt-0">
@@ -385,6 +400,8 @@ export default function ShotDetailPage() {
                 frameStart={shot.frameStart || 1001}
                 showBurnInControls={true}
                 showAspectRatioControls={true}
+                hlsUrl={versions.find(v => v.id === selectedVersion)?.previewUrl || undefined}
+                poster={versions.find(v => v.id === selectedVersion)?.thumbnailPath || undefined}
               />
             </CardContent>
           </Card>
@@ -395,7 +412,17 @@ export default function ShotDetailPage() {
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
                   <Layers className="h-4 w-4" />Version History
                 </CardTitle>
-                <Button size="sm">Submit New Version</Button>
+                <VersionUpload
+                  shotId={shot.id}
+                  nextVersionNumber={(versions[0]?.versionNumber || 0) + 1}
+                  createdById={assignee?.id || mockUsers[0]?.id || ''}
+                  onUploadComplete={(newVersion) => {
+                    // In production, this would refresh the versions list
+                    console.log('New version uploaded:', newVersion);
+                    // Refresh the page to show new version
+                    router.refresh();
+                  }}
+                />
               </div>
             </CardHeader>
             <CardContent>

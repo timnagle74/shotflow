@@ -38,14 +38,14 @@ export const mockShots = [
 ];
 
 export const mockVersions = [
-  { id: 'v1', shotId: 'sh1', versionNumber: 1, createdById: '3', status: 'REVISE' as const, description: 'Initial comp', createdAt: new Date('2024-05-01') },
-  { id: 'v2', shotId: 'sh1', versionNumber: 2, createdById: '3', status: 'REVISE' as const, description: 'Updated debris density', createdAt: new Date('2024-05-10') },
-  { id: 'v3', shotId: 'sh1', versionNumber: 3, createdById: '3', status: 'APPROVED' as const, description: 'Final tweaks per client notes', createdAt: new Date('2024-05-20') },
-  { id: 'v4', shotId: 'sh2', versionNumber: 1, createdById: '5', status: 'WIP' as const, description: 'WIP roto + comp', createdAt: new Date('2024-06-01') },
-  { id: 'v5', shotId: 'sh3', versionNumber: 1, createdById: '3', status: 'PENDING_REVIEW' as const, description: 'Smoke sim v1', createdAt: new Date('2024-06-05') },
-  { id: 'v6', shotId: 'sh5', versionNumber: 1, createdById: '5', status: 'REVISE' as const, description: 'Door anim + lighting', createdAt: new Date('2024-05-15') },
-  { id: 'v7', shotId: 'sh5', versionNumber: 2, createdById: '5', status: 'PENDING_REVIEW' as const, description: 'Updated per supe notes', createdAt: new Date('2024-05-28') },
-  { id: 'v8', shotId: 'sh7', versionNumber: 1, createdById: '5', status: 'APPROVED' as const, description: 'Final delivery', createdAt: new Date('2024-05-25') },
+  { id: 'v1', shotId: 'sh1', versionNumber: 1, createdById: '3', status: 'REVISE' as const, description: 'Initial comp', createdAt: new Date('2024-05-01'), previewUrl: null, downloadUrl: null, bunnyVideoId: null, thumbnailPath: null },
+  { id: 'v2', shotId: 'sh1', versionNumber: 2, createdById: '3', status: 'REVISE' as const, description: 'Updated debris density', createdAt: new Date('2024-05-10'), previewUrl: null, downloadUrl: null, bunnyVideoId: null, thumbnailPath: null },
+  { id: 'v3', shotId: 'sh1', versionNumber: 3, createdById: '3', status: 'APPROVED' as const, description: 'Final tweaks per client notes', createdAt: new Date('2024-05-20'), previewUrl: null, downloadUrl: null, bunnyVideoId: null, thumbnailPath: null },
+  { id: 'v4', shotId: 'sh2', versionNumber: 1, createdById: '5', status: 'WIP' as const, description: 'WIP roto + comp', createdAt: new Date('2024-06-01'), previewUrl: null, downloadUrl: null, bunnyVideoId: null, thumbnailPath: null },
+  { id: 'v5', shotId: 'sh3', versionNumber: 1, createdById: '3', status: 'PENDING_REVIEW' as const, description: 'Smoke sim v1', createdAt: new Date('2024-06-05'), previewUrl: null, downloadUrl: null, bunnyVideoId: null, thumbnailPath: null },
+  { id: 'v6', shotId: 'sh5', versionNumber: 1, createdById: '5', status: 'REVISE' as const, description: 'Door anim + lighting', createdAt: new Date('2024-05-15'), previewUrl: null, downloadUrl: null, bunnyVideoId: null, thumbnailPath: null },
+  { id: 'v7', shotId: 'sh5', versionNumber: 2, createdById: '5', status: 'PENDING_REVIEW' as const, description: 'Updated per supe notes', createdAt: new Date('2024-05-28'), previewUrl: null, downloadUrl: null, bunnyVideoId: null, thumbnailPath: null },
+  { id: 'v8', shotId: 'sh7', versionNumber: 1, createdById: '5', status: 'APPROVED' as const, description: 'Final delivery', createdAt: new Date('2024-05-25'), previewUrl: null, downloadUrl: null, bunnyVideoId: null, thumbnailPath: null },
 ];
 
 export const mockNotes = [
