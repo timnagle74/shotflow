@@ -96,17 +96,19 @@ export function ShotCountSheet({
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 14;
       
-      // Try to fetch thumbnail and convert to base64
+      // Fetch thumbnail via our proxy API to avoid CORS
       let thumbnailData: string | null = null;
-      if (thumbnailUrl) {
+      if (shot.ref_video_id) {
         try {
-          const response = await fetch(thumbnailUrl);
-          const blob = await response.blob();
-          thumbnailData = await new Promise((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(blob);
-          });
+          const response = await fetch(`/api/thumbnail/${shot.ref_video_id}`);
+          if (response.ok) {
+            const blob = await response.blob();
+            thumbnailData = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.readAsDataURL(blob);
+            });
+          }
         } catch (e) {
           console.log('Could not fetch thumbnail for PDF');
         }
