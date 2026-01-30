@@ -28,6 +28,8 @@ import {
   Type,
   RatioIcon,
   Settings,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import {
   VideoPlayerProps,
@@ -87,6 +89,7 @@ export function VideoPlayer({
   const videoRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<Player | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentFrame, setCurrentFrame] = useState(frameStart);
@@ -205,6 +208,13 @@ export function VideoPlayer({
           e.preventDefault();
           toggleFullscreen();
           break;
+        case 'm':
+        case 'M':
+          e.preventDefault();
+          const newMuted = !playerRef.current.muted();
+          playerRef.current.muted(newMuted);
+          setIsMuted(newMuted);
+          break;
       }
     };
 
@@ -238,6 +248,13 @@ export function VideoPlayer({
       videoRef.current.requestFullscreen();
     }
   }, []);
+
+  const toggleMute = useCallback(() => {
+    if (!playerRef.current) return;
+    const newMuted = !isMuted;
+    playerRef.current.muted(newMuted);
+    setIsMuted(newMuted);
+  }, [isMuted]);
 
   const toggleBurnIn = useCallback((key: keyof BurnInSettings) => {
     setBurnIns(prev => ({
@@ -520,6 +537,11 @@ export function VideoPlayer({
               </DropdownMenu>
             )}
 
+            {/* Volume */}
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/10" onClick={toggleMute}>
+              {isMuted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            </Button>
+
             {/* Fullscreen */}
             <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/10" onClick={toggleFullscreen}>
               <Maximize className="h-4 w-4" />
@@ -534,6 +556,7 @@ export function VideoPlayer({
           <div>SPACE: Play/Pause</div>
           <div>←/→: ±1 frame</div>
           <div>↑/↓: ±10 frames</div>
+          <div>M: Mute</div>
           <div>F: Fullscreen</div>
         </div>
       </div>
