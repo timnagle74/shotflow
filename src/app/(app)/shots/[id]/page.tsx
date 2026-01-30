@@ -10,13 +10,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
 import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
-import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download, Play } from "lucide-react";
+import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download, Play, Video, FolderOpen } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import type { ShotStatus } from "@/lib/database.types";
 import { VideoPlayer } from "@/components/video-player";
 import { VersionUpload } from "@/components/version-upload";
 import { DownloadButton, VideoStatusBadge } from "@/components/bunny-player";
+import { PlateUpload } from "@/components/plate-upload";
+import { RefUpload } from "@/components/ref-upload";
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -46,6 +48,24 @@ interface Shot {
   edit_ref: string | null;
   notes: string | null;
   sequence_id: string;
+  // New ref fields
+  ref_filename: string | null;
+  ref_storage_path: string | null;
+  ref_cdn_url: string | null;
+  ref_video_id: string | null;
+  ref_preview_url: string | null;
+}
+
+interface ShotPlate {
+  id: string;
+  shot_id: string;
+  filename: string;
+  description: string | null;
+  storage_path: string;
+  cdn_url: string | null;
+  file_size: number | null;
+  sort_order: number;
+  created_at: string;
 }
 
 interface Sequence {
@@ -58,6 +78,7 @@ interface Sequence {
 interface Project {
   id: string;
   name: string;
+  code: string;
 }
 
 interface Version {
@@ -103,6 +124,7 @@ export default function ShotDetailPage() {
   const [versions, setVersions] = useState<Version[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [plates, setPlates] = useState<ShotPlate[]>([]);
   const [currentStatus, setCurrentStatus] = useState<string>("NOT_STARTED");
   const [selectedVersion, setSelectedVersion] = useState<string>("");
   const [updating, setUpdating] = useState(false);
@@ -188,6 +210,17 @@ export default function ShotDetailPage() {
           setUsers(usersData);
         }
 
+        // Fetch plates
+        const { data: platesData } = await supabase
+          .from("shot_plates")
+          .select("*")
+          .eq("shot_id", shotId)
+          .order("sort_order", { ascending: true }) as { data: ShotPlate[] | null; error: any };
+
+        if (platesData) {
+          setPlates(platesData);
+        }
+
       } catch (err) {
         console.error("Data fetch error:", err);
       }
@@ -196,6 +229,34 @@ export default function ShotDetailPage() {
     }
 
     fetchData();
+  }, [shotId]);
+
+  const refreshPlates = useCallback(async () => {
+    if (!supabase) return;
+    
+    const { data: platesData } = await supabase
+      .from("shot_plates")
+      .select("*")
+      .eq("shot_id", shotId)
+      .order("sort_order", { ascending: true }) as { data: ShotPlate[] | null; error: any };
+
+    if (platesData) {
+      setPlates(platesData);
+    }
+  }, [shotId]);
+
+  const refreshShot = useCallback(async () => {
+    if (!supabase) return;
+    
+    const { data: shotData } = await supabase
+      .from("shots")
+      .select("*")
+      .eq("id", shotId)
+      .single() as { data: Shot | null; error: any };
+
+    if (shotData) {
+      setShot(shotData);
+    }
   }, [shotId]);
 
   const refreshVersions = useCallback(async () => {
@@ -380,6 +441,90 @@ export default function ShotDetailPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </CardContent>
+          </Card>
+
+          {/* Source Materials Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                  <FolderOpen className="h-3.5 w-3.5" />Source Materials
+                </CardTitle>
+                <div className="flex items-center gap-1">
+                  <RefUpload
+                    shotId={shot.id}
+                    projectCode={project?.code || "PROJ"}
+                    shotCode={shot.code}
+                    currentRef={shot.ref_filename}
+                    onUploadComplete={() => refreshShot()}
+                    trigger={<Button size="sm" variant="ghost" className="h-7 px-2"><Video className="h-3.5 w-3.5" /></Button>}
+                  />
+                  <PlateUpload
+                    shotId={shot.id}
+                    projectCode={project?.code || "PROJ"}
+                    shotCode={shot.code}
+                    onUploadComplete={() => refreshPlates()}
+                    trigger={<Button size="sm" variant="ghost" className="h-7 px-2"><Film className="h-3.5 w-3.5" /></Button>}
+                  />
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Reference Clip */}
+              <div>
+                <label className="text-xs text-muted-foreground flex items-center gap-1.5 mb-2">
+                  <Video className="h-3 w-3" /> Reference Clip
+                </label>
+                {shot.ref_filename ? (
+                  <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
+                    <Film className="h-4 w-4 text-green-500 shrink-0" />
+                    <span className="text-sm truncate flex-1">{shot.ref_filename}</span>
+                    {shot.ref_cdn_url && (
+                      <a href={shot.ref_cdn_url} target="_blank" rel="noopener noreferrer">
+                        <Button size="sm" variant="ghost" className="h-7 px-2">
+                          <Download className="h-3.5 w-3.5" />
+                        </Button>
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No reference uploaded</p>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Plates */}
+              <div>
+                <label className="text-xs text-muted-foreground flex items-center gap-1.5 mb-2">
+                  <Film className="h-3 w-3" /> Source Plates ({plates.length})
+                </label>
+                {plates.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {plates.map((plate) => (
+                      <div key={plate.id} className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
+                        <Film className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm truncate">{plate.filename}</p>
+                          {plate.description && (
+                            <p className="text-xs text-muted-foreground truncate">{plate.description}</p>
+                          )}
+                        </div>
+                        {plate.cdn_url && (
+                          <a href={plate.cdn_url} target="_blank" rel="noopener noreferrer">
+                            <Button size="sm" variant="ghost" className="h-7 px-2">
+                              <Download className="h-3.5 w-3.5" />
+                            </Button>
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No plates uploaded</p>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>
