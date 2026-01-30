@@ -6,19 +6,26 @@
 const COCONUT_API_KEY = process.env.COCONUT_API_KEY;
 const COCONUT_API_URL = 'https://api.coconut.co/v2/jobs';
 
+export interface CoconutOutput {
+  key: string;
+  type: string;
+  format: string;
+  status: string;
+  url?: string;
+  error?: string;
+}
+
 export interface CoconutJobResponse {
   id: string;
   status: string;
   created_at: string;
   completed_at: string | null;
   progress: string;
-  outputs?: Array<{
-    key: string;
-    type: string;
-    format: string;
+  input: {
     status: string;
-    url?: string;
-  }>;
+    error?: string;
+  };
+  outputs: CoconutOutput[];
 }
 
 /**
@@ -29,32 +36,28 @@ export function isCoconutConfigured(): boolean {
 }
 
 /**
- * Create a transcoding job that outputs to Bunny Storage
- * The transcoded file can then be fetched by Bunny Stream
+ * Create a transcoding job that outputs to Coconut's temp storage
+ * The webhook will receive the output URL when complete
  */
 export async function createTranscodeJob(
   sourceUrl: string,
   outputPath: string,
-  bunnyStorageZone: string,
-  bunnyStoragePassword: string,
-  webhookUrl?: string
+  webhookUrl: string
 ): Promise<CoconutJobResponse> {
   if (!COCONUT_API_KEY) {
     throw new Error('Coconut API key not configured');
   }
 
-  const job: Record<string, any> = {
+  const job = {
     input: {
       url: sourceUrl,
     },
     storage: {
-      service: 's3other',
-      endpoint: 'https://storage.bunnycdn.com',
-      bucket: bunnyStorageZone,
-      credentials: {
-        access_key_id: bunnyStorageZone,
-        secret_access_key: bunnyStoragePassword,
-      },
+      service: 'coconut', // Use Coconut's temp storage - 24h expiry
+    },
+    notification: {
+      type: 'http',
+      url: webhookUrl,
     },
     outputs: {
       'mp4:1080p': {
@@ -62,13 +65,6 @@ export async function createTranscodeJob(
       },
     },
   };
-
-  if (webhookUrl) {
-    job.notification = {
-      type: 'http',
-      url: webhookUrl,
-    };
-  }
 
   // Coconut uses HTTP Basic Auth with API key as username
   const authString = Buffer.from(`${COCONUT_API_KEY}:`).toString('base64');

@@ -7,9 +7,24 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
+
+interface CoconutWebhook {
+  id: string;
+  status: string;
+  progress: string;
+  input: {
+    status: string;
+    error?: string;
+  };
+  outputs: Array<{
+    key: string;
+    status: string;
+    url?: string;
+    error?: string;
+  }>;
+}
 
 /**
  * POST /api/webhooks/coconut
@@ -18,66 +33,52 @@ const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body: CoconutWebhook = await request.json();
     const url = new URL(request.url);
     const bunnyVideoId = url.searchParams.get('bunnyVideoId');
-    const transcodedPath = url.searchParams.get('transcodedPath');
     
     console.log('Coconut webhook received:', {
-      event: body.status,
       jobId: body.id,
+      status: body.status,
       bunnyVideoId,
-      transcodedPath,
-      body: JSON.stringify(body, null, 2),
     });
 
     // Check if job completed successfully
-    if (body.status === 'job.completed' && bunnyVideoId && transcodedPath) {
-      console.log(`Transcode job ${body.id} completed. Triggering Bunny Stream fetch...`);
+    if (body.status === 'job.completed' && bunnyVideoId) {
+      // Find the output URL
+      const mp4Output = body.outputs.find(o => o.key === 'mp4:1080p' && o.status === 'video.encoded');
+      
+      if (mp4Output?.url) {
+        console.log(`Transcode complete. Fetching ${mp4Output.url} into Bunny Stream...`);
 
-      // Tell Bunny Stream to fetch the transcoded video
-      if (BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY && BUNNY_STORAGE_CDN_URL) {
-        const transcodedUrl = `${BUNNY_STORAGE_CDN_URL}${transcodedPath}`;
-        
-        console.log('Fetching video into Bunny Stream:', transcodedUrl);
+        // Tell Bunny Stream to fetch the transcoded video
+        if (BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
+          const fetchResponse = await fetch(
+            `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos/${bunnyVideoId}/fetch`,
+            {
+              method: 'POST',
+              headers: {
+                'AccessKey': BUNNY_STREAM_API_KEY,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                url: mp4Output.url,
+              }),
+            }
+          );
 
-        // Use Bunny Stream's fetch endpoint
-        const fetchResponse = await fetch(
-          `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos/${bunnyVideoId}/fetch`,
-          {
-            method: 'POST',
-            headers: {
-              'AccessKey': BUNNY_STREAM_API_KEY,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              url: transcodedUrl,
-            }),
+          if (fetchResponse.ok) {
+            console.log('Bunny Stream fetch initiated successfully');
+          } else {
+            const errorText = await fetchResponse.text();
+            console.error('Bunny Stream fetch failed:', fetchResponse.status, errorText);
           }
-        );
-
-        if (fetchResponse.ok) {
-          console.log('Bunny Stream fetch initiated successfully');
-          
-          // Update version record to mark transcoding as complete
-          // Find version by bunny_video_id
-          const { error: updateError } = await supabaseAdmin
-            .from('versions')
-            .update({ 
-              status: 'WIP', // Keep as WIP, transcoding done
-            })
-            .eq('bunny_video_id', bunnyVideoId);
-
-          if (updateError) {
-            console.error('Failed to update version:', updateError);
-          }
-        } else {
-          const errorText = await fetchResponse.text();
-          console.error('Bunny Stream fetch failed:', fetchResponse.status, errorText);
         }
+      } else {
+        console.error('No output URL found in completed job');
       }
     } else if (body.status === 'job.failed') {
-      console.error(`Transcode job ${body.id} failed:`, body.errors);
+      console.error(`Transcode job ${body.id} failed:`, body.input.error || body.outputs.map(o => o.error).join(', '));
     }
 
     // Always return 200 to acknowledge receipt

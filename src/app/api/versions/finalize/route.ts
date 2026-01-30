@@ -8,8 +8,6 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
-const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
 const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
@@ -29,9 +27,9 @@ interface FinalizeUploadPayload {
  * Finalizes version creation and triggers transcoding
  * 
  * Flow:
- * 1. Create version record in database
- * 2. Create Bunny Stream video entry
- * 3. Trigger Coconut transcoding (ProRes → H.264 → Bunny Storage)
+ * 1. Create Bunny Stream video entry
+ * 2. Trigger Coconut transcoding (ProRes → H.264 → Coconut temp storage)
+ * 3. Create version record in database
  * 4. Webhook will tell Bunny Stream to fetch the transcoded file
  */
 export async function POST(request: NextRequest) {
@@ -59,14 +57,13 @@ export async function POST(request: NextRequest) {
       .single();
 
     const versionStr = `v${String(versionNumber).padStart(3, '0')}`;
+    const title = `${shot?.code || 'shot'}_${versionStr}`;
 
-    // If we have a storage path and Coconut is configured, trigger transcoding
-    if (storagePath && isCoconutConfigured() && BUNNY_STORAGE_ZONE && BUNNY_STORAGE_PASSWORD && BUNNY_STORAGE_CDN_URL) {
+    // If we have a storage path and transcoding is configured, set it up
+    if (storagePath && isCoconutConfigured() && BUNNY_STORAGE_CDN_URL) {
       try {
         // 1. Create Bunny Stream video entry (for later use)
         if (BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
-          const title = `${shot?.code || 'shot'}_${versionStr}`;
-          
           const createVideoResponse = await fetch(
             `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos`,
             {
@@ -93,29 +90,18 @@ export async function POST(request: NextRequest) {
 
         // 2. Trigger Coconut transcoding
         const sourceUrl = `${BUNNY_STORAGE_CDN_URL}/${storagePath}`;
-        
-        // Output path for transcoded file (same folder, different filename)
-        const pathParts = storagePath.split('/');
-        const filename = pathParts.pop() || 'video.mov';
-        const baseName = filename.replace(/\.[^.]+$/, '');
-        const transcodedPath = `/${pathParts.join('/')}/${baseName}_web.mp4`;
+        const outputPath = `/${title}_web.mp4`;
 
-        // Build webhook URL with version info for later processing
+        // Build webhook URL with bunny video ID for later processing
         const baseUrl = VERCEL_URL 
           ? `https://${VERCEL_URL}`
           : 'https://shotflow-eight.vercel.app';
-        const webhookUrl = `${baseUrl}/api/webhooks/coconut?versionId=PENDING&bunnyVideoId=${bunnyVideoId || ''}&transcodedPath=${encodeURIComponent(transcodedPath)}`;
+        const webhookUrl = `${baseUrl}/api/webhooks/coconut?bunnyVideoId=${bunnyVideoId || ''}`;
 
-        const job = await createTranscodeJob(
-          sourceUrl,
-          transcodedPath,
-          BUNNY_STORAGE_ZONE,
-          BUNNY_STORAGE_PASSWORD,
-          webhookUrl
-        );
+        const job = await createTranscodeJob(sourceUrl, outputPath, webhookUrl);
 
         transcodeJobId = job.id;
-        console.log('Coconut transcode job created:', job.id, 'Output:', transcodedPath);
+        console.log('Coconut transcode job created:', job.id);
       } catch (transcodeError) {
         // Log but don't fail - version is still created, just without preview
         console.error('Transcoding setup failed:', transcodeError);
@@ -146,9 +132,6 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-
-    // Update webhook URL with actual version ID
-    // (We'll handle this in the webhook by looking up the bunnyVideoId)
 
     return NextResponse.json({
       success: true,
