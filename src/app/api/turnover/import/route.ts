@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
       sequenceCode,
       shots,
       uploadedFiles,
+      generalVfxNotes,
     } = body as {
       projectId: string;
       sequenceId?: string;
@@ -46,6 +47,7 @@ export async function POST(request: NextRequest) {
         vfxNotes?: string | null;
       }>;
       uploadedFiles: UploadedFile[];
+      generalVfxNotes?: string | null;
     };
     
     if (!projectId || !shots) {
@@ -62,7 +64,13 @@ export async function POST(request: NextRequest) {
       
       const { data: newSeq, error: seqError } = await supabase
         .from("sequences")
-        .insert({ project_id: projectId, code, name, sort_order: 0 })
+        .insert({ 
+          project_id: projectId, 
+          code, 
+          name, 
+          sort_order: 0,
+          notes: generalVfxNotes || null,
+        })
         .select()
         .single();
 
@@ -71,6 +79,22 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Failed to create sequence" }, { status: 500 });
       }
       finalSequenceId = newSeq.id;
+    } else if (generalVfxNotes) {
+      // Update existing sequence with notes (append if existing)
+      const { data: existingSeq } = await supabase
+        .from("sequences")
+        .select("notes")
+        .eq("id", sequenceId)
+        .single();
+      
+      const updatedNotes = existingSeq?.notes 
+        ? `${existingSeq.notes}\n\n---\n\n${generalVfxNotes}`
+        : generalVfxNotes;
+      
+      await supabase
+        .from("sequences")
+        .update({ notes: updatedNotes })
+        .eq("id", sequenceId);
     }
 
     // Create shots
@@ -135,18 +159,28 @@ export async function POST(request: NextRequest) {
               refPreviewUrl = `${BUNNY_STREAM_CDN}/${videoData.guid}/playlist.m3u8`;
             }
 
-            // Trigger Coconut transcoding
-            if (isCoconutConfigured() && BUNNY_STORAGE_CDN_URL && ref.storagePath) {
+            // Use Bunny Stream's fetch to download and transcode directly
+            if (BUNNY_STORAGE_CDN_URL && ref.storagePath) {
               try {
                 const sourceUrl = `${BUNNY_STORAGE_CDN_URL}${ref.storagePath}`;
-                const outputPath = `/${matchedShot.code}_ref_web.mp4`;
-                
-                const webhookUrl = `${WEBHOOK_BASE_URL}/api/webhooks/coconut?bunnyVideoId=${refVideoId}&type=ref&shotId=${matchedShot.id}`;
-
-                const job = await createTranscodeJob(sourceUrl, outputPath, webhookUrl);
-                console.log('Ref transcode job created:', job.id, 'for shot:', matchedShot.code);
-              } catch (transcodeError) {
-                console.error('Ref transcoding setup failed:', transcodeError);
+                const fetchResponse = await fetch(
+                  `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos/${refVideoId}/fetch`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'AccessKey': BUNNY_STREAM_API_KEY,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: sourceUrl }),
+                  }
+                );
+                if (fetchResponse.ok) {
+                  console.log('Ref video fetch triggered for:', matchedShot.code);
+                } else {
+                  console.error('Ref video fetch failed:', await fetchResponse.text());
+                }
+              } catch (fetchError) {
+                console.error('Ref video fetch error:', fetchError);
               }
             }
           }
@@ -228,18 +262,28 @@ export async function POST(request: NextRequest) {
               platePreviewUrl = `${BUNNY_STREAM_CDN}/${videoData.guid}/playlist.m3u8`;
             }
 
-            // Trigger Coconut transcoding
-            if (isCoconutConfigured() && BUNNY_STORAGE_CDN_URL && plate.storagePath) {
+            // Use Bunny Stream's fetch to download and transcode directly
+            if (BUNNY_STORAGE_CDN_URL && plate.storagePath) {
               try {
                 const sourceUrl = `${BUNNY_STORAGE_CDN_URL}${plate.storagePath}`;
-                const outputPath = `/${matchedShot.code}_plate_${i}_web.mp4`;
-                
-                const webhookUrl = `${WEBHOOK_BASE_URL}/api/webhooks/coconut?bunnyVideoId=${plateVideoId}&type=plate`;
-
-                const job = await createTranscodeJob(sourceUrl, outputPath, webhookUrl);
-                console.log('Plate transcode job created:', job.id, 'for shot:', matchedShot.code);
-              } catch (transcodeError) {
-                console.error('Plate transcoding setup failed:', transcodeError);
+                const fetchResponse = await fetch(
+                  `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos/${plateVideoId}/fetch`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'AccessKey': BUNNY_STREAM_API_KEY,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: sourceUrl }),
+                  }
+                );
+                if (fetchResponse.ok) {
+                  console.log('Plate video fetch triggered for:', matchedShot.code, plate.originalName);
+                } else {
+                  console.error('Plate video fetch failed:', await fetchResponse.text());
+                }
+              } catch (fetchError) {
+                console.error('Plate video fetch error:', fetchError);
               }
             }
           }

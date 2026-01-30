@@ -208,6 +208,9 @@ export default function TurnoverPage() {
   // Shot notes for VFX descriptions (editable in preview table)
   const [shotNotes, setShotNotes] = useState<Record<string, string>>({});
   
+  // General VFX notes that apply to all shots in this turnover
+  const [generalVfxNotes, setGeneralVfxNotes] = useState("");
+  
   const updateShotNote = useCallback((shotCode: string, note: string) => {
     setShotNotes(prev => ({ ...prev, [shotCode]: note }));
   }, []);
@@ -324,6 +327,7 @@ export default function TurnoverPage() {
           sequenceCode: seqName.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase().slice(0, 20),
           shots,
           uploadedFiles,
+          generalVfxNotes: generalVfxNotes.trim() || null,
         }),
       });
 
@@ -361,15 +365,15 @@ export default function TurnoverPage() {
       {/* Import Settings */}
       <Card>
         <CardHeader><CardTitle className="text-sm">Import Settings</CardTitle></CardHeader>
-        <CardContent className="flex gap-4 flex-wrap">
-          <div className="min-w-[200px]">
+        <CardContent className="grid grid-cols-[auto_auto_1fr] gap-4 items-start">
+          <div className="w-[200px]">
             <label className="text-sm font-medium">Target Project</label>
             <Select value={selectedProject} onValueChange={(v) => { setSelectedProject(v); setSelectedSequence("new"); }}>
               <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
               <SelectContent>{projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div className="min-w-[200px]">
+          <div className="w-[200px]">
             <label className="text-sm font-medium">Target Sequence</label>
             <Select value={selectedSequence} onValueChange={setSelectedSequence}>
               <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
@@ -378,6 +382,18 @@ export default function TurnoverPage() {
                 {projectSequences.map(s => <SelectItem key={s.id} value={s.id}>{s.code} — {s.name}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+          <div>
+            <label className="text-sm font-medium flex items-center gap-1.5">
+              <MessageSquare className="h-3.5 w-3.5" />
+              General VFX Notes
+            </label>
+            <Textarea
+              placeholder="General notes for all shots (color direction, cleanup notes, client instructions)..."
+              className="mt-1.5 min-h-[60px] text-sm"
+              value={generalVfxNotes}
+              onChange={(e) => setGeneralVfxNotes(e.target.value)}
+            />
           </div>
         </CardContent>
       </Card>
