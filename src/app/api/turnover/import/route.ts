@@ -8,7 +8,8 @@ const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
 const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN;
-const VERCEL_URL = process.env.VERCEL_URL || process.env.NEXT_PUBLIC_VERCEL_URL;
+// Use production URL for webhooks, not preview deployments
+const WEBHOOK_BASE_URL = process.env.WEBHOOK_BASE_URL || 'https://shotflow-eight.vercel.app';
 
 interface UploadedFile {
   originalName: string;
@@ -138,10 +139,7 @@ export async function POST(request: NextRequest) {
                 const sourceUrl = `${BUNNY_STORAGE_CDN_URL}${ref.storagePath}`;
                 const outputPath = `/${matchedShot.code}_ref_web.mp4`;
                 
-                const baseUrl = VERCEL_URL 
-                  ? `https://${VERCEL_URL}`
-                  : 'https://shotflow-eight.vercel.app';
-                const webhookUrl = `${baseUrl}/api/webhooks/coconut?bunnyVideoId=${refVideoId}&type=ref&shotId=${matchedShot.id}`;
+                const webhookUrl = `${WEBHOOK_BASE_URL}/api/webhooks/coconut?bunnyVideoId=${refVideoId}&type=ref&shotId=${matchedShot.id}`;
 
                 const job = await createTranscodeJob(sourceUrl, outputPath, webhookUrl);
                 console.log('Ref transcode job created:', job.id, 'for shot:', matchedShot.code);
