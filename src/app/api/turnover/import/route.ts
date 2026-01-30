@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
         .eq("id", matchedShot.id);
     }
 
-    // Process uploaded plates
+    // Process uploaded plates - create Bunny Stream entry + trigger transcoding
     const plateFiles = (uploadedFiles || []).filter(f => f.type === 'plate');
     for (let i = 0; i < plateFiles.length; i++) {
       const plate = plateFiles[i];
@@ -177,6 +177,54 @@ export async function POST(request: NextRequest) {
 
       if (!matchedShot) continue;
 
+      let platePreviewUrl: string | null = null;
+      let plateVideoId: string | null = null;
+
+      // Create Bunny Stream video entry for HLS playback
+      if (BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
+        try {
+          const baseName = plate.originalName.replace(/\.[^/.]+$/, "");
+          const title = `${matchedShot.code}_plate_${baseName}`;
+          const createVideoResponse = await fetch(
+            `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos`,
+            {
+              method: 'POST',
+              headers: {
+                'AccessKey': BUNNY_STREAM_API_KEY,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ title }),
+            }
+          );
+
+          if (createVideoResponse.ok) {
+            const videoData = await createVideoResponse.json();
+            plateVideoId = videoData.guid;
+            
+            if (BUNNY_STREAM_CDN) {
+              platePreviewUrl = `${BUNNY_STREAM_CDN}/${videoData.guid}/playlist.m3u8`;
+            }
+
+            // Trigger Coconut transcoding
+            if (isCoconutConfigured() && BUNNY_STORAGE_CDN_URL && plate.storagePath) {
+              try {
+                const sourceUrl = `${BUNNY_STORAGE_CDN_URL}${plate.storagePath}`;
+                const outputPath = `/${matchedShot.code}_plate_${i}_web.mp4`;
+                
+                const webhookUrl = `${WEBHOOK_BASE_URL}/api/webhooks/coconut?bunnyVideoId=${plateVideoId}&type=plate`;
+
+                const job = await createTranscodeJob(sourceUrl, outputPath, webhookUrl);
+                console.log('Plate transcode job created:', job.id, 'for shot:', matchedShot.code);
+              } catch (transcodeError) {
+                console.error('Plate transcoding setup failed:', transcodeError);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to create Bunny Stream entry for plate:', err);
+        }
+      }
+
       await supabase
         .from("shot_plates")
         .insert({
@@ -186,6 +234,8 @@ export async function POST(request: NextRequest) {
           cdn_url: plate.cdnUrl,
           file_size: plate.fileSize || null,
           sort_order: i,
+          video_id: plateVideoId,
+          preview_url: platePreviewUrl,
         });
     }
 
