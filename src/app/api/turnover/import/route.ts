@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createTranscodeJob, isCoconutConfigured } from "@/lib/coconut";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
+const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
+const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
+const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN;
+const VERCEL_URL = process.env.VERCEL_URL || process.env.NEXT_PUBLIC_VERCEL_URL;
 
 interface UploadedFile {
   originalName: string;
@@ -89,7 +95,7 @@ export async function POST(request: NextRequest) {
       createdShots.push(newShot);
     }
 
-    // Process uploaded refs
+    // Process uploaded refs - create Bunny Stream entry + trigger transcoding
     const refFiles = (uploadedFiles || []).filter(f => f.type === 'ref');
     for (const ref of refFiles) {
       // Match to shot by filename or use first shot
@@ -99,12 +105,64 @@ export async function POST(request: NextRequest) {
 
       if (!matchedShot) continue;
 
+      let refPreviewUrl: string | null = null;
+      let refVideoId: string | null = null;
+
+      // Create Bunny Stream video entry for HLS playback
+      if (BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
+        try {
+          const title = `${matchedShot.code}_ref`;
+          const createVideoResponse = await fetch(
+            `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos`,
+            {
+              method: 'POST',
+              headers: {
+                'AccessKey': BUNNY_STREAM_API_KEY,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ title }),
+            }
+          );
+
+          if (createVideoResponse.ok) {
+            const videoData = await createVideoResponse.json();
+            refVideoId = videoData.guid;
+            
+            if (BUNNY_STREAM_CDN) {
+              refPreviewUrl = `${BUNNY_STREAM_CDN}/${videoData.guid}/playlist.m3u8`;
+            }
+
+            // Trigger Coconut transcoding
+            if (isCoconutConfigured() && BUNNY_STORAGE_CDN_URL && ref.storagePath) {
+              try {
+                const sourceUrl = `${BUNNY_STORAGE_CDN_URL}${ref.storagePath}`;
+                const outputPath = `/${matchedShot.code}_ref_web.mp4`;
+                
+                const baseUrl = VERCEL_URL 
+                  ? `https://${VERCEL_URL}`
+                  : 'https://shotflow-eight.vercel.app';
+                const webhookUrl = `${baseUrl}/api/webhooks/coconut?bunnyVideoId=${refVideoId}&type=ref&shotId=${matchedShot.id}`;
+
+                const job = await createTranscodeJob(sourceUrl, outputPath, webhookUrl);
+                console.log('Ref transcode job created:', job.id, 'for shot:', matchedShot.code);
+              } catch (transcodeError) {
+                console.error('Ref transcoding setup failed:', transcodeError);
+              }
+            }
+          }
+        } catch (err) {
+          console.error('Failed to create Bunny Stream entry for ref:', err);
+        }
+      }
+
       await supabase
         .from("shots")
         .update({
           ref_filename: ref.originalName,
           ref_storage_path: ref.storagePath,
           ref_cdn_url: ref.cdnUrl,
+          ref_video_id: refVideoId,
+          ref_preview_url: refPreviewUrl,
         })
         .eq("id", matchedShot.id);
     }
