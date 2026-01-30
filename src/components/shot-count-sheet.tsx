@@ -161,51 +161,58 @@ export function ShotCountSheet({
         doc.setTextColor(0, 0, 0);
       }
       
-      // Metadata grid - to the right of thumbnail
+      // Metadata grid - to the right of thumbnail (2 columns layout)
       doc.setFontSize(8);
-      const metaX = margin + thumbWidth + 5;
-      const col1 = metaX;
-      const col2 = metaX + 45;
-      const col3 = metaX + 90;
-      const col4 = pageWidth - 35;
+      const metaX = margin + thumbWidth + 8;
+      const metaWidth = pageWidth - metaX - margin;
+      const colA = metaX;
+      const colB = metaX + metaWidth / 2;
       
-      const metaData = [
-        { x: col1, label: "Vendor", value: vendor || "—" },
-        { x: col2, label: "Sequence", value: sequenceName },
-        { x: col3, label: "Scene #", value: sceneNumber || "—" },
-        { x: col4, label: "Reel #", value: reelNumber || "—" },
-      ];
+      let metaY = y + 5;
       
-      let metaY = y + 3;
-      metaData.forEach(item => {
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(120, 120, 120);
-        doc.text(item.label, item.x, metaY);
-        doc.setTextColor(0, 0, 0);
-        doc.setFont("helvetica", "bold");
-        doc.text(item.value, item.x, metaY + 5);
-      });
+      // Row 1: Vendor | Sequence
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(120, 120, 120);
+      doc.text("Vendor", colA, metaY);
+      doc.text("Sequence", colB, metaY);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont("helvetica", "bold");
+      doc.text(vendor || "—", colA, metaY + 5);
+      doc.text(sequenceName || "—", colB, metaY + 5);
       
-      // Second row of metadata (under first row, still beside thumbnail)
-      metaY += 14;
+      // Row 2: Scene # | Reel #
+      metaY += 12;
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(120, 120, 120);
+      doc.text("Scene #", colA, metaY);
+      doc.text("Reel #", colB, metaY);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont("helvetica", "bold");
+      doc.text(sceneNumber || "—", colA, metaY + 5);
+      doc.text(reelNumber || "—", colB, metaY + 5);
+      
+      // Row 3: Comp/Cut/Handles
+      metaY += 12;
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(120, 120, 120);
-      doc.text("Comp Length", col1, metaY);
-      doc.text("Cut Length", col2, metaY);
-      doc.text("Handles", col3, metaY);
-      doc.text("Location", col4, metaY);
+      doc.text("Comp", colA, metaY);
+      doc.text("Cut", colA + 25, metaY);
+      doc.text("Handles", colB, metaY);
       
       doc.setTextColor(88, 28, 135);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text(`${compLength}`, col1, metaY + 6);
+      doc.text(`${compLength}`, colA, metaY + 5);
       doc.setTextColor(0, 0, 0);
-      doc.text(`${cutLength}`, col2, metaY + 6);
-      doc.setFontSize(10);
-      doc.text(`${handleHead} + ${handleTail}`, col3, metaY + 6);
+      doc.text(`${cutLength}`, colA + 25, metaY + 5);
+      doc.text(`${handleHead}+${handleTail}`, colB, metaY + 5);
+      
+      // Location on same row
       doc.setFont("helvetica", "normal");
-      doc.text(location || "—", col4, metaY + 6);
+      doc.setTextColor(120, 120, 120);
+      doc.text("Location", colB + 30, metaY);
+      doc.setTextColor(0, 0, 0);
+      doc.text(location || "—", colB + 30, metaY + 5);
       
       // Move y past the thumbnail
       y = y + thumbHeight + 5;
@@ -213,11 +220,11 @@ export function ShotCountSheet({
       // Shot Action
       doc.setFontSize(8);
       doc.setTextColor(120, 120, 120);
-      doc.text("Shot Action", col1, y);
+      doc.text("Shot Action", margin, y);
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      doc.text(shotAction || shot.description || "—", col1, y + 5);
+      doc.text(shotAction || shot.description || "—", margin, y + 5);
 
       // VFX Summary section
       y += 20;
