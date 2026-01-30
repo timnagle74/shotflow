@@ -217,6 +217,17 @@ export default function TurnoverPage() {
   const handleEdlImport = useCallback(async () => {
     if (videoEvents.length === 0) return;
     
+    // Validate all shots have VFX notes
+    const shotsWithoutNotes = videoEvents.filter((event, idx) => {
+      const shotCode = event.clipName || event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`;
+      return !shotNotes[shotCode]?.trim();
+    });
+
+    if (shotsWithoutNotes.length > 0) {
+      setImportError(`Please add VFX notes for all shots. ${shotsWithoutNotes.length} shot(s) missing notes.`);
+      return;
+    }
+
     setImporting(true);
     setImportError(null);
     setImportStatus("Preparing...");
@@ -527,15 +538,31 @@ export default function TurnoverPage() {
                       <div className="rounded-md bg-purple-600/10 p-2"><p className="text-lg font-bold text-purple-400">{parseResult.audioEvents}</p><p className="text-[10px] text-muted-foreground">AUDIO</p></div>
                     </div>
                     {parseResult.fcm !== 'UNKNOWN' && <Badge variant="outline" className="text-xs">{parseResult.fcm === 'DROP_FRAME' ? 'Drop Frame' : 'Non-Drop Frame'}</Badge>}
-                    {videoEvents.length > 0 && !edlImported && (
-                      <Button className="w-full" onClick={handleEdlImport} disabled={importing}>
-                        {importing ? (
-                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{importStatus || "Importing..."}</>
-                        ) : (
-                          <><Check className="h-4 w-4 mr-2" />Import {videoEvents.length} Shot{videoEvents.length !== 1 ? 's' : ''} + {refFiles.length} Refs + {plateFiles.length} Plates</>
-                        )}
-                      </Button>
-                    )}
+                    {videoEvents.length > 0 && !edlImported && (() => {
+                      const filledNotes = videoEvents.filter((event, idx) => {
+                        const shotCode = event.clipName || event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`;
+                        return shotNotes[shotCode]?.trim();
+                      }).length;
+                      const allNotesFilled = filledNotes === videoEvents.length;
+                      
+                      return (
+                        <>
+                          <div className={cn(
+                            "text-xs text-center py-1 rounded",
+                            allNotesFilled ? "text-green-400 bg-green-500/10" : "text-amber-400 bg-amber-500/10"
+                          )}>
+                            VFX Notes: {filledNotes}/{videoEvents.length} {allNotesFilled ? "✓" : "(required)"}
+                          </div>
+                          <Button className="w-full" onClick={handleEdlImport} disabled={importing}>
+                            {importing ? (
+                              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{importStatus || "Importing..."}</>
+                            ) : (
+                              <><Check className="h-4 w-4 mr-2" />Import {videoEvents.length} Shot{videoEvents.length !== 1 ? 's' : ''} + {refFiles.length} Refs + {plateFiles.length} Plates</>
+                            )}
+                          </Button>
+                        </>
+                      );
+                    })()}
                     {importError && <div className="flex items-center gap-2 text-red-400 text-sm"><AlertCircle className="h-4 w-4" />{importError}</div>}
                     {edlImported && <div className="flex items-center justify-center gap-2 py-2"><Badge className="bg-green-600 text-white border-0"><Check className="h-3 w-3 mr-1" />Imported Successfully</Badge></div>}
                   </CardContent>
@@ -594,8 +621,11 @@ export default function TurnoverPage() {
                                 <td className="p-2 font-mono text-xs text-right">{event.durationFrames}f</td>
                                 <td className="p-2">
                                   <Textarea
-                                    placeholder="Enter VFX description..."
-                                    className="min-h-[60px] text-xs resize-y"
+                                    placeholder="Enter VFX description (required)..."
+                                    className={cn(
+                                      "min-h-[60px] text-xs resize-y",
+                                      !shotNotes[shotCode]?.trim() && "border-amber-500/50 focus:border-amber-500"
+                                    )}
                                     value={shotNotes[shotCode] || ""}
                                     onChange={(e) => updateShotNote(shotCode, e.target.value)}
                                   />
