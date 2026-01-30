@@ -96,6 +96,22 @@ export function ShotCountSheet({
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 14;
       
+      // Try to fetch thumbnail and convert to base64
+      let thumbnailData: string | null = null;
+      if (thumbnailUrl) {
+        try {
+          const response = await fetch(thumbnailUrl);
+          const blob = await response.blob();
+          thumbnailData = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        } catch (e) {
+          console.log('Could not fetch thumbnail for PDF');
+        }
+      }
+      
       // Header bar
       doc.setFillColor(88, 28, 135); // Purple
       doc.rect(0, 0, pageWidth, 28, 'F');
@@ -118,18 +134,40 @@ export function ShotCountSheet({
       // Reset text color
       doc.setTextColor(0, 0, 0);
       
-      // Main info box
-      let y = 38;
-      doc.setDrawColor(200, 200, 200);
-      doc.setLineWidth(0.3);
-      doc.rect(margin, y - 5, pageWidth - margin * 2, 52);
+      // Main content area with thumbnail
+      let y = 35;
+      const thumbWidth = 60;
+      const thumbHeight = 34;
       
-      // Metadata grid - 4 columns
+      // Thumbnail area
+      doc.setDrawColor(100, 100, 100);
+      doc.setFillColor(30, 30, 30);
+      doc.rect(margin, y, thumbWidth, thumbHeight, 'FD');
+      
+      if (thumbnailData) {
+        try {
+          doc.addImage(thumbnailData, 'JPEG', margin + 1, y + 1, thumbWidth - 2, thumbHeight - 2);
+        } catch (e) {
+          // Fallback - just show placeholder text
+          doc.setTextColor(100, 100, 100);
+          doc.setFontSize(8);
+          doc.text('No Preview', margin + thumbWidth/2, y + thumbHeight/2, { align: 'center' });
+          doc.setTextColor(0, 0, 0);
+        }
+      } else {
+        doc.setTextColor(100, 100, 100);
+        doc.setFontSize(8);
+        doc.text('No Preview', margin + thumbWidth/2, y + thumbHeight/2, { align: 'center' });
+        doc.setTextColor(0, 0, 0);
+      }
+      
+      // Metadata grid - to the right of thumbnail
       doc.setFontSize(8);
-      const col1 = margin + 3;
-      const col2 = 55;
-      const col3 = 110;
-      const col4 = 155;
+      const metaX = margin + thumbWidth + 5;
+      const col1 = metaX;
+      const col2 = metaX + 45;
+      const col3 = metaX + 90;
+      const col4 = pageWidth - 35;
       
       const metaData = [
         { x: col1, label: "Vendor", value: vendor || "—" },
@@ -138,42 +176,39 @@ export function ShotCountSheet({
         { x: col4, label: "Reel #", value: reelNumber || "—" },
       ];
       
+      let metaY = y + 3;
       metaData.forEach(item => {
         doc.setFont("helvetica", "normal");
         doc.setTextColor(120, 120, 120);
-        doc.text(item.label, item.x, y);
+        doc.text(item.label, item.x, metaY);
         doc.setTextColor(0, 0, 0);
         doc.setFont("helvetica", "bold");
-        doc.text(item.value, item.x, y + 5);
+        doc.text(item.value, item.x, metaY + 5);
       });
       
-      y += 15;
-      
-      // Frame counts row - prominent
-      doc.setFillColor(245, 245, 245);
-      doc.rect(margin + 1, y - 3, pageWidth - margin * 2 - 2, 14, 'F');
-      
+      // Second row of metadata (under first row, still beside thumbnail)
+      metaY += 14;
       doc.setFontSize(9);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(120, 120, 120);
-      doc.text("Comp Length", col1, y + 2);
-      doc.text("Cut Length", col2, y + 2);
-      doc.text("Handles", col3, y + 2);
-      doc.text("Location", col4, y + 2);
+      doc.text("Comp Length", col1, metaY);
+      doc.text("Cut Length", col2, metaY);
+      doc.text("Handles", col3, metaY);
+      doc.text("Location", col4, metaY);
       
       doc.setTextColor(88, 28, 135);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.text(`${compLength}`, col1, y + 10);
-      doc.setTextColor(0, 0, 0);
       doc.setFontSize(12);
-      doc.text(`${cutLength}`, col2, y + 10);
+      doc.text(`${compLength}`, col1, metaY + 6);
+      doc.setTextColor(0, 0, 0);
+      doc.text(`${cutLength}`, col2, metaY + 6);
       doc.setFontSize(10);
-      doc.text(`${handleHead} + ${handleTail}`, col3, y + 10);
+      doc.text(`${handleHead} + ${handleTail}`, col3, metaY + 6);
       doc.setFont("helvetica", "normal");
-      doc.text(location || "—", col4, y + 10);
+      doc.text(location || "—", col4, metaY + 6);
       
-      y += 20;
+      // Move y past the thumbnail
+      y = y + thumbHeight + 5;
       
       // Shot Action
       doc.setFontSize(8);
