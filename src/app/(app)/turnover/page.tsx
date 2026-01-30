@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { parseEDL, getVideoEvents, type EDLParseResult } from "@/lib/edl-parser";
@@ -578,7 +579,7 @@ export default function TurnoverPage() {
                             <th className="text-left p-2 text-xs font-medium text-muted-foreground">Rec In</th>
                             <th className="text-left p-2 text-xs font-medium text-muted-foreground">Rec Out</th>
                             <th className="text-right p-2 text-xs font-medium text-muted-foreground">Dur</th>
-                            <th className="text-left p-2 text-xs font-medium text-muted-foreground min-w-[250px]">VFX Notes</th>
+                            <th className="text-left p-2 text-xs font-medium text-muted-foreground min-w-[350px]">VFX Notes</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -592,9 +593,9 @@ export default function TurnoverPage() {
                                 <td className="p-2 font-mono text-xs">{event.recordOut}</td>
                                 <td className="p-2 font-mono text-xs text-right">{event.durationFrames}f</td>
                                 <td className="p-2">
-                                  <Input
+                                  <Textarea
                                     placeholder="Enter VFX description..."
-                                    className="h-7 text-xs"
+                                    className="min-h-[60px] text-xs resize-y"
                                     value={shotNotes[shotCode] || ""}
                                     onChange={(e) => updateShotNote(shotCode, e.target.value)}
                                   />
