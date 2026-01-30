@@ -4,6 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { parseEDL, getVideoEvents, type EDLParseResult } from "@/lib/edl-parser";
@@ -202,6 +203,13 @@ export default function TurnoverPage() {
   const videoEvents = parseResult ? getVideoEvents(parseResult) : [];
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  
+  // Shot notes for VFX descriptions (editable in preview table)
+  const [shotNotes, setShotNotes] = useState<Record<string, string>>({});
+  
+  const updateShotNote = useCallback((shotCode: string, note: string) => {
+    setShotNotes(prev => ({ ...prev, [shotCode]: note }));
+  }, []);
 
   const [importStatus, setImportStatus] = useState("");
 
@@ -280,15 +288,19 @@ export default function TurnoverPage() {
       
       const seqName = parseResult?.title || edlFileName.replace(/\.edl$/i, "");
       
-      const shots = videoEvents.map((event, idx) => ({
-        code: event.clipName || event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`,
-        clipName: event.clipName,
-        sourceIn: event.sourceIn,
-        sourceOut: event.sourceOut,
-        recordIn: event.recordIn,
-        recordOut: event.recordOut,
-        durationFrames: event.durationFrames,
-      }));
+      const shots = videoEvents.map((event, idx) => {
+        const code = event.clipName || event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`;
+        return {
+          code,
+          clipName: event.clipName,
+          sourceIn: event.sourceIn,
+          sourceOut: event.sourceOut,
+          recordIn: event.recordIn,
+          recordOut: event.recordOut,
+          durationFrames: event.durationFrames,
+          vfxNotes: shotNotes[code] || null, // VFX description from user input
+        };
+      });
 
       const response = await fetch("/api/turnover/import", {
         method: "POST",
@@ -562,30 +574,34 @@ export default function TurnoverPage() {
                         <thead className="sticky top-0 bg-card z-10">
                           <tr className="border-b border-border">
                             <th className="text-left p-2 text-xs font-medium text-muted-foreground">#</th>
-                            <th className="text-left p-2 text-xs font-medium text-muted-foreground">Reel</th>
-                            <th className="text-left p-2 text-xs font-medium text-muted-foreground">Clip Name</th>
-                            <th className="text-left p-2 text-xs font-medium text-muted-foreground">Edit</th>
-                            <th className="text-left p-2 text-xs font-medium text-muted-foreground">Src In</th>
-                            <th className="text-left p-2 text-xs font-medium text-muted-foreground">Src Out</th>
+                            <th className="text-left p-2 text-xs font-medium text-muted-foreground">Shot Code</th>
                             <th className="text-left p-2 text-xs font-medium text-muted-foreground">Rec In</th>
                             <th className="text-left p-2 text-xs font-medium text-muted-foreground">Rec Out</th>
                             <th className="text-right p-2 text-xs font-medium text-muted-foreground">Dur</th>
+                            <th className="text-left p-2 text-xs font-medium text-muted-foreground min-w-[250px]">VFX Notes</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {videoEvents.map((event, i) => (
-                            <tr key={i} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
-                              <td className="p-2 font-mono text-xs text-muted-foreground">{String(event.eventNumber).padStart(3, '0')}</td>
-                              <td className="p-2 font-mono text-xs font-medium">{event.reelName}</td>
-                              <td className="p-2">{event.clipName ? <span className="text-xs">{event.clipName}</span> : <span className="text-xs text-muted-foreground italic">—</span>}</td>
-                              <td className="p-2"><Badge variant="outline" className="text-[10px] font-mono">{event.editType}{event.transitionDuration ? ` ${event.transitionDuration}` : ''}</Badge></td>
-                              <td className="p-2 font-mono text-xs">{event.sourceIn}</td>
-                              <td className="p-2 font-mono text-xs">{event.sourceOut}</td>
-                              <td className="p-2 font-mono text-xs">{event.recordIn}</td>
-                              <td className="p-2 font-mono text-xs">{event.recordOut}</td>
-                              <td className="p-2 font-mono text-xs text-right">{event.durationFrames}f</td>
-                            </tr>
-                          ))}
+                          {videoEvents.map((event, i) => {
+                            const shotCode = event.clipName || event.reelName || `SHOT_${String(i + 1).padStart(3, "0")}`;
+                            return (
+                              <tr key={i} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                                <td className="p-2 font-mono text-xs text-muted-foreground">{String(event.eventNumber).padStart(3, '0')}</td>
+                                <td className="p-2 font-mono text-xs font-medium">{shotCode}</td>
+                                <td className="p-2 font-mono text-xs">{event.recordIn}</td>
+                                <td className="p-2 font-mono text-xs">{event.recordOut}</td>
+                                <td className="p-2 font-mono text-xs text-right">{event.durationFrames}f</td>
+                                <td className="p-2">
+                                  <Input
+                                    placeholder="Enter VFX description..."
+                                    className="h-7 text-xs"
+                                    value={shotNotes[shotCode] || ""}
+                                    onChange={(e) => updateShotNote(shotCode, e.target.value)}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>

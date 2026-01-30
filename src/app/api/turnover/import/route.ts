@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
         recordIn?: string;
         recordOut?: string;
         durationFrames?: number;
+        vfxNotes?: string | null;
       }>;
       uploadedFiles: UploadedFile[];
     };
@@ -85,6 +86,7 @@ export async function POST(request: NextRequest) {
           complexity: "MEDIUM",
           frame_start: shot.sourceIn ? parseTimecodeToFrames(shot.sourceIn) : null,
           frame_end: shot.sourceOut ? parseTimecodeToFrames(shot.sourceOut) : null,
+          notes: shot.vfxNotes || null, // VFX description from turnover
         })
         .select()
         .single();
