@@ -94,113 +94,195 @@ export function ShotCountSheet({
     try {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
       
       // Header bar
       doc.setFillColor(88, 28, 135); // Purple
-      doc.rect(0, 0, pageWidth, 25, 'F');
+      doc.rect(0, 0, pageWidth, 28, 'F');
       
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(14);
+      doc.setFontSize(11);
       doc.setFont("helvetica", "italic");
-      doc.text(projectName, 14, 12);
+      doc.text(projectName, margin, 10);
       
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(12);
-      doc.text(`VFX # ${shot.code}`, 14, 20);
+      doc.setFontSize(16);
+      doc.text(`VFX # ${shot.code}`, margin, 22);
       
       // TO info on right
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
-      if (turnoverNumber) doc.text(`TO # ${turnoverNumber}`, pageWidth - 60, 12);
-      if (turnoverDate) doc.text(`TO Date: ${turnoverDate}`, pageWidth - 60, 20);
+      doc.text(`TO # ${turnoverNumber || "—"}`, pageWidth - 50, 10, { align: "right" });
+      doc.text(`${turnoverDate || "—"}`, pageWidth - 50, 18, { align: "right" });
 
       // Reset text color
       doc.setTextColor(0, 0, 0);
       
-      // Metadata section
-      let y = 35;
-      doc.setFontSize(9);
+      // Main info box
+      let y = 38;
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.3);
+      doc.rect(margin, y - 5, pageWidth - margin * 2, 52);
       
-      const metaRows = [
-        [{ label: "Vendor", value: vendor || "—" }, { label: "Sequence", value: sequenceName }],
-        [{ label: "Scene #", value: sceneNumber || "—" }, { label: "Reel #", value: reelNumber || "—" }],
-        [{ label: "Comp Length", value: `${compLength}` }, { label: "Cut Length", value: `${cutLength}` }],
-        [{ label: "Handles", value: `${handleHead} + ${handleTail}` }, { label: "Location", value: location || "—" }],
+      // Metadata grid - 4 columns
+      doc.setFontSize(8);
+      const col1 = margin + 3;
+      const col2 = 55;
+      const col3 = 110;
+      const col4 = 155;
+      
+      const metaData = [
+        { x: col1, label: "Vendor", value: vendor || "—" },
+        { x: col2, label: "Sequence", value: sequenceName },
+        { x: col3, label: "Scene #", value: sceneNumber || "—" },
+        { x: col4, label: "Reel #", value: reelNumber || "—" },
       ];
-
-      metaRows.forEach(row => {
-        doc.setFont("helvetica", "bold");
-        doc.text(`${row[0].label}:`, 14, y);
+      
+      metaData.forEach(item => {
         doc.setFont("helvetica", "normal");
-        doc.text(row[0].value, 45, y);
-        
+        doc.setTextColor(120, 120, 120);
+        doc.text(item.label, item.x, y);
+        doc.setTextColor(0, 0, 0);
         doc.setFont("helvetica", "bold");
-        doc.text(`${row[1].label}:`, 110, y);
-        doc.setFont("helvetica", "normal");
-        doc.text(row[1].value, 145, y);
-        y += 8;
+        doc.text(item.value, item.x, y + 5);
       });
-
+      
+      y += 15;
+      
+      // Frame counts row - prominent
+      doc.setFillColor(245, 245, 245);
+      doc.rect(margin + 1, y - 3, pageWidth - margin * 2 - 2, 14, 'F');
+      
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(120, 120, 120);
+      doc.text("Comp Length", col1, y + 2);
+      doc.text("Cut Length", col2, y + 2);
+      doc.text("Handles", col3, y + 2);
+      doc.text("Location", col4, y + 2);
+      
+      doc.setTextColor(88, 28, 135);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text(`${compLength}`, col1, y + 10);
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(12);
+      doc.text(`${cutLength}`, col2, y + 10);
+      doc.setFontSize(10);
+      doc.text(`${handleHead} + ${handleTail}`, col3, y + 10);
+      doc.setFont("helvetica", "normal");
+      doc.text(location || "—", col4, y + 10);
+      
+      y += 20;
+      
       // Shot Action
-      if (shotAction || shot.description) {
-        y += 5;
-        doc.setFont("helvetica", "bold");
-        doc.text("Shot Action:", 14, y);
-        doc.setFont("helvetica", "normal");
-        doc.text(shotAction || shot.description || "", 50, y);
-      }
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text("Shot Action", col1, y);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.text(shotAction || shot.description || "—", col1, y + 5);
 
       // VFX Summary section
-      y += 15;
+      y += 20;
       doc.setFillColor(88, 28, 135);
-      doc.rect(14, y - 5, pageWidth - 28, 8, 'F');
+      doc.rect(margin, y, pageWidth - margin * 2, 8, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
-      doc.text("VFX Summary", 18, y);
+      doc.setFontSize(9);
+      doc.text("VFX SUMMARY", margin + 3, y + 5.5);
       doc.setTextColor(0, 0, 0);
       
+      // VFX notes box
       y += 10;
+      doc.setDrawColor(200, 200, 200);
+      doc.rect(margin, y, pageWidth - margin * 2, 30);
+      
       doc.setFont("helvetica", "normal");
-      const vfxText = vfxSummary || shot.notes || "No VFX notes";
-      const splitVfx = doc.splitTextToSize(vfxText, pageWidth - 28);
-      doc.text(splitVfx, 14, y);
-      y += splitVfx.length * 5 + 5;
-
-      // Opticals if present
-      if (opticals) {
-        doc.setFont("helvetica", "bold");
-        doc.text("Opticals:", 14, y);
+      doc.setFontSize(10);
+      const vfxText = vfxSummary || shot.notes || "No VFX notes provided";
+      const splitVfx = doc.splitTextToSize(vfxText, pageWidth - margin * 2 - 6);
+      doc.text(splitVfx, margin + 3, y + 6);
+      
+      // Opticals/Complexity sidebar
+      if (opticals || shot.complexity) {
+        const sideX = pageWidth - 55;
+        doc.setDrawColor(200, 200, 200);
+        doc.line(sideX, y, sideX, y + 30);
+        doc.setFontSize(7);
+        doc.setTextColor(120, 120, 120);
+        if (opticals) {
+          doc.text("Opticals", sideX + 3, y + 6);
+          doc.setTextColor(0, 0, 0);
+          doc.setFont("helvetica", "bold");
+          doc.text(opticals, sideX + 3, y + 11);
+        }
         doc.setFont("helvetica", "normal");
-        doc.text(opticals, 45, y);
-        y += 10;
+        doc.setTextColor(120, 120, 120);
+        doc.text("Complexity", sideX + 3, y + 18);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont("helvetica", "bold");
+        doc.text(shot.complexity, sideX + 3, y + 23);
       }
 
-      // Frame details box
-      y += 10;
-      doc.setDrawColor(150);
-      doc.setLineWidth(0.3);
-      doc.rect(14, y, pageWidth - 28, 35);
+      // Frame Details section
+      y += 38;
+      doc.setFillColor(250, 250, 250);
+      doc.rect(margin, y, pageWidth - margin * 2, 35, 'F');
+      doc.setDrawColor(200, 200, 200);
+      doc.rect(margin, y, pageWidth - margin * 2, 35);
       
-      y += 8;
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(10);
-      doc.text("Frame Details", 18, y);
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text("FRAME DETAILS", margin + 3, y + 5);
+      doc.setFontSize(7);
+      doc.text(`@ ${frameRate} fps`, pageWidth - margin - 20, y + 5);
       
-      y += 10;
-      doc.setFontSize(9);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Frame In: ${frameIn}`, 18, y);
-      doc.text(`TC In: ${framesToTC(frameIn)}`, 80, y);
-      y += 7;
-      doc.text(`Frame Out: ${frameOut}`, 18, y);
-      doc.text(`TC Out: ${framesToTC(frameOut)}`, 80, y);
-      y += 7;
-      doc.text(`Duration: ${cutLength}f (${cutSeconds.toFixed(2)}s) + ${handleHead + handleTail}f handles = ${compLength}f total`, 18, y);
+      // Frame boxes
+      const boxY = y + 10;
+      const boxW = 40;
+      const boxH = 20;
+      const boxes = [
+        { x: margin + 5, label: "Frame In", value: frameIn.toString(), sub: framesToTC(frameIn) },
+        { x: margin + 50, label: "Frame Out", value: frameOut.toString(), sub: framesToTC(frameOut) },
+        { x: margin + 95, label: "Cut", value: `${cutLength}f`, sub: `${cutSeconds.toFixed(2)}s` },
+        { x: margin + 140, label: "Total Comp", value: `${compLength}f`, sub: `${compSeconds.toFixed(2)}s`, highlight: true },
+      ];
+      
+      boxes.forEach(box => {
+        if (box.highlight) {
+          doc.setFillColor(88, 28, 135);
+          doc.roundedRect(box.x, boxY, boxW, boxH, 2, 2, 'F');
+          doc.setTextColor(255, 255, 255);
+        } else {
+          doc.setFillColor(255, 255, 255);
+          doc.setDrawColor(200, 200, 200);
+          doc.roundedRect(box.x, boxY, boxW, boxH, 2, 2, 'FD');
+          doc.setTextColor(120, 120, 120);
+        }
+        
+        doc.setFontSize(6);
+        doc.setFont("helvetica", "normal");
+        doc.text(box.label, box.x + boxW/2, boxY + 4, { align: "center" });
+        
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        if (!box.highlight) doc.setTextColor(0, 0, 0);
+        doc.text(box.value, box.x + boxW/2, boxY + 12, { align: "center" });
+        
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(7);
+        if (!box.highlight) doc.setTextColor(120, 120, 120);
+        doc.text(box.sub, box.x + boxW/2, boxY + 17, { align: "center" });
+      });
 
       // Footer
-      doc.setFontSize(8);
-      doc.setTextColor(128);
-      doc.text(`Generated: ${new Date().toLocaleString()} | ${frameRate}fps`, 14, 285);
+      doc.setFontSize(7);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, margin, 290);
+      doc.text(`${projectCode} / ${sequenceCode} / ${shot.code}`, pageWidth - margin, 290, { align: "right" });
 
       doc.save(`${shot.code}_count_sheet.pdf`);
     } catch (error) {
