@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { mockProjects, mockSequences } from "@/lib/mock-data";
 import { parseEDL, getVideoEvents, type EDLParseResult } from "@/lib/edl-parser";
 import { parseAleFile, getClipName, isCircled, getSceneTake, parseAscSop, parseAscSat, type AleParseResult } from "@/lib/ale-parser";
-import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2 } from "lucide-react";
+import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface TurnoverFile {
@@ -145,6 +145,74 @@ export default function TurnoverPage() {
   };
 
   const videoEvents = parseResult ? getVideoEvents(parseResult) : [];
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  const handleEdlImport = useCallback(async () => {
+    if (videoEvents.length === 0) return;
+    
+    setImporting(true);
+    setImportError(null);
+
+    try {
+      const formData = new FormData();
+      
+      // Get real project ID from mock data for now
+      const project = mockProjects.find(p => p.id === selectedProject);
+      formData.append("projectId", project?.id || selectedProject);
+      
+      if (selectedSequence !== "new") {
+        formData.append("sequenceId", selectedSequence);
+      }
+      
+      // Use EDL title or filename as sequence name
+      const seqName = parseResult?.title || edlFileName.replace(/\.edl$/i, "");
+      formData.append("sequenceName", seqName);
+      formData.append("sequenceCode", seqName.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase().slice(0, 20));
+
+      // Build shots from EDL events
+      const shots = videoEvents.map((event, idx) => ({
+        code: event.clipName || event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`,
+        clipName: event.clipName,
+        sourceIn: event.sourceIn,
+        sourceOut: event.sourceOut,
+        recordIn: event.recordIn,
+        recordOut: event.recordOut,
+        durationFrames: event.durationFrames,
+      }));
+      formData.append("shots", JSON.stringify(shots));
+
+      // Add ref files
+      for (const f of refFiles) {
+        formData.append("refs", f.file);
+      }
+
+      // Add plate files
+      for (const f of plateFiles) {
+        formData.append("plates", f.file);
+      }
+
+      const response = await fetch("/api/turnover/import", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Import failed");
+      }
+
+      const result = await response.json();
+      console.log("Import result:", result);
+      
+      setEdlImported(true);
+    } catch (err) {
+      console.error("Import error:", err);
+      setImportError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }, [videoEvents, selectedProject, selectedSequence, parseResult, edlFileName, refFiles, plateFiles]);
 
   const handleAleImport = () => {
     // In production: save to shot_metadata + shot_cdls via Supabase
@@ -340,8 +408,15 @@ export default function TurnoverPage() {
                     </div>
                     {parseResult.fcm !== 'UNKNOWN' && <Badge variant="outline" className="text-xs">{parseResult.fcm === 'DROP_FRAME' ? 'Drop Frame' : 'Non-Drop Frame'}</Badge>}
                     {videoEvents.length > 0 && !edlImported && (
-                      <Button className="w-full" onClick={() => setEdlImported(true)}><Check className="h-4 w-4 mr-2" />Import {videoEvents.length} Video Shots</Button>
+                      <Button className="w-full" onClick={handleEdlImport} disabled={importing}>
+                        {importing ? (
+                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing...</>
+                        ) : (
+                          <><Check className="h-4 w-4 mr-2" />Import {videoEvents.length} Shot{videoEvents.length !== 1 ? 's' : ''} + {refFiles.length} Refs + {plateFiles.length} Plates</>
+                        )}
+                      </Button>
                     )}
+                    {importError && <div className="flex items-center gap-2 text-red-400 text-sm"><AlertCircle className="h-4 w-4" />{importError}</div>}
                     {edlImported && <div className="flex items-center justify-center gap-2 py-2"><Badge className="bg-green-600 text-white border-0"><Check className="h-3 w-3 mr-1" />Imported Successfully</Badge></div>}
                   </CardContent>
                 </Card>
