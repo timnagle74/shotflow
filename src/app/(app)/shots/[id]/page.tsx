@@ -423,7 +423,11 @@ export default function ShotDetailPage() {
           <ShotCountSheet
             shot={shot}
             sequenceName={sequence?.name || ""}
+            sequenceCode={sequence?.code || ""}
             projectName={project?.name || ""}
+            projectCode={project?.code || ""}
+            shotAction={shot.description || undefined}
+            vfxSummary={shot.notes || undefined}
           />
 
           {/* Assignment Card */}
