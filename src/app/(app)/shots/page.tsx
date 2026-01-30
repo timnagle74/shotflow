@@ -13,6 +13,7 @@ import { LayoutGrid, List, Search, Clock, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useSearchParams } from "next/navigation";
+import { CountSheetExport } from "@/components/count-sheet-export";
 import type { ShotStatus } from "@/lib/database.types";
 import {
   DndContext,
@@ -60,12 +61,18 @@ interface Shot {
   frame_start: number | null;
   frame_end: number | null;
   sequence_id: string;
+  notes: string | null;
+  ref_video_id: string | null;
+  ref_filename: string | null;
 }
 
 interface EnrichedShot extends Shot {
   assignedTo: UserProfile | null;
   sequence: Sequence | null;
   versionCount: number;
+  notes: string | null;
+  ref_video_id: string | null;
+  ref_filename: string | null;
 }
 
 // Droppable column wrapper
@@ -341,16 +348,37 @@ function ShotsPageContent() {
           <h1 className="text-3xl font-bold tracking-tight">Shots Board</h1>
           <p className="text-muted-foreground mt-1">Track and manage shots across sequences</p>
         </div>
-        <Select value={selectedProject} onValueChange={setSelectedProject}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="Select project" />
-          </SelectTrigger>
-          <SelectContent>
-            {projects.map(p => (
-              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-3">
+          <CountSheetExport 
+            shots={filteredShots.map(s => ({
+              id: s.id,
+              code: s.code,
+              description: s.description,
+              status: s.status,
+              complexity: s.complexity,
+              frame_start: s.frame_start,
+              frame_end: s.frame_end,
+              notes: s.notes,
+              ref_video_id: s.ref_video_id,
+              ref_filename: s.ref_filename,
+            }))}
+            sequenceName={filterSequence !== "all" 
+              ? projectSequences.find(s => s.id === filterSequence)?.name || "All Sequences"
+              : "All Sequences"
+            }
+            projectName={projects.find(p => p.id === selectedProject)?.name || "Project"}
+          />
+          <Select value={selectedProject} onValueChange={setSelectedProject}>
+            <SelectTrigger className="w-48">
+              <SelectValue placeholder="Select project" />
+            </SelectTrigger>
+            <SelectContent>
+              {projects.map(p => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Filters */}
