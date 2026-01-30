@@ -9,8 +9,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { mockProjects, mockSequences } from "@/lib/mock-data";
 import { parseEDL, getVideoEvents, type EDLParseResult } from "@/lib/edl-parser";
 import { parseAleFile, getClipName, isCircled, getSceneTake, parseAscSop, parseAscSat, type AleParseResult } from "@/lib/ale-parser";
-import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database } from "lucide-react";
+import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface TurnoverFile {
+  id: string;
+  file: File;
+  type: 'ref' | 'plate';
+  description?: string;
+  matchedShot?: string; // Shot code this file matches to
+}
 
 export default function TurnoverPage() {
   const [selectedProject, setSelectedProject] = useState("p1");
@@ -29,6 +37,13 @@ export default function TurnoverPage() {
   const [aleImported, setAleImported] = useState(false);
   const [aleDragOver, setAleDragOver] = useState(false);
   const aleFileRef = useRef<HTMLInputElement>(null);
+
+  // Turnover files (refs + plates)
+  const [turnoverFiles, setTurnoverFiles] = useState<TurnoverFile[]>([]);
+  const [refDragOver, setRefDragOver] = useState(false);
+  const [plateDragOver, setPlateDragOver] = useState(false);
+  const refFileRef = useRef<HTMLInputElement>(null);
+  const plateFileRef = useRef<HTMLInputElement>(null);
 
   const projectSequences = mockSequences.filter(s => s.projectId === selectedProject);
 
@@ -70,6 +85,65 @@ export default function TurnoverPage() {
   const clearEdl = () => { setEdlFileName(""); setParseResult(null); setEdlImported(false); if (edlFileRef.current) edlFileRef.current.value = ""; };
   const clearAle = () => { setAleFileName(""); setAleResult(null); setAleImported(false); if (aleFileRef.current) aleFileRef.current.value = ""; };
 
+  // Ref/Plate handlers
+  const handleRefFiles = useCallback((files: FileList | File[]) => {
+    const newFiles: TurnoverFile[] = Array.from(files).map(file => ({
+      id: crypto.randomUUID(),
+      file,
+      type: 'ref' as const,
+    }));
+    setTurnoverFiles(prev => [...prev, ...newFiles]);
+  }, []);
+
+  const handlePlateFiles = useCallback((files: FileList | File[]) => {
+    const newFiles: TurnoverFile[] = Array.from(files).map(file => ({
+      id: crypto.randomUUID(),
+      file,
+      type: 'plate' as const,
+    }));
+    setTurnoverFiles(prev => [...prev, ...newFiles]);
+  }, []);
+
+  const handleRefUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) handleRefFiles(e.target.files);
+    if (refFileRef.current) refFileRef.current.value = "";
+  }, [handleRefFiles]);
+
+  const handlePlateUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) handlePlateFiles(e.target.files);
+    if (plateFileRef.current) plateFileRef.current.value = "";
+  }, [handlePlateFiles]);
+
+  const handleRefDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setRefDragOver(false);
+    if (e.dataTransfer.files) handleRefFiles(e.dataTransfer.files);
+  }, [handleRefFiles]);
+
+  const handlePlateDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setPlateDragOver(false);
+    if (e.dataTransfer.files) handlePlateFiles(e.dataTransfer.files);
+  }, [handlePlateFiles]);
+
+  const removeFile = useCallback((id: string) => {
+    setTurnoverFiles(prev => prev.filter(f => f.id !== id));
+  }, []);
+
+  const updateFileDescription = useCallback((id: string, description: string) => {
+    setTurnoverFiles(prev => prev.map(f => f.id === id ? { ...f, description } : f));
+  }, []);
+
+  const refFiles = turnoverFiles.filter(f => f.type === 'ref');
+  const plateFiles = turnoverFiles.filter(f => f.type === 'plate');
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
   const videoEvents = parseResult ? getVideoEvents(parseResult) : [];
 
   const handleAleImport = () => {
@@ -108,6 +182,99 @@ export default function TurnoverPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Source Materials Upload */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Reference Clips */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Video className="h-4 w-4" />
+              Reference Clips
+              {refFiles.length > 0 && <Badge variant="secondary" className="ml-auto">{refFiles.length}</Badge>}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div
+              className={cn("relative", refDragOver && "ring-2 ring-primary ring-offset-2 ring-offset-background rounded-lg")}
+              onDrop={handleRefDrop}
+              onDragOver={(e) => { e.preventDefault(); setRefDragOver(true); }}
+              onDragLeave={() => setRefDragOver(false)}
+            >
+              <label className={cn(
+                "flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+                refDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+              )}>
+                <Upload className="h-6 w-6 text-muted-foreground mb-1" />
+                <span className="text-xs text-muted-foreground">Drop reference clips here</span>
+                <span className="text-[10px] text-muted-foreground/60">Shows shots in sequence context</span>
+                <input ref={refFileRef} type="file" accept=".mov,.mp4,.mxf,.m4v" multiple className="hidden" onChange={handleRefUpload} />
+              </label>
+            </div>
+            {refFiles.length > 0 && (
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                {refFiles.map(f => (
+                  <div key={f.id} className="flex items-center gap-2 p-2 bg-muted/30 rounded-md group">
+                    <Film className="h-4 w-4 text-blue-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{f.file.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{formatFileSize(f.file.size)}</p>
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => removeFile(f.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Source Plates */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <FolderOpen className="h-4 w-4" />
+              Source Plates
+              {plateFiles.length > 0 && <Badge variant="secondary" className="ml-auto">{plateFiles.length}</Badge>}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div
+              className={cn("relative", plateDragOver && "ring-2 ring-primary ring-offset-2 ring-offset-background rounded-lg")}
+              onDrop={handlePlateDrop}
+              onDragOver={(e) => { e.preventDefault(); setPlateDragOver(true); }}
+              onDragLeave={() => setPlateDragOver(false)}
+            >
+              <label className={cn(
+                "flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+                plateDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+              )}>
+                <Upload className="h-6 w-6 text-muted-foreground mb-1" />
+                <span className="text-xs text-muted-foreground">Drop source plates here</span>
+                <span className="text-[10px] text-muted-foreground/60">Clean plates, hero plates, BG elements</span>
+                <input ref={plateFileRef} type="file" accept=".mov,.mp4,.mxf,.exr,.dpx,.tif,.tiff" multiple className="hidden" onChange={handlePlateUpload} />
+              </label>
+            </div>
+            {plateFiles.length > 0 && (
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+                {plateFiles.map(f => (
+                  <div key={f.id} className="flex items-center gap-2 p-2 bg-muted/30 rounded-md group">
+                    <Film className="h-4 w-4 text-amber-400 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{f.file.name}</p>
+                      <p className="text-[10px] text-muted-foreground">{formatFileSize(f.file.size)}</p>
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => removeFile(f.id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Tabs defaultValue="edl">
         <TabsList>
