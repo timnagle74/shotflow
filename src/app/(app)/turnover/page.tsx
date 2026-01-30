@@ -1,28 +1,83 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { mockProjects, mockSequences } from "@/lib/mock-data";
 import { parseEDL, getVideoEvents, type EDLParseResult } from "@/lib/edl-parser";
 import { parseAleFile, getClipName, isCircled, getSceneTake, parseAscSop, parseAscSat, type AleParseResult } from "@/lib/ale-parser";
 import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 
 interface TurnoverFile {
   id: string;
   file: File;
   type: 'ref' | 'plate';
   description?: string;
-  matchedShot?: string; // Shot code this file matches to
+  matchedShot?: string;
+}
+
+interface Project {
+  id: string;
+  name: string;
+  code: string;
+}
+
+interface Sequence {
+  id: string;
+  project_id: string;
+  name: string;
+  code: string;
 }
 
 export default function TurnoverPage() {
-  const [selectedProject, setSelectedProject] = useState("p1");
+  // Data from Supabase
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [sequences, setSequences] = useState<Sequence[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+
+  const [selectedProject, setSelectedProject] = useState("");
   const [selectedSequence, setSelectedSequence] = useState("new");
+
+  // Load projects and sequences from Supabase
+  useEffect(() => {
+    async function loadData() {
+      if (!supabase) {
+        setLoadingData(false);
+        return;
+      }
+
+      try {
+        const { data: projectsData } = await supabase
+          .from("projects")
+          .select("id, name, code")
+          .order("name") as { data: Project[] | null };
+
+        if (projectsData && projectsData.length > 0) {
+          setProjects(projectsData);
+          setSelectedProject(projectsData[0].id);
+        }
+
+        const { data: sequencesData } = await supabase
+          .from("sequences")
+          .select("id, project_id, name, code")
+          .order("name") as { data: Sequence[] | null };
+
+        if (sequencesData) {
+          setSequences(sequencesData);
+        }
+      } catch (err) {
+        console.error("Failed to load data:", err);
+      }
+
+      setLoadingData(false);
+    }
+
+    loadData();
+  }, []);
 
   // EDL state
   const [parseResult, setParseResult] = useState<EDLParseResult | null>(null);
@@ -45,7 +100,7 @@ export default function TurnoverPage() {
   const refFileRef = useRef<HTMLInputElement>(null);
   const plateFileRef = useRef<HTMLInputElement>(null);
 
-  const projectSequences = mockSequences.filter(s => s.projectId === selectedProject);
+  const projectSequences = sequences.filter(s => s.project_id === selectedProject);
 
   // EDL handlers
   const handleEdlFile = useCallback((file: File) => {
@@ -158,8 +213,7 @@ export default function TurnoverPage() {
     setImportStatus("Preparing...");
 
     try {
-      const project = mockProjects.find(p => p.id === selectedProject);
-      const projectId = project?.id || selectedProject;
+      const projectId = selectedProject;
       
       // Build file list for upload preparation
       const allFiles = [
@@ -288,7 +342,7 @@ export default function TurnoverPage() {
             <label className="text-sm font-medium">Target Project</label>
             <Select value={selectedProject} onValueChange={(v) => { setSelectedProject(v); setSelectedSequence("new"); }}>
               <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
-              <SelectContent>{mockProjects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+              <SelectContent>{projects.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
             </Select>
           </div>
           <div className="min-w-[200px]">
