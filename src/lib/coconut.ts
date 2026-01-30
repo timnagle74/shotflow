@@ -6,6 +6,10 @@
 const COCONUT_API_KEY = process.env.COCONUT_API_KEY;
 const COCONUT_API_URL = 'https://api.coconut.co/v2/jobs';
 
+// Bunny Storage for transcoded outputs
+const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
+const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
+
 export interface CoconutOutput {
   key: string;
   type: string;
@@ -32,12 +36,12 @@ export interface CoconutJobResponse {
  * Check if Coconut is configured
  */
 export function isCoconutConfigured(): boolean {
-  return !!COCONUT_API_KEY;
+  return !!COCONUT_API_KEY && !!BUNNY_STORAGE_ZONE && !!BUNNY_STORAGE_PASSWORD;
 }
 
 /**
- * Create a transcoding job that outputs to Coconut's temp storage
- * The webhook will receive the output URL when complete
+ * Create a transcoding job that outputs to Bunny Storage via FTP
+ * The webhook will receive notification when complete
  */
 export async function createTranscodeJob(
   sourceUrl: string,
@@ -47,13 +51,17 @@ export async function createTranscodeJob(
   if (!COCONUT_API_KEY) {
     throw new Error('Coconut API key not configured');
   }
+  if (!BUNNY_STORAGE_ZONE || !BUNNY_STORAGE_PASSWORD) {
+    throw new Error('Bunny Storage not configured for Coconut output');
+  }
 
   const job = {
     input: {
       url: sourceUrl,
     },
     storage: {
-      service: 'coconut', // Use Coconut's temp storage - 24h expiry
+      // Output to Bunny Storage via FTP
+      url: `ftp://${BUNNY_STORAGE_ZONE}:${BUNNY_STORAGE_PASSWORD}@storage.bunnycdn.com/transcoded`,
     },
     notification: {
       type: 'http',
