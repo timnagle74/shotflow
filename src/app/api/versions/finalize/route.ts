@@ -59,6 +59,15 @@ export async function POST(request: NextRequest) {
     const versionStr = `v${String(versionNumber).padStart(3, '0')}`;
     const title = `${shot?.code || 'shot'}_${versionStr}`;
 
+    // Debug logging for transcoding setup
+    console.log('Transcode check:', {
+      hasStoragePath: !!storagePath,
+      storagePath,
+      isCoconutConfigured: isCoconutConfigured(),
+      hasCdnUrl: !!BUNNY_STORAGE_CDN_URL,
+      cdnUrl: BUNNY_STORAGE_CDN_URL,
+    });
+
     // If we have a storage path and transcoding is configured, set it up
     if (storagePath && isCoconutConfigured() && BUNNY_STORAGE_CDN_URL) {
       try {

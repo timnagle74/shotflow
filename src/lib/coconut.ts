@@ -36,7 +36,14 @@ export interface CoconutJobResponse {
  * Check if Coconut is configured
  */
 export function isCoconutConfigured(): boolean {
-  return !!COCONUT_API_KEY && !!BUNNY_STORAGE_ZONE && !!BUNNY_STORAGE_PASSWORD;
+  const configured = !!COCONUT_API_KEY && !!BUNNY_STORAGE_ZONE && !!BUNNY_STORAGE_PASSWORD;
+  console.log('isCoconutConfigured:', {
+    configured,
+    hasApiKey: !!COCONUT_API_KEY,
+    hasStorageZone: !!BUNNY_STORAGE_ZONE,
+    hasStoragePassword: !!BUNNY_STORAGE_PASSWORD,
+  });
+  return configured;
 }
 
 /**
