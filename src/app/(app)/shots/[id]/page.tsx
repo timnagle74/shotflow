@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
 import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
 import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download, Play, Video, FolderOpen } from "lucide-react";
@@ -66,6 +67,8 @@ interface ShotPlate {
   file_size: number | null;
   sort_order: number;
   created_at: string;
+  video_id: string | null;
+  preview_url: string | null;
 }
 
 interface Sequence {
@@ -129,6 +132,8 @@ export default function ShotDetailPage() {
   const [selectedVersion, setSelectedVersion] = useState<string>("");
   const [updating, setUpdating] = useState(false);
   const [noteText, setNoteText] = useState("");
+  const [playerSource, setPlayerSource] = useState<'version' | 'ref' | 'plate'>('version');
+  const [selectedPlateId, setSelectedPlateId] = useState<string | null>(null);
 
   // Fetch all data
   useEffect(() => {
@@ -545,12 +550,36 @@ export default function ShotDetailPage() {
                   )}
                 </CardTitle>
                 <div className="flex items-center gap-2">
+                  {/* Source toggle */}
+                  <ToggleGroup 
+                    type="single" 
+                    value={playerSource} 
+                    onValueChange={(v) => v && setPlayerSource(v as 'version' | 'ref' | 'plate')}
+                    className="h-8"
+                  >
+                    <ToggleGroupItem value="version" className="text-xs px-2 h-7">Version</ToggleGroupItem>
+                    <ToggleGroupItem value="ref" className="text-xs px-2 h-7" disabled={!shot.ref_preview_url}>Ref</ToggleGroupItem>
+                    <ToggleGroupItem value="plate" className="text-xs px-2 h-7" disabled={plates.length === 0}>Plates</ToggleGroupItem>
+                  </ToggleGroup>
+                  {/* Plate selector when in plate mode */}
+                  {playerSource === 'plate' && plates.length > 0 && (
+                    <Select value={selectedPlateId || plates[0]?.id} onValueChange={setSelectedPlateId}>
+                      <SelectTrigger className="h-7 w-[140px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {plates.map((p) => (
+                          <SelectItem key={p.id} value={p.id} className="text-xs">{p.filename}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   {/* Video transcoding status */}
-                  {selectedVersion && selectedVersionData?.bunny_video_id && (
+                  {selectedVersion && selectedVersionData?.bunny_video_id && playerSource === 'version' && (
                     <VideoStatusBadge versionId={selectedVersion} />
                   )}
                   {/* ProRes download button */}
-                  {selectedVersion && selectedVersionData?.download_url && (
+                  {selectedVersion && selectedVersionData?.download_url && playerSource === 'version' && (
                     <DownloadButton 
                       versionId={selectedVersion} 
                       filename={`${shot.code}_v${String(selectedVersionData.version_number).padStart(3, '0')}.mov`}
@@ -560,16 +589,56 @@ export default function ShotDetailPage() {
               </div>
             </CardHeader>
             <CardContent className="pt-0">
-              <VideoPlayer
-                shotCode={shot.code}
-                projectName={project?.name || "Project"}
-                frameRate={24}
-                frameStart={shot.frame_start || 1001}
-                showBurnInControls={true}
-                showAspectRatioControls={true}
-                hlsUrl={selectedVersionData?.preview_url || undefined}
-                poster={selectedVersionData?.thumbnail_path || undefined}
-              />
+              {(() => {
+                // Determine which URL to play based on source toggle
+                let hlsUrl: string | undefined;
+                let sourceLabel = "";
+                
+                if (playerSource === 'version') {
+                  hlsUrl = selectedVersionData?.preview_url || undefined;
+                  sourceLabel = selectedVersionData ? `v${String(selectedVersionData.version_number).padStart(3, "0")}` : "";
+                } else if (playerSource === 'ref') {
+                  hlsUrl = shot.ref_preview_url || undefined;
+                  sourceLabel = "Reference";
+                } else if (playerSource === 'plate') {
+                  const selectedPlate = plates.find(p => p.id === (selectedPlateId || plates[0]?.id));
+                  hlsUrl = selectedPlate?.preview_url || undefined;
+                  sourceLabel = selectedPlate?.filename || "Plate";
+                }
+                
+                if (!hlsUrl) {
+                  return (
+                    <div className="aspect-video bg-muted/30 rounded-lg flex items-center justify-center">
+                      <div className="text-center text-muted-foreground">
+                        <Film className="h-12 w-12 mx-auto mb-2 opacity-30" />
+                        <p className="text-sm">
+                          {playerSource === 'version' && "No version preview available"}
+                          {playerSource === 'ref' && "No reference uploaded"}
+                          {playerSource === 'plate' && "No plate preview available"}
+                        </p>
+                        <p className="text-xs mt-1">
+                          {playerSource === 'version' && versions.length === 0 && "Upload a version to see it here"}
+                          {playerSource === 'ref' && "Upload a reference from turnover"}
+                          {playerSource === 'plate' && "Plates are transcoding or not uploaded"}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+                
+                return (
+                  <VideoPlayer
+                    shotCode={shot.code}
+                    projectName={project?.name || "Project"}
+                    frameRate={24}
+                    frameStart={shot.frame_start || 1001}
+                    showBurnInControls={true}
+                    showAspectRatioControls={true}
+                    hlsUrl={hlsUrl}
+                    poster={selectedVersionData?.thumbnail_path || undefined}
+                  />
+                );
+              })()}
             </CardContent>
           </Card>
 

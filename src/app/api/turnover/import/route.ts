@@ -163,6 +163,27 @@ export async function POST(request: NextRequest) {
           ref_preview_url: refPreviewUrl,
         })
         .eq("id", matchedShot.id);
+
+      // Create Version 0 (turnover) with ref as the preview
+      // This represents the original turnover element from editorial
+      await supabase
+        .from("versions")
+        .insert({
+          shot_id: matchedShot.id,
+          version_number: 0,
+          created_by_id: null, // System/turnover
+          status: "WIP",
+          description: "Turnover from editorial",
+          preview_url: refPreviewUrl,
+          download_url: ref.storagePath,
+          bunny_video_id: refVideoId,
+          // Store ref info on version too for the toggle
+          ref_filename: ref.originalName,
+          ref_storage_path: ref.storagePath,
+          ref_cdn_url: ref.cdnUrl,
+          ref_video_id: refVideoId,
+          ref_preview_url: refPreviewUrl,
+        });
     }
 
     // Process uploaded plates - create Bunny Stream entry + trigger transcoding
