@@ -84,6 +84,15 @@ export async function createTranscodeJob(
   // Coconut uses HTTP Basic Auth with API key as username
   const authString = Buffer.from(`${COCONUT_API_KEY}:`).toString('base64');
 
+  console.log('Coconut request:', {
+    url: COCONUT_API_URL,
+    apiKeyPrefix: COCONUT_API_KEY?.substring(0, 10) + '...',
+    authStringPrefix: authString.substring(0, 20) + '...',
+    sourceUrl,
+    outputPath,
+    webhookUrl,
+  });
+
   const response = await fetch(COCONUT_API_URL, {
     method: 'POST',
     headers: {
@@ -95,7 +104,7 @@ export async function createTranscodeJob(
 
   if (!response.ok) {
     const errorData = await response.json();
-    console.error('Coconut API error:', errorData);
+    console.error('Coconut API error:', errorData, 'Status:', response.status);
     throw new Error(`Coconut API error: ${errorData.message || response.status}`);
   }
 
