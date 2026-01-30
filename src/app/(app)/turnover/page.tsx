@@ -148,29 +148,84 @@ export default function TurnoverPage() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
+  const [importStatus, setImportStatus] = useState("");
+
   const handleEdlImport = useCallback(async () => {
     if (videoEvents.length === 0) return;
     
     setImporting(true);
     setImportError(null);
+    setImportStatus("Preparing...");
 
     try {
-      const formData = new FormData();
-      
-      // Get real project ID from mock data for now
       const project = mockProjects.find(p => p.id === selectedProject);
-      formData.append("projectId", project?.id || selectedProject);
+      const projectId = project?.id || selectedProject;
       
-      if (selectedSequence !== "new") {
-        formData.append("sequenceId", selectedSequence);
-      }
-      
-      // Use EDL title or filename as sequence name
-      const seqName = parseResult?.title || edlFileName.replace(/\.edl$/i, "");
-      formData.append("sequenceName", seqName);
-      formData.append("sequenceCode", seqName.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase().slice(0, 20));
+      // Build file list for upload preparation
+      const allFiles = [
+        ...refFiles.map(f => ({ name: f.file.name, type: 'ref' as const })),
+        ...plateFiles.map(f => ({ name: f.file.name, type: 'plate' as const })),
+      ];
 
-      // Build shots from EDL events
+      let uploadedFiles: Array<{
+        originalName: string;
+        type: 'ref' | 'plate';
+        storagePath: string;
+        cdnUrl: string;
+        fileSize: number;
+      }> = [];
+
+      // Upload files directly to Bunny if we have any
+      if (allFiles.length > 0) {
+        setImportStatus("Getting upload URLs...");
+        
+        const prepareRes = await fetch("/api/turnover/prepare-uploads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, files: allFiles }),
+        });
+
+        if (!prepareRes.ok) {
+          throw new Error("Failed to prepare uploads");
+        }
+
+        const { uploads } = await prepareRes.json();
+
+        // Upload each file directly to Bunny Storage
+        const allTurnoverFiles = [...refFiles, ...plateFiles];
+        for (let i = 0; i < uploads.length; i++) {
+          const config = uploads[i];
+          const turnoverFile = allTurnoverFiles.find(f => f.file.name === config.originalName);
+          if (!turnoverFile) continue;
+
+          setImportStatus(`Uploading ${i + 1}/${uploads.length}: ${config.originalName}`);
+
+          const uploadRes = await fetch(config.uploadUrl, {
+            method: "PUT",
+            headers: {
+              "AccessKey": config.accessKey,
+              "Content-Type": "application/octet-stream",
+            },
+            body: turnoverFile.file,
+          });
+
+          if (uploadRes.ok || uploadRes.status === 201) {
+            uploadedFiles.push({
+              originalName: config.originalName,
+              type: config.type,
+              storagePath: config.storagePath,
+              cdnUrl: config.cdnUrl,
+              fileSize: turnoverFile.file.size,
+            });
+          }
+        }
+      }
+
+      // Now call import with just metadata
+      setImportStatus("Creating shots...");
+      
+      const seqName = parseResult?.title || edlFileName.replace(/\.edl$/i, "");
+      
       const shots = videoEvents.map((event, idx) => ({
         code: event.clipName || event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`,
         clipName: event.clipName,
@@ -180,21 +235,18 @@ export default function TurnoverPage() {
         recordOut: event.recordOut,
         durationFrames: event.durationFrames,
       }));
-      formData.append("shots", JSON.stringify(shots));
-
-      // Add ref files
-      for (const f of refFiles) {
-        formData.append("refs", f.file);
-      }
-
-      // Add plate files
-      for (const f of plateFiles) {
-        formData.append("plates", f.file);
-      }
 
       const response = await fetch("/api/turnover/import", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          sequenceId: selectedSequence !== "new" ? selectedSequence : undefined,
+          sequenceName: seqName,
+          sequenceCode: seqName.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase().slice(0, 20),
+          shots,
+          uploadedFiles,
+        }),
       });
 
       if (!response.ok) {
@@ -205,6 +257,7 @@ export default function TurnoverPage() {
       const result = await response.json();
       console.log("Import result:", result);
       
+      setImportStatus(`Created ${result.shotsCreated} shot(s)`);
       setEdlImported(true);
     } catch (err) {
       console.error("Import error:", err);
@@ -410,7 +463,7 @@ export default function TurnoverPage() {
                     {videoEvents.length > 0 && !edlImported && (
                       <Button className="w-full" onClick={handleEdlImport} disabled={importing}>
                         {importing ? (
-                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing...</>
+                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{importStatus || "Importing..."}</>
                         ) : (
                           <><Check className="h-4 w-4 mr-2" />Import {videoEvents.length} Shot{videoEvents.length !== 1 ? 's' : ''} + {refFiles.length} Refs + {plateFiles.length} Plates</>
                         )}

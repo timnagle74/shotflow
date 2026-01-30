@@ -1,44 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { bunnyConfig } from "@/lib/bunny";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+interface UploadedFile {
+  originalName: string;
+  type: 'ref' | 'plate';
+  storagePath: string;
+  cdnUrl: string;
+  fileSize?: number;
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
+    const body = await request.json();
     
-    const projectId = formData.get("projectId") as string;
-    const sequenceId = formData.get("sequenceId") as string | null;
-    const sequenceName = formData.get("sequenceName") as string | null;
-    const sequenceCode = formData.get("sequenceCode") as string | null;
-    const shotsJson = formData.get("shots") as string;
+    const {
+      projectId,
+      sequenceId,
+      sequenceName,
+      sequenceCode,
+      shots,
+      uploadedFiles,
+    } = body as {
+      projectId: string;
+      sequenceId?: string;
+      sequenceName?: string;
+      sequenceCode?: string;
+      shots: Array<{
+        code: string;
+        clipName?: string;
+        sourceIn?: string;
+        sourceOut?: string;
+        recordIn?: string;
+        recordOut?: string;
+        durationFrames?: number;
+      }>;
+      uploadedFiles: UploadedFile[];
+    };
     
-    if (!projectId || !shotsJson) {
+    if (!projectId || !shots) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const shots = JSON.parse(shotsJson) as Array<{
-      code: string;
-      clipName?: string;
-      sourceIn?: string;
-      sourceOut?: string;
-      recordIn?: string;
-      recordOut?: string;
-      durationFrames?: number;
-    }>;
-
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Get project code for storage paths
-    const { data: project } = await supabase
-      .from("projects")
-      .select("code")
-      .eq("id", projectId)
-      .single();
-
-    const projectCode = project?.code || "PROJ";
 
     // Create or get sequence
     let finalSequenceId = sequenceId;
@@ -83,91 +89,48 @@ export async function POST(request: NextRequest) {
       createdShots.push(newShot);
     }
 
-    // Upload ref files
-    const refFiles = formData.getAll("refs") as File[];
-    const { zone, hostname, password, cdnUrl } = bunnyConfig.storage;
-
-    for (const refFile of refFiles) {
-      if (!refFile.name || refFile.size === 0) continue;
-
-      // Try to match ref to a shot by filename
+    // Process uploaded refs
+    const refFiles = (uploadedFiles || []).filter(f => f.type === 'ref');
+    for (const ref of refFiles) {
+      // Match to shot by filename or use first shot
       const matchedShot = createdShots.find(s => 
-        refFile.name.toLowerCase().includes(s.code.toLowerCase())
-      ) || createdShots[0]; // Default to first shot if no match
-
-      if (!matchedShot) continue;
-
-      const timestamp = Date.now();
-      const ext = refFile.name.split(".").pop() || "mov";
-      const storagePath = `/${projectCode}/${matchedShot.code}/refs/ref_${timestamp}.${ext}`;
-      const uploadUrl = `https://${hostname}/${zone}${storagePath}`;
-
-      // Upload to Bunny Storage
-      const arrayBuffer = await refFile.arrayBuffer();
-      const uploadResponse = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: {
-          "AccessKey": password,
-          "Content-Type": "application/octet-stream",
-        },
-        body: new Uint8Array(arrayBuffer),
-      });
-
-      if (uploadResponse.ok || uploadResponse.status === 201) {
-        // Update shot with ref
-        await supabase
-          .from("shots")
-          .update({
-            ref_filename: refFile.name,
-            ref_storage_path: storagePath,
-            ref_cdn_url: `${cdnUrl}${storagePath}`,
-          })
-          .eq("id", matchedShot.id);
-      }
-    }
-
-    // Upload plate files
-    const plateFiles = formData.getAll("plates") as File[];
-    
-    for (const plateFile of plateFiles) {
-      if (!plateFile.name || plateFile.size === 0) continue;
-
-      // Try to match plate to a shot by filename, or assign to first shot
-      const matchedShot = createdShots.find(s => 
-        plateFile.name.toLowerCase().includes(s.code.toLowerCase())
+        ref.originalName.toLowerCase().includes(s.code.toLowerCase())
       ) || createdShots[0];
 
       if (!matchedShot) continue;
 
-      const timestamp = Date.now();
-      const ext = plateFile.name.split(".").pop() || "mov";
-      const storagePath = `/${projectCode}/${matchedShot.code}/plates/${plateFile.name.replace(/\.[^/.]+$/, "")}_${timestamp}.${ext}`;
-      const uploadUrl = `https://${hostname}/${zone}${storagePath}`;
+      await supabase
+        .from("shots")
+        .update({
+          ref_filename: ref.originalName,
+          ref_storage_path: ref.storagePath,
+          ref_cdn_url: ref.cdnUrl,
+        })
+        .eq("id", matchedShot.id);
+    }
 
-      // Upload to Bunny Storage
-      const arrayBuffer = await plateFile.arrayBuffer();
-      const uploadResponse = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: {
-          "AccessKey": password,
-          "Content-Type": "application/octet-stream",
-        },
-        body: new Uint8Array(arrayBuffer),
-      });
+    // Process uploaded plates
+    const plateFiles = (uploadedFiles || []).filter(f => f.type === 'plate');
+    for (let i = 0; i < plateFiles.length; i++) {
+      const plate = plateFiles[i];
+      
+      // Match to shot by filename or use first shot
+      const matchedShot = createdShots.find(s => 
+        plate.originalName.toLowerCase().includes(s.code.toLowerCase())
+      ) || createdShots[0];
 
-      if (uploadResponse.ok || uploadResponse.status === 201) {
-        // Create plate record
-        await supabase
-          .from("shot_plates")
-          .insert({
-            shot_id: matchedShot.id,
-            filename: plateFile.name,
-            storage_path: storagePath,
-            cdn_url: `${cdnUrl}${storagePath}`,
-            file_size: plateFile.size,
-            sort_order: 0,
-          });
-      }
+      if (!matchedShot) continue;
+
+      await supabase
+        .from("shot_plates")
+        .insert({
+          shot_id: matchedShot.id,
+          filename: plate.originalName,
+          storage_path: plate.storagePath,
+          cdn_url: plate.cdnUrl,
+          file_size: plate.fileSize || null,
+          sort_order: i,
+        });
     }
 
     return NextResponse.json({
