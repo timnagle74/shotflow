@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { parseEDL, getVideoEvents, type EDLParseResult } from "@/lib/edl-parser";
 import { parseAleFile, getClipName, isCircled, getSceneTake, parseAscSop, parseAscSat, type AleParseResult } from "@/lib/ale-parser";
-import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2, Loader2 } from "lucide-react";
+import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2, Loader2, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 
@@ -456,17 +456,25 @@ export default function TurnoverPage() {
               </label>
             </div>
             {plateFiles.length > 0 && (
-              <div className="space-y-1.5 max-h-[200px] overflow-y-auto">
+              <div className="space-y-2 max-h-[250px] overflow-y-auto">
                 {plateFiles.map(f => (
-                  <div key={f.id} className="flex items-center gap-2 p-2 bg-muted/30 rounded-md group">
-                    <Film className="h-4 w-4 text-amber-400 shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{f.file.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{formatFileSize(f.file.size)}</p>
+                  <div key={f.id} className="p-2 bg-muted/30 rounded-md space-y-1.5">
+                    <div className="flex items-center gap-2 group">
+                      <Film className="h-4 w-4 text-amber-400 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{f.file.name}</p>
+                        <p className="text-[10px] text-muted-foreground">{formatFileSize(f.file.size)}</p>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => removeFile(f.id)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={() => removeFile(f.id)}>
-                      <Trash2 className="h-3 w-3" />
-                    </Button>
+                    <Input
+                      placeholder="Plate description (e.g., Clean plate, BG element)"
+                      className="h-7 text-xs"
+                      value={f.description || ""}
+                      onChange={(e) => updateFileDescription(f.id, e.target.value)}
+                    />
                   </div>
                 ))}
               </div>
@@ -597,7 +605,7 @@ export default function TurnoverPage() {
                       <p className="text-xs text-muted-foreground/60 mt-1">Supports CMX 3600 format (Avid, Resolve, Premiere)</p>
                     </div>
                   ) : (
-                    <div className="overflow-auto max-h-[600px] -mx-2">
+                    <div className="overflow-auto max-h-[300px] -mx-2">
                       <table className="w-full text-sm">
                         <thead className="sticky top-0 bg-card z-10">
                           <tr className="border-b border-border">
@@ -606,7 +614,6 @@ export default function TurnoverPage() {
                             <th className="text-left p-2 text-xs font-medium text-muted-foreground">Rec In</th>
                             <th className="text-left p-2 text-xs font-medium text-muted-foreground">Rec Out</th>
                             <th className="text-right p-2 text-xs font-medium text-muted-foreground">Dur</th>
-                            <th className="text-left p-2 text-xs font-medium text-muted-foreground min-w-[350px]">VFX Notes</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -619,17 +626,6 @@ export default function TurnoverPage() {
                                 <td className="p-2 font-mono text-xs">{event.recordIn}</td>
                                 <td className="p-2 font-mono text-xs">{event.recordOut}</td>
                                 <td className="p-2 font-mono text-xs text-right">{event.durationFrames}f</td>
-                                <td className="p-2">
-                                  <Textarea
-                                    placeholder="Enter VFX description (required)..."
-                                    className={cn(
-                                      "min-h-[60px] text-xs resize-y",
-                                      !shotNotes[shotCode]?.trim() && "border-amber-500/50 focus:border-amber-500"
-                                    )}
-                                    value={shotNotes[shotCode] || ""}
-                                    onChange={(e) => updateShotNote(shotCode, e.target.value)}
-                                  />
-                                </td>
                               </tr>
                             );
                           })}
@@ -639,6 +635,47 @@ export default function TurnoverPage() {
                   )}
                 </CardContent>
               </Card>
+
+              {/* VFX Shot Notes - Dedicated Section */}
+              {videoEvents.length > 0 && (
+                <Card className="border-primary/30">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      VFX Shot Notes
+                      <Badge variant="secondary" className="ml-auto">Required</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {videoEvents.map((event, i) => {
+                      const shotCode = event.clipName || event.reelName || `SHOT_${String(i + 1).padStart(3, "0")}`;
+                      const hasNote = !!shotNotes[shotCode]?.trim();
+                      return (
+                        <div key={i} className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-sm font-bold">{shotCode}</span>
+                            <span className="text-xs text-muted-foreground">{event.durationFrames}f</span>
+                            {hasNote ? (
+                              <Badge variant="outline" className="text-[10px] text-green-500 border-green-500/30">✓</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] text-amber-500 border-amber-500/30">Required</Badge>
+                            )}
+                          </div>
+                          <Textarea
+                            placeholder="Describe the VFX work needed for this shot..."
+                            className={cn(
+                              "min-h-[80px] text-sm resize-y",
+                              !hasNote && "border-amber-500/50 focus:border-amber-500"
+                            )}
+                            value={shotNotes[shotCode] || ""}
+                            onChange={(e) => updateShotNote(shotCode, e.target.value)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
         </TabsContent>
