@@ -20,6 +20,7 @@ import { VersionUpload } from "@/components/version-upload";
 import { DownloadButton, VideoStatusBadge } from "@/components/bunny-player";
 import { PlateUpload } from "@/components/plate-upload";
 import { RefUpload } from "@/components/ref-upload";
+import { ShotCountSheet } from "@/components/shot-count-sheet";
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -417,6 +418,13 @@ export default function ShotDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Count Sheet */}
+          <ShotCountSheet
+            shot={shot}
+            sequenceName={sequence?.name || ""}
+            projectName={project?.name || ""}
+          />
 
           {/* Assignment Card */}
           <Card>
