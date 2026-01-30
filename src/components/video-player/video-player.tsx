@@ -103,24 +103,24 @@ export function VideoPlayer({
     return DEFAULT_BURN_IN_SETTINGS;
   });
 
-  // Initialize video.js player
+  // Track if we were playing before source change
+  const wasPlayingRef = useRef(false);
+
+  // Initialize video.js player (only once)
   useEffect(() => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || playerRef.current) return;
 
     // Ensure we have a video element
     const videoElement = document.createElement('video-js');
     videoElement.classList.add('vjs-big-play-centered', 'vjs-fluid');
     videoRef.current.appendChild(videoElement);
 
-    // Determine source type
-    const sourceType = isHLS ? 'application/x-mpegURL' : 'video/mp4';
-    
     const player = videojs(videoElement, {
       controls: false, // We use custom controls
       responsive: true,
       fluid: true,
       preload: 'auto',
-      sources: videoSource ? [{ src: videoSource, type: sourceType }] : [],
+      sources: [],
       poster,
       html5: {
         vhs: {
@@ -142,6 +142,11 @@ export function VideoPlayer({
     });
     player.on('loadedmetadata', () => {
       setDuration(player.duration() || 0);
+      // Auto-play if we were playing before source change
+      if (wasPlayingRef.current) {
+        player.play();
+        wasPlayingRef.current = false;
+      }
     });
 
     playerRef.current = player;
@@ -152,7 +157,18 @@ export function VideoPlayer({
         playerRef.current = null;
       }
     };
-  }, [videoSource, isHLS, poster, frameRate, frameStart, onFrameChange]);
+  }, [poster, frameRate, frameStart, onFrameChange]);
+
+  // Update source when it changes (without recreating player)
+  useEffect(() => {
+    if (!playerRef.current || !videoSource) return;
+    
+    // Remember if we were playing
+    wasPlayingRef.current = isPlaying;
+    
+    const sourceType = isHLS ? 'application/x-mpegURL' : 'video/mp4';
+    playerRef.current.src({ src: videoSource, type: sourceType });
+  }, [videoSource, isHLS]);
 
   // Keyboard controls
   useEffect(() => {
