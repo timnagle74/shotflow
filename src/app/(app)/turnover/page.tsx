@@ -205,6 +205,16 @@ export default function TurnoverPage() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   
+  // Helper to compute shot code consistently
+  const getShotCode = useCallback((event: typeof videoEvents[0], idx: number) => {
+    const edlTitle = parseResult?.title?.trim();
+    const baseCode = edlTitle || event.clipName || event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`;
+    // If multiple shots and using EDL title, append shot number
+    return (edlTitle && videoEvents.length > 1) 
+      ? `${baseCode}_${String(idx + 1).padStart(3, "0")}` 
+      : baseCode;
+  }, [parseResult?.title, videoEvents.length]);
+  
   // Shot notes for VFX descriptions (editable in preview table)
   const [shotNotes, setShotNotes] = useState<Record<string, string>>({});
   
@@ -222,7 +232,7 @@ export default function TurnoverPage() {
     
     // Validate all shots have VFX notes
     const shotsWithoutNotes = videoEvents.filter((event, idx) => {
-      const shotCode = event.clipName || event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`;
+      const shotCode = getShotCode(event, idx);
       return !shotNotes[shotCode]?.trim();
     });
 
@@ -304,7 +314,7 @@ export default function TurnoverPage() {
       const seqName = parseResult?.title || edlFileName.replace(/\.edl$/i, "");
       
       const shots = videoEvents.map((event, idx) => {
-        const code = event.clipName || event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`;
+        const code = getShotCode(event, idx);
         return {
           code,
           clipName: event.clipName,
@@ -347,7 +357,7 @@ export default function TurnoverPage() {
     } finally {
       setImporting(false);
     }
-  }, [videoEvents, selectedProject, selectedSequence, parseResult, edlFileName, refFiles, plateFiles]);
+  }, [videoEvents, selectedProject, selectedSequence, parseResult, edlFileName, refFiles, plateFiles, getShotCode, shotNotes]);
 
   const handleAleImport = () => {
     // In production: save to shot_metadata + shot_cdls via Supabase
@@ -564,7 +574,7 @@ export default function TurnoverPage() {
                     {parseResult.fcm !== 'UNKNOWN' && <Badge variant="outline" className="text-xs">{parseResult.fcm === 'DROP_FRAME' ? 'Drop Frame' : 'Non-Drop Frame'}</Badge>}
                     {videoEvents.length > 0 && !edlImported && (() => {
                       const filledNotes = videoEvents.filter((event, idx) => {
-                        const shotCode = event.clipName || event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`;
+                        const shotCode = getShotCode(event, idx);
                         return shotNotes[shotCode]?.trim();
                       }).length;
                       const allNotesFilled = filledNotes === videoEvents.length;
@@ -634,7 +644,7 @@ export default function TurnoverPage() {
                         </thead>
                         <tbody>
                           {videoEvents.map((event, i) => {
-                            const shotCode = event.clipName || event.reelName || `SHOT_${String(i + 1).padStart(3, "0")}`;
+                            const shotCode = getShotCode(event, i);
                             return (
                               <tr key={i} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
                                 <td className="p-2 font-mono text-xs text-muted-foreground">{String(event.eventNumber).padStart(3, '0')}</td>
@@ -664,7 +674,7 @@ export default function TurnoverPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {videoEvents.map((event, i) => {
-                      const shotCode = event.clipName || event.reelName || `SHOT_${String(i + 1).padStart(3, "0")}`;
+                      const shotCode = getShotCode(event, i);
                       const hasNote = !!shotNotes[shotCode]?.trim();
                       return (
                         <div key={i} className="space-y-1.5">
