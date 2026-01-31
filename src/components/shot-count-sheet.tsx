@@ -96,22 +96,58 @@ export function ShotCountSheet({
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 14;
       
-      // Fetch thumbnail via our proxy API to avoid CORS
+      // Load thumbnail via img element and canvas (avoids CORS issues with server-side fetch)
       let thumbnailData: string | null = null;
       if (shot.ref_video_id) {
         try {
-          const response = await fetch(`/api/thumbnail/${shot.ref_video_id}`);
-          if (response.ok) {
-            const blob = await response.blob();
-            thumbnailData = await new Promise((resolve) => {
-              const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result as string);
-              reader.readAsDataURL(blob);
-            });
-          }
+          const cdnUrl = `https://vz-3b0f7864-a89.b-cdn.net/${shot.ref_video_id}/thumbnail.jpg`;
+          console.log('Loading thumbnail from:', cdnUrl);
+          
+          thumbnailData = await new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            
+            img.onload = () => {
+              try {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.naturalWidth;
+                canvas.height = img.naturalHeight;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(img, 0, 0);
+                  const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                  console.log('Thumbnail converted, data URL length:', dataUrl.length);
+                  resolve(dataUrl);
+                } else {
+                  console.error('Could not get canvas context');
+                  resolve(null);
+                }
+              } catch (e) {
+                console.error('Canvas conversion error:', e);
+                resolve(null);
+              }
+            };
+            
+            img.onerror = (e) => {
+              console.error('Image load error:', e);
+              resolve(null);
+            };
+            
+            // Set timeout for slow loads
+            setTimeout(() => {
+              if (!thumbnailData) {
+                console.log('Thumbnail load timeout');
+                resolve(null);
+              }
+            }, 5000);
+            
+            img.src = cdnUrl;
+          });
         } catch (e) {
-          console.log('Could not fetch thumbnail for PDF');
+          console.error('Could not load thumbnail for PDF:', e);
         }
+      } else {
+        console.log('No ref_video_id for shot');
       }
       
       // Header bar
@@ -130,8 +166,8 @@ export function ShotCountSheet({
       // TO info on right
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
-      doc.text(`TO # ${turnoverNumber || "—"}`, pageWidth - 50, 10, { align: "right" });
-      doc.text(`${turnoverDate || "—"}`, pageWidth - 50, 18, { align: "right" });
+      doc.text(`TO # ${turnoverNumber || "-"}`, pageWidth - 50, 10, { align: "right" });
+      doc.text(`${turnoverDate || "-"}`, pageWidth - 50, 18, { align: "right" });
 
       // Reset text color
       doc.setTextColor(0, 0, 0);
@@ -179,8 +215,8 @@ export function ShotCountSheet({
       doc.text("Sequence", colB, metaY);
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "bold");
-      doc.text(vendor || "—", colA, metaY + 5);
-      doc.text(sequenceName || "—", colB, metaY + 5);
+      doc.text(vendor || "-", colA, metaY + 5);
+      doc.text(sequenceName || "-", colB, metaY + 5);
       
       // Row 2: Scene # | Reel #
       metaY += 12;
@@ -190,8 +226,8 @@ export function ShotCountSheet({
       doc.text("Reel #", colB, metaY);
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "bold");
-      doc.text(sceneNumber || "—", colA, metaY + 5);
-      doc.text(reelNumber || "—", colB, metaY + 5);
+      doc.text(sceneNumber || "-", colA, metaY + 5);
+      doc.text(reelNumber || "-", colB, metaY + 5);
       
       // Row 3: Comp/Cut/Handles
       metaY += 12;
@@ -214,7 +250,7 @@ export function ShotCountSheet({
       doc.setTextColor(120, 120, 120);
       doc.text("Location", colB + 30, metaY);
       doc.setTextColor(0, 0, 0);
-      doc.text(location || "—", colB + 30, metaY + 5);
+      doc.text(location || "-", colB + 30, metaY + 5);
       
       // Move y past the thumbnail
       y = y + thumbHeight + 5;
@@ -226,7 +262,7 @@ export function ShotCountSheet({
       doc.setTextColor(0, 0, 0);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
-      doc.text(shotAction || shot.description || "—", margin, y + 5);
+      doc.text(shotAction || shot.description || "-", margin, y + 5);
 
       // VFX Summary section
       y += 20;

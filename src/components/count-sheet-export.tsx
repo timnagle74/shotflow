@@ -64,16 +64,16 @@ export function CountSheetExport({ shots, sequenceName, projectName }: CountShee
         const frameCount = shot.frame_start && shot.frame_end 
           ? shot.frame_end - shot.frame_start 
           : 0;
-        const duration = frameCount > 0 ? `${frameCount}f (${(frameCount / 24).toFixed(1)}s)` : "—";
+        const duration = frameCount > 0 ? `${frameCount}f (${(frameCount / 24).toFixed(1)}s)` : "-";
         
         tableData.push([
           shot.code,
-          shot.frame_start?.toString() || "—",
-          shot.frame_end?.toString() || "—",
+          shot.frame_start?.toString() || "-",
+          shot.frame_end?.toString() || "-",
           duration,
           shot.complexity,
           shot.status.replace(/_/g, " "),
-          shot.notes || "—",
+          shot.notes || "-",
         ]);
       }
 
