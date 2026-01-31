@@ -10,9 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { parseEDL, getVideoEvents, type EDLParseResult } from "@/lib/edl-parser";
 import { parseAleFile, getClipName, isCircled, getSceneTake, parseAscSop, parseAscSat, type AleParseResult } from "@/lib/ale-parser";
-import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2, Loader2, MessageSquare } from "lucide-react";
+import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2, Loader2, MessageSquare, Download, FileCode } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { downloadEDL } from "@/lib/edl-export";
+import { downloadALE } from "@/lib/ale-export";
+import { downloadFCPXML } from "@/lib/xml-export";
 
 interface TurnoverFile {
   id: string;
@@ -598,7 +601,72 @@ export default function TurnoverPage() {
                       );
                     })()}
                     {importError && <div className="flex items-center gap-2 text-red-400 text-sm"><AlertCircle className="h-4 w-4" />{importError}</div>}
-                    {edlImported && <div className="flex items-center justify-center gap-2 py-2"><Badge className="bg-green-600 text-white border-0"><Check className="h-3 w-3 mr-1" />Imported Successfully</Badge></div>}
+                    {edlImported && (
+                      <>
+                        <div className="flex items-center justify-center gap-2 py-2"><Badge className="bg-green-600 text-white border-0"><Check className="h-3 w-3 mr-1" />Imported Successfully</Badge></div>
+                        <div className="border-t border-border pt-3 mt-3">
+                          <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1"><Download className="h-3 w-3" />Export for VFX Vendors:</p>
+                          <div className="grid grid-cols-3 gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-auto py-1.5 flex-col gap-0.5"
+                              onClick={() => downloadEDL(
+                                videoEvents.map((event, idx) => ({
+                                  code: getShotCode(event, idx),
+                                  clipName: event.clipName,
+                                  sourceIn: event.sourceIn,
+                                  sourceOut: event.sourceOut,
+                                  recordIn: event.recordIn,
+                                  recordOut: event.recordOut,
+                                })),
+                                { title: parseResult?.title || edlFileName.replace(/\.edl$/i, '') }
+                              )}
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              <span className="text-[10px]">EDL</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-auto py-1.5 flex-col gap-0.5"
+                              onClick={() => downloadALE(
+                                videoEvents.map((event, idx) => ({
+                                  code: getShotCode(event, idx),
+                                  clipName: event.clipName,
+                                  sourceIn: event.sourceIn,
+                                  sourceOut: event.sourceOut,
+                                  notes: shotNotes[getShotCode(event, idx)] || undefined,
+                                })),
+                                { title: parseResult?.title || edlFileName.replace(/\.edl$/i, '') }
+                              )}
+                            >
+                              <Database className="h-3.5 w-3.5" />
+                              <span className="text-[10px]">ALE</span>
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-auto py-1.5 flex-col gap-0.5"
+                              onClick={() => downloadFCPXML(
+                                videoEvents.map((event, idx) => ({
+                                  id: `shot-${idx}`,
+                                  code: getShotCode(event, idx),
+                                  clipName: event.clipName,
+                                  sourceIn: event.sourceIn,
+                                  sourceOut: event.sourceOut,
+                                  durationFrames: event.durationFrames,
+                                })),
+                                { title: parseResult?.title || edlFileName.replace(/\.edl$/i, '') }
+                              )}
+                            >
+                              <FileCode className="h-3.5 w-3.5" />
+                              <span className="text-[10px]">XML</span>
+                            </Button>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
               )}

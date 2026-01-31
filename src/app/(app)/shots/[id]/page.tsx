@@ -21,6 +21,10 @@ import { DownloadButton, VideoStatusBadge } from "@/components/bunny-player";
 import { PlateUpload } from "@/components/plate-upload";
 import { RefUpload } from "@/components/ref-upload";
 import { ShotCountSheet } from "@/components/shot-count-sheet";
+import { downloadEDL } from "@/lib/edl-export";
+import { downloadALE } from "@/lib/ale-export";
+import { downloadFCPXML } from "@/lib/xml-export";
+import { FileText, Database, FileCode } from "lucide-react";
 
 // Allowed status transitions
 const STATUS_TRANSITIONS: Record<string, string[]> = {
@@ -541,6 +545,72 @@ export default function ShotDetailPage() {
                 ) : (
                   <p className="text-sm text-muted-foreground italic">No plates uploaded</p>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Export Turnover Files Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Download className="h-3.5 w-3.5" />Export Turnover Files
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <p className="text-xs text-muted-foreground mb-3">Download shot data in industry-standard formats for VFX vendors.</p>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-auto py-2 flex-col gap-1"
+                  onClick={() => downloadEDL(
+                    [{
+                      code: shot.code,
+                      clipName: shot.code,
+                      sourceIn: shot.frame_start ? `01:00:00:${String(shot.frame_start % 24).padStart(2, '0')}` : undefined,
+                      sourceOut: shot.frame_end ? `01:00:00:${String(shot.frame_end % 24).padStart(2, '0')}` : undefined,
+                    }],
+                    { title: `${project?.code || 'PROJ'}_${shot.code}` }
+                  )}
+                >
+                  <FileText className="h-4 w-4" />
+                  <span className="text-xs">EDL</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-auto py-2 flex-col gap-1"
+                  onClick={() => downloadALE(
+                    [{
+                      code: shot.code,
+                      clipName: shot.code,
+                      sourceIn: shot.frame_start ? `01:00:00:${String(shot.frame_start % 24).padStart(2, '0')}` : '00:00:00:00',
+                      sourceOut: shot.frame_end ? `01:00:00:${String(shot.frame_end % 24).padStart(2, '0')}` : '00:00:04:00',
+                      notes: shot.notes || shot.description || undefined,
+                    }],
+                    { title: `${project?.code || 'PROJ'}_${shot.code}` }
+                  )}
+                >
+                  <Database className="h-4 w-4" />
+                  <span className="text-xs">ALE</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-auto py-2 flex-col gap-1"
+                  onClick={() => downloadFCPXML(
+                    [{
+                      id: shot.id,
+                      code: shot.code,
+                      clipName: shot.code,
+                      durationFrames: shot.frame_start && shot.frame_end ? shot.frame_end - shot.frame_start : 100,
+                    }],
+                    { title: `${project?.code || 'PROJ'}_${shot.code}` }
+                  )}
+                >
+                  <FileCode className="h-4 w-4" />
+                  <span className="text-xs">XML</span>
+                </Button>
               </div>
             </CardContent>
           </Card>
