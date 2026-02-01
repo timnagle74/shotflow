@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { parseEDL, getVideoEvents, type EDLParseResult } from "@/lib/edl-parser";
 import { parseAleFile, getClipName, isCircled, getSceneTake, parseAscSop, parseAscSat, type AleParseResult } from "@/lib/ale-parser";
+import { parseXML, type XMLParseResult, type XMLClip } from "@/lib/xml-parser";
 import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2, Loader2, MessageSquare, Download, FileCode } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -101,6 +102,14 @@ export default function TurnoverPage() {
   const [aleDragOver, setAleDragOver] = useState(false);
   const aleFileRef = useRef<HTMLInputElement>(null);
 
+  // XML state (alternative to EDL - includes reposition/speed)
+  const [xmlResult, setXmlResult] = useState<XMLParseResult | null>(null);
+  const [xmlFileName, setXmlFileName] = useState("");
+  const [xmlImported, setXmlImported] = useState(false);
+  const [xmlDragOver, setXmlDragOver] = useState(false);
+  const xmlFileRef = useRef<HTMLInputElement>(null);
+  const [useXmlMode, setUseXmlMode] = useState(false); // Toggle between EDL and XML mode
+
   // Turnover files (refs + plates)
   const [turnoverFiles, setTurnoverFiles] = useState<TurnoverFile[]>([]);
   const [refDragOver, setRefDragOver] = useState(false);
@@ -147,6 +156,47 @@ export default function TurnoverPage() {
 
   const clearEdl = () => { setEdlFileName(""); setParseResult(null); setEdlImported(false); if (edlFileRef.current) edlFileRef.current.value = ""; };
   const clearAle = () => { setAleFileName(""); setAleResult(null); setAleImported(false); if (aleFileRef.current) aleFileRef.current.value = ""; };
+
+  // XML handlers
+  const handleXmlFile = useCallback((file: File) => {
+    setXmlFileName(file.name);
+    setXmlImported(false);
+    setXmlResult(null);
+    const ext = file.name.toLowerCase();
+    if (!ext.endsWith(".xml")) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const content = ev.target?.result as string;
+      try { 
+        const result = parseXML(content);
+        setXmlResult(result);
+        setUseXmlMode(true);
+      } catch { 
+        setXmlResult(null); 
+      }
+    };
+    reader.readAsText(file);
+  }, []);
+
+  const handleXmlUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => { 
+    const f = e.target.files?.[0]; 
+    if (f) handleXmlFile(f); 
+  }, [handleXmlFile]);
+
+  const handleXmlDrop = useCallback((e: React.DragEvent) => { 
+    e.preventDefault(); 
+    setXmlDragOver(false); 
+    const f = e.dataTransfer.files?.[0]; 
+    if (f) handleXmlFile(f); 
+  }, [handleXmlFile]);
+
+  const clearXml = () => { 
+    setXmlFileName(""); 
+    setXmlResult(null); 
+    setXmlImported(false); 
+    setUseXmlMode(false);
+    if (xmlFileRef.current) xmlFileRef.current.value = ""; 
+  };
 
   // Ref/Plate handlers
   const handleRefFiles = useCallback((files: FileList | File[]) => {
@@ -529,6 +579,7 @@ export default function TurnoverPage() {
       <Tabs defaultValue="edl">
         <TabsList>
           <TabsTrigger value="edl" className="gap-1.5"><FileText className="h-3.5 w-3.5" />EDL Import</TabsTrigger>
+          <TabsTrigger value="xml" className="gap-1.5"><FileCode className="h-3.5 w-3.5" />XML Import</TabsTrigger>
           <TabsTrigger value="ale" className="gap-1.5"><Database className="h-3.5 w-3.5" />ALE Import</TabsTrigger>
         </TabsList>
 
@@ -769,6 +820,122 @@ export default function TurnoverPage() {
                 </Card>
               )}
             </div>
+          </div>
+        </TabsContent>
+
+        {/* ─── XML Tab ─── */}
+        <TabsContent value="xml">
+          <div className="grid gap-6 lg:grid-cols-3">
+            <div className="space-y-4">
+              <Card>
+                <CardHeader><CardTitle className="text-sm">XML File (Premiere/Resolve/FCP)</CardTitle></CardHeader>
+                <CardContent>
+                  <div
+                    className={cn("relative", xmlDragOver && "ring-2 ring-primary ring-offset-2 ring-offset-background rounded-lg")}
+                    onDrop={handleXmlDrop}
+                    onDragOver={(e) => { e.preventDefault(); setXmlDragOver(true); }}
+                    onDragLeave={() => setXmlDragOver(false)}
+                  >
+                    <label className={cn(
+                      "flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+                      xmlDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50",
+                      xmlFileName && "border-primary/30 bg-primary/5"
+                    )}>
+                      {xmlFileName ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <FileCode className="h-8 w-8 text-primary" />
+                          <span className="text-sm text-primary font-medium">{xmlFileName}</span>
+                          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={(e) => { e.preventDefault(); clearXml(); }}><X className="h-3 w-3 mr-1" />Clear</Button>
+                        </div>
+                      ) : (
+                        <>
+                          <Upload className="h-8 w-8 text-muted-foreground mb-2" />
+                          <span className="text-sm text-muted-foreground">Drop XML file here</span>
+                          <span className="text-xs text-muted-foreground/60 mt-1">Includes reposition & speed data</span>
+                        </>
+                      )}
+                      <input ref={xmlFileRef} type="file" accept=".xml" className="hidden" onChange={handleXmlUpload} />
+                    </label>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {xmlResult && (
+                <Card>
+                  <CardContent className="p-4 space-y-3">
+                    {xmlResult.sequences[0]?.name && (
+                      <div>
+                        <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Sequence</label>
+                        <p className="text-sm font-mono font-medium">{xmlResult.sequences[0].name}</p>
+                      </div>
+                    )}
+                    <Badge variant="outline" className="text-xs capitalize">{xmlResult.format} XML</Badge>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-md bg-muted/50 p-2"><p className="text-lg font-bold">{xmlResult.totalClips}</p><p className="text-[10px] text-muted-foreground">CLIPS</p></div>
+                      <div className="rounded-md bg-orange-600/10 p-2"><p className="text-lg font-bold text-orange-400">{xmlResult.clipsWithReposition}</p><p className="text-[10px] text-muted-foreground">REPO</p></div>
+                      <div className="rounded-md bg-blue-600/10 p-2"><p className="text-lg font-bold text-blue-400">{xmlResult.clipsWithSpeedChange}</p><p className="text-[10px] text-muted-foreground">SPEED</p></div>
+                    </div>
+                    {xmlResult.clipsWithCDL > 0 && (
+                      <div className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Check className="h-3 w-3 text-purple-400" />{xmlResult.clipsWithCDL} clips with CDL data
+                      </div>
+                    )}
+                    {xmlResult.warnings.length > 0 && (
+                      <div className="text-xs text-yellow-400 flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3" />{xmlResult.warnings.length} warnings
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Parsed clips preview */}
+            {xmlResult && xmlResult.sequences[0]?.clips.length > 0 && (
+              <div className="lg:col-span-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      Parsed Clips
+                      <Badge variant="secondary" className="ml-auto">{xmlResult.sequences[0].clips.length}</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="border rounded-md overflow-hidden max-h-[500px] overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-muted/50 sticky top-0">
+                          <tr>
+                            <th className="text-left p-2 font-medium">Shot Name</th>
+                            <th className="text-left p-2 font-medium">Source Clip</th>
+                            <th className="text-left p-2 font-medium">Scene/Take</th>
+                            <th className="text-center p-2 font-medium">Duration</th>
+                            <th className="text-center p-2 font-medium">Flags</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {xmlResult.sequences[0].clips.map((clip, i) => (
+                            <tr key={clip.id || i} className="hover:bg-muted/30">
+                              <td className="p-2 font-mono font-medium">{clip.name}</td>
+                              <td className="p-2 text-muted-foreground truncate max-w-[200px]">{clip.sourceFileName || "—"}</td>
+                              <td className="p-2">{clip.scene && clip.take ? `${clip.scene} T${clip.take}` : clip.scene || "—"}</td>
+                              <td className="p-2 text-center font-mono">{clip.duration}f</td>
+                              <td className="p-2 text-center space-x-1">
+                                {clip.hasReposition && <Badge variant="secondary" className="bg-orange-500/20 text-orange-400 text-[10px]">REPO</Badge>}
+                                {clip.hasSpeedChange && <Badge variant="secondary" className="bg-blue-500/20 text-blue-400 text-[10px]">SPEED</Badge>}
+                                {clip.hasCDL && <Badge variant="secondary" className="bg-purple-500/20 text-purple-400 text-[10px]">CDL</Badge>}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3 text-center">
+                      XML import creates shots with reposition/speed data linked to source media
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </div>
         </TabsContent>
 
