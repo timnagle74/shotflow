@@ -14,12 +14,14 @@ import {
   Film,
   Palette,
   FolderOpen,
+  Database,
 } from "lucide-react";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Projects", href: "/projects", icon: FolderKanban },
   { name: "Shots Board", href: "/shots", icon: Clapperboard },
+  { name: "Source Media", href: "/source-media", icon: Database },
   { name: "Turnover Import", href: "/turnover", icon: Upload },
   { name: "Turnovers", href: "/turnovers", icon: FolderOpen },
   { name: "Color Mgmt", href: "/color", icon: Palette },

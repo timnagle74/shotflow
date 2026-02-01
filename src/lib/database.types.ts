@@ -15,6 +15,70 @@ export type CDLSource = 'ALE' | 'manual' | 'CDL file';
 export interface Database {
   public: {
     Tables: {
+      source_media: {
+        Row: {
+          id: string;
+          project_id: string;
+          clip_name: string;
+          tape: string | null;
+          uuid: string | null;
+          tc_in: string | null;
+          tc_out: string | null;
+          tc_in_frames: number | null;
+          tc_out_frames: number | null;
+          fps: number;
+          duration_frames: number | null;
+          file_path: string | null;
+          file_type: string | null;
+          resolution: string | null;
+          codec: string | null;
+          camera: string | null;
+          camera_id: string | null;
+          camera_roll: string | null;
+          lens: string | null;
+          focal_length: string | null;
+          focus_distance: string | null;
+          f_stop: string | null;
+          t_stop: string | null;
+          iso: string | null;
+          shutter: string | null;
+          sensor_fps: string | null;
+          white_balance: string | null;
+          scene: string | null;
+          take: string | null;
+          circled: boolean;
+          day_night: string | null;
+          int_ext: string | null;
+          location: string | null;
+          director: string | null;
+          dop: string | null;
+          sound_roll: string | null;
+          sound_tc: string | null;
+          colorspace: string | null;
+          look: string | null;
+          lut: string | null;
+          cdl_slope_r: number | null;
+          cdl_slope_g: number | null;
+          cdl_slope_b: number | null;
+          cdl_offset_r: number | null;
+          cdl_offset_g: number | null;
+          cdl_offset_b: number | null;
+          cdl_power_r: number | null;
+          cdl_power_g: number | null;
+          cdl_power_b: number | null;
+          cdl_saturation: number | null;
+          shoot_date: string | null;
+          shoot_day: string | null;
+          ale_source: string | null;
+          imported_at: string;
+          custom_metadata: Record<string, unknown> | null;
+        };
+        Insert: Omit<Database['public']['Tables']['source_media']['Row'], 'id' | 'imported_at'> & {
+          id?: string;
+          imported_at?: string;
+        };
+        Update: Partial<Database['public']['Tables']['source_media']['Insert']>;
+      };
       users: {
         Row: {
           id: string;
@@ -116,6 +180,29 @@ export interface Database {
           notes: string | null;
           created_at: string;
           updated_at: string;
+          // Source media link
+          source_media_id: string | null;
+          source_clip_name: string | null;
+          source_tc_in: string | null;
+          source_tc_out: string | null;
+          // Reposition data
+          has_reposition: boolean;
+          repo_scale: number | null;
+          repo_scale_x: number | null;
+          repo_scale_y: number | null;
+          repo_position_x: number | null;
+          repo_position_y: number | null;
+          repo_rotation: number | null;
+          // Speed data
+          has_speed_change: boolean;
+          speed_ratio: number | null;
+          speed_reverse: boolean;
+          speed_time_remap: boolean;
+          // Record timeline position
+          record_tc_in: string | null;
+          record_tc_out: string | null;
+          record_frame_in: number | null;
+          record_frame_out: number | null;
         };
         Insert: {
           id?: string;
@@ -136,6 +223,29 @@ export interface Database {
           notes?: string | null;
           created_at?: string;
           updated_at?: string;
+          // Source media link
+          source_media_id?: string | null;
+          source_clip_name?: string | null;
+          source_tc_in?: string | null;
+          source_tc_out?: string | null;
+          // Reposition data
+          has_reposition?: boolean;
+          repo_scale?: number | null;
+          repo_scale_x?: number | null;
+          repo_scale_y?: number | null;
+          repo_position_x?: number | null;
+          repo_position_y?: number | null;
+          repo_rotation?: number | null;
+          // Speed data
+          has_speed_change?: boolean;
+          speed_ratio?: number | null;
+          speed_reverse?: boolean;
+          speed_time_remap?: boolean;
+          // Record timeline position
+          record_tc_in?: string | null;
+          record_tc_out?: string | null;
+          record_frame_in?: number | null;
+          record_frame_out?: number | null;
         };
         Update: {
           id?: string;

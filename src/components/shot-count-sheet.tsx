@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { FileDown, Loader2, Play } from "lucide-react";
+import { FileDown, Loader2, Play, Move, Timer, Camera, Aperture } from "lucide-react";
 import jsPDF from "jspdf";
 
 interface ShotCountSheetProps {
@@ -38,6 +38,16 @@ interface ShotCountSheetProps {
   vfxSummary?: string;
   opticals?: string;
   frameRate?: number;
+  // Editorial data (reposition, speed)
+  sourceClip?: string;
+  sourceTc?: string;
+  hasReposition?: boolean;
+  repoSummary?: string;       // e.g., "110% @ +20,+15"
+  hasSpeedChange?: boolean;
+  speedSummary?: string;      // e.g., "50% (slow-mo)"
+  // Source media metadata
+  camera?: string;
+  lens?: string;
 }
 
 export function ShotCountSheet({ 
@@ -55,7 +65,15 @@ export function ShotCountSheet({
   shotAction,
   vfxSummary,
   opticals,
-  frameRate = 24 
+  frameRate = 24,
+  sourceClip,
+  sourceTc,
+  hasReposition,
+  repoSummary,
+  hasSpeedChange,
+  speedSummary,
+  camera,
+  lens,
 }: ShotCountSheetProps) {
   const [generating, setGenerating] = useState(false);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
@@ -511,6 +529,61 @@ export function ShotCountSheet({
             </div>
           </div>
         </div>
+
+        {/* Source & Editorial Section */}
+        {(sourceClip || hasReposition || hasSpeedChange || camera) && (
+          <div className="border-t border-border px-4 py-3 bg-muted/10">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Source / Editorial</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              {/* Left column: Source info */}
+              <div className="space-y-2">
+                {sourceClip && (
+                  <div>
+                    <span className="text-muted-foreground">Source Clip</span>
+                    <p className="font-mono text-[10px] truncate">{sourceClip}</p>
+                    {sourceTc && <p className="font-mono text-[10px] text-muted-foreground">{sourceTc}</p>}
+                  </div>
+                )}
+                {(camera || lens) && (
+                  <div className="flex gap-4">
+                    {camera && (
+                      <div className="flex items-center gap-1">
+                        <Camera className="h-3 w-3 text-muted-foreground" />
+                        <span>{camera}</span>
+                      </div>
+                    )}
+                    {lens && (
+                      <div className="flex items-center gap-1">
+                        <Aperture className="h-3 w-3 text-muted-foreground" />
+                        <span>{lens}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              
+              {/* Right column: Editorial flags */}
+              <div className="flex flex-wrap gap-2 items-start justify-end">
+                {hasReposition && (
+                  <Badge variant="secondary" className="bg-orange-500/20 text-orange-600 border-orange-500/30">
+                    <Move className="h-3 w-3 mr-1" />
+                    REPO
+                    {repoSummary && <span className="ml-1 font-mono text-[10px]">{repoSummary}</span>}
+                  </Badge>
+                )}
+                {hasSpeedChange && (
+                  <Badge variant="secondary" className="bg-blue-500/20 text-blue-600 border-blue-500/30">
+                    <Timer className="h-3 w-3 mr-1" />
+                    SPEED
+                    {speedSummary && <span className="ml-1 font-mono text-[10px]">{speedSummary}</span>}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Export Button */}
         <div className="border-t border-border px-4 py-2 flex justify-end">
