@@ -341,6 +341,7 @@ export default function TurnoverPage() {
           shots,
           uploadedFiles,
           generalVfxNotes: generalVfxNotes.trim() || null,
+          sourceEdlFilename: edlFileName || null,
         }),
       });
 
@@ -352,7 +353,9 @@ export default function TurnoverPage() {
       const result = await response.json();
       console.log("Import result:", result);
       
-      setImportStatus(`Created ${result.shotsCreated} shot(s)`);
+      const toNum = result.turnoverNumber ? `TO${result.turnoverNumber}: ` : '';
+      const linked = result.shotsLinked ? ` (${result.shotsLinked} existing)` : '';
+      setImportStatus(`${toNum}Created ${result.shotsCreated} shot(s)${linked}`);
       setEdlImported(true);
     } catch (err) {
       console.error("Import error:", err);

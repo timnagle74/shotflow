@@ -7,8 +7,6 @@ const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
 const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN;
-// Use production URL for webhooks, not preview deployments
-const WEBHOOK_BASE_URL = process.env.WEBHOOK_BASE_URL || 'https://shotflow-eight.vercel.app';
 
 interface UploadedFile {
   originalName: string;
@@ -30,6 +28,7 @@ export async function POST(request: NextRequest) {
       shots,
       uploadedFiles,
       generalVfxNotes,
+      sourceEdlFilename,
     } = body as {
       projectId: string;
       sequenceId?: string;
@@ -47,6 +46,7 @@ export async function POST(request: NextRequest) {
       }>;
       uploadedFiles: UploadedFile[];
       generalVfxNotes?: string | null;
+      sourceEdlFilename?: string;
     };
     
     if (!projectId || !shots) {
@@ -68,7 +68,6 @@ export async function POST(request: NextRequest) {
           code, 
           name, 
           sort_order: 0,
-          notes: generalVfxNotes || null,
         })
         .select()
         .single();
@@ -78,66 +77,121 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Failed to create sequence" }, { status: 500 });
       }
       finalSequenceId = newSeq.id;
-    } else if (generalVfxNotes) {
-      // Update existing sequence with notes (append if existing)
-      const { data: existingSeq } = await supabase
-        .from("sequences")
-        .select("notes")
-        .eq("id", sequenceId)
-        .single();
-      
-      const updatedNotes = existingSeq?.notes 
-        ? `${existingSeq.notes}\n\n---\n\n${generalVfxNotes}`
-        : generalVfxNotes;
-      
-      await supabase
-        .from("sequences")
-        .update({ notes: updatedNotes })
-        .eq("id", sequenceId);
     }
 
-    // Create shots
+    // Get next turnover number for this project
+    const { data: maxTo } = await supabase
+      .from("turnovers")
+      .select("turnover_number")
+      .eq("project_id", projectId)
+      .order("turnover_number", { ascending: false })
+      .limit(1)
+      .single();
+    
+    const nextToNumber = (maxTo?.turnover_number || 0) + 1;
+
+    // Create turnover record
+    const { data: turnover, error: turnoverError } = await supabase
+      .from("turnovers")
+      .insert({
+        project_id: projectId,
+        sequence_id: finalSequenceId,
+        turnover_number: nextToNumber,
+        title: sequenceName || sequenceCode || `Turnover ${nextToNumber}`,
+        general_notes: generalVfxNotes || null,
+        source_edl_filename: sourceEdlFilename || null,
+      })
+      .select()
+      .single();
+
+    if (turnoverError) {
+      console.error("Turnover create error:", turnoverError);
+      return NextResponse.json({ error: "Failed to create turnover" }, { status: 500 });
+    }
+
+    // Create shots (or find existing ones)
     const createdShots: any[] = [];
-    for (const shot of shots) {
-      const { data: newShot, error: shotError } = await supabase
+    const turnoverShotLinks: any[] = [];
+    
+    for (let i = 0; i < shots.length; i++) {
+      const shot = shots[i];
+      
+      // Check if shot already exists in this sequence
+      const { data: existingShot } = await supabase
         .from("shots")
-        .insert({
-          sequence_id: finalSequenceId,
-          code: shot.code,
-          description: shot.clipName || null,
-          status: "NOT_STARTED",
-          complexity: "MEDIUM",
-          frame_start: shot.sourceIn ? parseTimecodeToFrames(shot.sourceIn) : null,
-          frame_end: shot.sourceOut ? parseTimecodeToFrames(shot.sourceOut) : null,
-          notes: shot.vfxNotes || null, // VFX description from turnover
-        })
-        .select()
+        .select("id")
+        .eq("sequence_id", finalSequenceId)
+        .eq("code", shot.code)
         .single();
 
-      if (shotError) {
-        console.error("Shot create error:", shotError);
-        continue;
+      let shotId: string;
+      
+      if (existingShot) {
+        // Shot exists - just link it to this turnover
+        shotId = existingShot.id;
+        createdShots.push({ id: shotId, code: shot.code, existing: true });
+      } else {
+        // Create new shot
+        const { data: newShot, error: shotError } = await supabase
+          .from("shots")
+          .insert({
+            sequence_id: finalSequenceId,
+            code: shot.code,
+            description: shot.clipName || null,
+            status: "NOT_STARTED",
+            complexity: "MEDIUM",
+            frame_start: shot.sourceIn ? parseTimecodeToFrames(shot.sourceIn) : null,
+            frame_end: shot.sourceOut ? parseTimecodeToFrames(shot.sourceOut) : null,
+          })
+          .select()
+          .single();
+
+        if (shotError) {
+          console.error("Shot create error:", shotError);
+          continue;
+        }
+        shotId = newShot.id;
+        createdShots.push(newShot);
       }
-      createdShots.push(newShot);
+
+      // Create turnover_shots link with VFX notes and timecodes
+      turnoverShotLinks.push({
+        turnover_id: turnover.id,
+        shot_id: shotId,
+        vfx_notes: shot.vfxNotes || null,
+        source_in: shot.sourceIn || null,
+        source_out: shot.sourceOut || null,
+        record_in: shot.recordIn || null,
+        record_out: shot.recordOut || null,
+        duration_frames: shot.durationFrames || null,
+        clip_name: shot.clipName || null,
+        sort_order: i,
+      });
     }
 
-    // Process uploaded refs - create Bunny Stream entry + trigger transcoding
+    // Insert all turnover_shot links
+    if (turnoverShotLinks.length > 0) {
+      const { error: linkError } = await supabase
+        .from("turnover_shots")
+        .insert(turnoverShotLinks);
+      
+      if (linkError) {
+        console.error("Turnover shots link error:", linkError);
+      }
+    }
+
+    // Process shared reference - attach to TURNOVER, not individual shots
     const refFiles = (uploadedFiles || []).filter(f => f.type === 'ref');
-    for (const ref of refFiles) {
-      // Match to shot by filename or use first shot
-      const matchedShot = createdShots.find(s => 
-        ref.originalName.toLowerCase().includes(s.code.toLowerCase())
-      ) || createdShots[0];
-
-      if (!matchedShot) continue;
-
+    if (refFiles.length > 0) {
+      const ref = refFiles[0]; // Use first ref as the shared reference
+      
       let refPreviewUrl: string | null = null;
       let refVideoId: string | null = null;
 
       // Create Bunny Stream video entry for HLS playback
       if (BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
         try {
-          const title = `${matchedShot.code}_ref`;
+          const title = `TO${nextToNumber}_${turnover.title}_ref`;
           const createVideoResponse = await fetch(
             `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos`,
             {
@@ -158,29 +212,20 @@ export async function POST(request: NextRequest) {
               refPreviewUrl = `${BUNNY_STREAM_CDN}/${videoData.guid}/playlist.m3u8`;
             }
 
-            // Use Bunny Stream's fetch to download and transcode directly
+            // Trigger fetch for transcoding
             if (BUNNY_STORAGE_CDN_URL && ref.storagePath) {
-              try {
-                const sourceUrl = `${BUNNY_STORAGE_CDN_URL}${ref.storagePath}`;
-                const fetchResponse = await fetch(
-                  `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos/${refVideoId}/fetch`,
-                  {
-                    method: 'POST',
-                    headers: {
-                      'AccessKey': BUNNY_STREAM_API_KEY,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ url: sourceUrl }),
-                  }
-                );
-                if (fetchResponse.ok) {
-                  console.log('Ref video fetch triggered for:', matchedShot.code);
-                } else {
-                  console.error('Ref video fetch failed:', await fetchResponse.text());
+              const sourceUrl = `${BUNNY_STORAGE_CDN_URL}${ref.storagePath}`;
+              await fetch(
+                `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos/${refVideoId}/fetch`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'AccessKey': BUNNY_STREAM_API_KEY,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ url: sourceUrl }),
                 }
-              } catch (fetchError) {
-                console.error('Ref video fetch error:', fetchError);
-              }
+              );
             }
           }
         } catch (err) {
@@ -188,8 +233,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      // Update turnover with ref info
       await supabase
-        .from("shots")
+        .from("turnovers")
         .update({
           ref_filename: ref.originalName,
           ref_storage_path: ref.storagePath,
@@ -197,31 +243,10 @@ export async function POST(request: NextRequest) {
           ref_video_id: refVideoId,
           ref_preview_url: refPreviewUrl,
         })
-        .eq("id", matchedShot.id);
-
-      // Create Version 0 (turnover) with ref as the preview
-      // This represents the original turnover element from editorial
-      await supabase
-        .from("versions")
-        .insert({
-          shot_id: matchedShot.id,
-          version_number: 0,
-          created_by_id: null, // System/turnover
-          status: "WIP",
-          description: "Turnover from editorial",
-          preview_url: refPreviewUrl,
-          download_url: ref.storagePath,
-          bunny_video_id: refVideoId,
-          // Store ref info on version too for the toggle
-          ref_filename: ref.originalName,
-          ref_storage_path: ref.storagePath,
-          ref_cdn_url: ref.cdnUrl,
-          ref_video_id: refVideoId,
-          ref_preview_url: refPreviewUrl,
-        });
+        .eq("id", turnover.id);
     }
 
-    // Process uploaded plates - create Bunny Stream entry + trigger transcoding
+    // Process plates - match to specific shots by filename
     const plateFiles = (uploadedFiles || []).filter(f => f.type === 'plate');
     for (let i = 0; i < plateFiles.length; i++) {
       const plate = plateFiles[i];
@@ -236,7 +261,7 @@ export async function POST(request: NextRequest) {
       let platePreviewUrl: string | null = null;
       let plateVideoId: string | null = null;
 
-      // Create Bunny Stream video entry for HLS playback
+      // Create Bunny Stream video entry
       if (BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
         try {
           const baseName = plate.originalName.replace(/\.[^/.]+$/, "");
@@ -261,29 +286,20 @@ export async function POST(request: NextRequest) {
               platePreviewUrl = `${BUNNY_STREAM_CDN}/${videoData.guid}/playlist.m3u8`;
             }
 
-            // Use Bunny Stream's fetch to download and transcode directly
+            // Trigger fetch
             if (BUNNY_STORAGE_CDN_URL && plate.storagePath) {
-              try {
-                const sourceUrl = `${BUNNY_STORAGE_CDN_URL}${plate.storagePath}`;
-                const fetchResponse = await fetch(
-                  `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos/${plateVideoId}/fetch`,
-                  {
-                    method: 'POST',
-                    headers: {
-                      'AccessKey': BUNNY_STREAM_API_KEY,
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ url: sourceUrl }),
-                  }
-                );
-                if (fetchResponse.ok) {
-                  console.log('Plate video fetch triggered for:', matchedShot.code, plate.originalName);
-                } else {
-                  console.error('Plate video fetch failed:', await fetchResponse.text());
+              const sourceUrl = `${BUNNY_STORAGE_CDN_URL}${plate.storagePath}`;
+              await fetch(
+                `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos/${plateVideoId}/fetch`,
+                {
+                  method: 'POST',
+                  headers: {
+                    'AccessKey': BUNNY_STREAM_API_KEY,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ url: sourceUrl }),
                 }
-              } catch (fetchError) {
-                console.error('Plate video fetch error:', fetchError);
-              }
+              );
             }
           }
         } catch (err) {
@@ -307,8 +323,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      turnoverId: turnover.id,
+      turnoverNumber: nextToNumber,
       sequenceId: finalSequenceId,
-      shotsCreated: createdShots.length,
+      shotsCreated: createdShots.filter(s => !s.existing).length,
+      shotsLinked: createdShots.filter(s => s.existing).length,
       shots: createdShots,
     });
   } catch (error) {
