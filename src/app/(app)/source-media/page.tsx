@@ -67,6 +67,7 @@ export default function SourceMediaPage() {
   const [importedALEs, setImportedALEs] = useState<ImportedALE[]>([]);
   const [allRecords, setAllRecords] = useState<SourceMediaInsert[]>([]);
   const [savedRecords, setSavedRecords] = useState<any[]>([]);
+  const [savedRecordsTotal, setSavedRecordsTotal] = useState<number>(0);
   const [isImporting, setIsImporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState<{ current: number; total: number } | null>(null);
@@ -103,15 +104,16 @@ export default function SourceMediaPage() {
     async function loadSourceMedia() {
       if (!selectedProjectId) return;
       
-      const { data } = await supabase
+      const { data, count } = await supabase
         .from('source_media')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('project_id', selectedProjectId)
         .order('clip_name')
-        .limit(500);
+        .limit(1000);
       
       if (data) {
         setSavedRecords(data);
+        setSavedRecordsTotal(count || data.length);
       }
     }
     loadSourceMedia();
@@ -367,12 +369,15 @@ export default function SourceMediaPage() {
       )}
 
       {/* Saved Records Count */}
-      {savedRecords.length > 0 && allRecords.length === 0 && (
+      {savedRecordsTotal > 0 && allRecords.length === 0 && (
         <Card>
           <CardContent className="py-3">
             <div className="flex items-center gap-2 text-muted-foreground">
               <Database className="h-4 w-4" />
-              <span>{savedRecords.length} clips already in database for this project</span>
+              <span>{savedRecordsTotal.toLocaleString()} clips in database for this project</span>
+              {savedRecordsTotal > savedRecords.length && (
+                <span className="text-xs">(showing first {savedRecords.length})</span>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -457,12 +462,14 @@ export default function SourceMediaPage() {
       )}
 
       {/* Summary Stats */}
-      {displayRecords.length > 0 && (
+      {(displayRecords.length > 0 || savedRecordsTotal > 0) && (
         <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Total Clips</CardDescription>
-              <CardTitle className="text-3xl">{displaySummary.totalClips}</CardTitle>
+              <CardTitle className="text-3xl">
+                {allRecords.length > 0 ? displaySummary.totalClips : savedRecordsTotal.toLocaleString()}
+              </CardTitle>
             </CardHeader>
           </Card>
           <Card>
