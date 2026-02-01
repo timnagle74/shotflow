@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { 
   Check, AlertCircle, Film, Video, FolderOpen, Loader2, 
   MessageSquare, ArrowLeft, Send, Link2, Unlink 
@@ -124,11 +123,12 @@ export default function TurnoverReviewPage() {
           .order("sort_order");
 
         if (shotsError) throw shotsError;
-        setShots(shotsData as any);
+        const typedShots = (shotsData || []) as TurnoverShot[];
+        setShots(typedShots);
 
         // Initialize notes from existing data
         const existingNotes: Record<string, string> = {};
-        for (const shot of (shotsData || [])) {
+        for (const shot of typedShots) {
           if (shot.vfx_notes) {
             existingNotes[shot.id] = shot.vfx_notes;
           }
@@ -143,30 +143,33 @@ export default function TurnoverReviewPage() {
           .order("sort_order");
 
         if (refsError) throw refsError;
+        const typedRefs = (refsData || []) as Array<{id: string; filename: string; cdn_url: string | null; preview_url: string | null; auto_matched: boolean}>;
 
         // Load ref assignments
         const { data: refAssignData } = await supabase
           .from("turnover_shot_refs")
           .select("turnover_shot_id, turnover_ref_id")
-          .in("turnover_ref_id", (refsData || []).map(r => r.id));
+          .in("turnover_ref_id", typedRefs.map(r => r.id));
+        
+        const typedRefAssigns = (refAssignData || []) as Array<{turnover_shot_id: string; turnover_ref_id: string}>;
 
         // Build assignment map
         const assignments: Record<string, string[]> = {};
-        for (const ref of (refsData || [])) {
-          assignments[ref.id] = (refAssignData || [])
+        for (const ref of typedRefs) {
+          assignments[ref.id] = typedRefAssigns
             .filter(a => a.turnover_ref_id === ref.id)
             .map(a => a.turnover_shot_id);
         }
         setRefAssignments(assignments);
 
-        const refsWithAssignments = (refsData || []).map(ref => ({
+        const refsWithAssignments = typedRefs.map(ref => ({
           ...ref,
           assigned_shots: assignments[ref.id] || [],
         }));
         setRefs(refsWithAssignments);
 
         // Load plates for all shots
-        const shotIds = (shotsData || []).map(s => s.shot_id);
+        const shotIds = typedShots.map(s => s.shot_id);
         if (shotIds.length > 0) {
           const { data: platesData } = await supabase
             .from("shot_plates")
@@ -213,9 +216,12 @@ export default function TurnoverReviewPage() {
     setSaving(true);
 
     try {
+      // Cast to any for new columns not yet in types
+      const db = supabase as any;
+      
       // Update shot notes
       for (const [turnoverShotId, notes] of Object.entries(shotNotes)) {
-        await supabase
+        await db
           .from("turnover_shots")
           .update({ 
             vfx_notes: notes || null,
@@ -227,23 +233,23 @@ export default function TurnoverReviewPage() {
       // Update ref assignments
       for (const [refId, shotIds] of Object.entries(refAssignments)) {
         // Delete existing assignments for this ref
-        await supabase
+        await db
           .from("turnover_shot_refs")
           .delete()
           .eq("turnover_ref_id", refId);
 
         // Insert new assignments
         if (shotIds.length > 0) {
-          await supabase
+          await db
             .from("turnover_shot_refs")
-            .insert(shotIds.map(tsId => ({
+            .insert(shotIds.map((tsId: string) => ({
               turnover_ref_id: refId,
               turnover_shot_id: tsId,
               auto_matched: false, // Manual assignment
             })));
 
           // Update refs_assigned status
-          await supabase
+          await db
             .from("turnover_shots")
             .update({ refs_assigned: true })
             .in("id", shotIds);
@@ -254,7 +260,7 @@ export default function TurnoverReviewPage() {
       const allAssignedShotIds = Object.values(refAssignments).flat();
       const unassignedShots = shots.filter(s => !allAssignedShotIds.includes(s.id));
       if (unassignedShots.length > 0) {
-        await supabase
+        await db
           .from("turnover_shots")
           .update({ refs_assigned: false })
           .in("id", unassignedShots.map(s => s.id));
@@ -277,8 +283,8 @@ export default function TurnoverReviewPage() {
       // Save first
       await handleSave();
 
-      // Update turnover status
-      await supabase
+      // Update turnover status (cast to any for new columns)
+      await (supabase as any)
         .from("turnovers")
         .update({ 
           status: 'reviewed',
