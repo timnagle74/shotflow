@@ -69,6 +69,7 @@ export default function SourceMediaPage() {
   const [savedRecords, setSavedRecords] = useState<any[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{ current: number; total: number } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [saveResult, setSaveResult] = useState<{ inserted: number; errors: string[] } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -116,27 +117,50 @@ export default function SourceMediaPage() {
     loadSourceMedia();
   }, [selectedProjectId]);
 
-  // Save to database
+  // Save to database (batched to avoid payload size limits)
+  const CLIENT_BATCH_SIZE = 200; // Send 200 records per request to stay under Vercel limits
+  
   const handleSave = async () => {
     if (!selectedProjectId || allRecords.length === 0) return;
     
     setIsSaving(true);
     setSaveResult(null);
+    setSaveProgress({ current: 0, total: allRecords.length });
+    
+    const totalBatches = Math.ceil(allRecords.length / CLIENT_BATCH_SIZE);
+    let totalInserted = 0;
+    const allErrors: string[] = [];
     
     try {
-      const response = await fetch('/api/source-media', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId: selectedProjectId,
-          records: allRecords,
-        }),
-      });
+      for (let i = 0; i < allRecords.length; i += CLIENT_BATCH_SIZE) {
+        const batch = allRecords.slice(i, i + CLIENT_BATCH_SIZE);
+        const batchNum = Math.floor(i / CLIENT_BATCH_SIZE) + 1;
+        setSaveProgress({ current: i, total: allRecords.length });
+        
+        const response = await fetch('/api/source-media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            projectId: selectedProjectId,
+            records: batch,
+          }),
+        });
+        
+        if (!response.ok) {
+          allErrors.push(`Batch ${batchNum}/${totalBatches}: HTTP ${response.status}`);
+          continue;
+        }
+        
+        const result = await response.json();
+        totalInserted += result.inserted || 0;
+        if (result.errors?.length > 0) {
+          allErrors.push(...result.errors.map((e: string) => `Batch ${batchNum}: ${e}`));
+        }
+      }
       
-      const result = await response.json();
+      setSaveResult({ inserted: totalInserted, errors: allErrors });
       
-      if (result.success) {
-        setSaveResult({ inserted: result.inserted, errors: result.errors });
+      if (totalInserted > 0) {
         // Reload saved records
         const { data } = await supabase
           .from('source_media')
@@ -148,13 +172,12 @@ export default function SourceMediaPage() {
         // Clear imported ALEs
         setImportedALEs([]);
         setAllRecords([]);
-      } else {
-        setSaveResult({ inserted: 0, errors: [result.error] });
       }
     } catch (err) {
-      setSaveResult({ inserted: 0, errors: [String(err)] });
+      setSaveResult({ inserted: totalInserted, errors: [...allErrors, String(err)] });
     } finally {
       setIsSaving(false);
+      setSaveProgress(null);
     }
   };
 
@@ -280,7 +303,9 @@ export default function SourceMediaPage() {
             disabled={allRecords.length === 0 || isSaving || !selectedProjectId}
           >
             {isSaving ? (
-              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</>
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                {saveProgress ? `Saving ${saveProgress.current}/${saveProgress.total}...` : 'Saving...'}
+              </>
             ) : (
               <><Database className="h-4 w-4 mr-2" />Save {allRecords.length > 0 ? `(${allRecords.length})` : ''}</>
             )}
