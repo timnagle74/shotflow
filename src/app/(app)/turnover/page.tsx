@@ -209,13 +209,21 @@ export default function TurnoverPage() {
   const [importError, setImportError] = useState<string | null>(null);
   
   // Helper to compute shot code consistently
+  // Priority: clipName (FROM CLIP NAME) > reelName > EDL title + index > fallback
   const getShotCode = useCallback((event: typeof videoEvents[0], idx: number) => {
+    // Prefer clipName from FROM CLIP NAME comment (the actual shot identifier)
+    if (event.clipName?.trim()) {
+      return event.clipName.trim();
+    }
+    // Fall back to EDL title + index if no clipName
     const edlTitle = parseResult?.title?.trim();
-    const baseCode = edlTitle || event.clipName || event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`;
-    // If multiple shots and using EDL title, append shot number
-    return (edlTitle && videoEvents.length > 1) 
-      ? `${baseCode}_${String(idx + 1).padStart(3, "0")}` 
-      : baseCode;
+    if (edlTitle) {
+      return videoEvents.length > 1 
+        ? `${edlTitle}_${String(idx + 1).padStart(3, "0")}` 
+        : edlTitle;
+    }
+    // Last resort: reel name or generic
+    return event.reelName || `SHOT_${String(idx + 1).padStart(3, "0")}`;
   }, [parseResult?.title, videoEvents.length]);
   
   // Shot notes for VFX descriptions (editable in preview table)
