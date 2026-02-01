@@ -87,16 +87,18 @@ export async function POST(request: NextRequest) {
         custom_metadata: r.custom_metadata,
       }));
       
-      // Insert with conflict handling
-      // Using insert instead of upsert because tc_in_frames can be null
+      // Upsert - update existing records on conflict
       const { data, error } = await supabase
         .from('source_media')
-        .insert(dbRecords)
+        .upsert(dbRecords, {
+          onConflict: 'project_id,clip_name,tc_in_frames',
+          ignoreDuplicates: false, // Update existing records
+        })
         .select('id');
       
       if (error) {
         // Log full error for debugging
-        console.error('Source media insert error:', {
+        console.error('Source media upsert error:', {
           batch: Math.floor(i / BATCH_SIZE) + 1,
           error: error.message,
           code: error.code,
