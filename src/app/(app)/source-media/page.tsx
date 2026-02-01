@@ -68,6 +68,12 @@ export default function SourceMediaPage() {
   const [allRecords, setAllRecords] = useState<SourceMediaInsert[]>([]);
   const [savedRecords, setSavedRecords] = useState<any[]>([]);
   const [savedRecordsTotal, setSavedRecordsTotal] = useState<number>(0);
+  const [savedStats, setSavedStats] = useState<{
+    shootDates: number;
+    cameras: number;
+    scenes: number;
+    withCDL: number;
+  } | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState<{ current: number; total: number } | null>(null);
@@ -104,6 +110,7 @@ export default function SourceMediaPage() {
     async function loadSourceMedia() {
       if (!selectedProjectId) return;
       
+      // Get records for table display (limited)
       const { data, count } = await supabase
         .from('source_media')
         .select('*', { count: 'exact' })
@@ -115,6 +122,22 @@ export default function SourceMediaPage() {
         setSavedRecords(data);
         setSavedRecordsTotal(count || data.length);
       }
+      
+      // Get real stats using separate queries
+      const [shootDatesRes, camerasRes, scenesRes, cdlRes] = await Promise.all([
+        supabase.from('source_media').select('shoot_date').eq('project_id', selectedProjectId).not('shoot_date', 'is', null),
+        supabase.from('source_media').select('camera, camera_id').eq('project_id', selectedProjectId),
+        supabase.from('source_media').select('scene').eq('project_id', selectedProjectId).not('scene', 'is', null),
+        supabase.from('source_media').select('id').eq('project_id', selectedProjectId).not('cdl_slope_r', 'is', null),
+      ]);
+      
+      // Count unique values
+      const shootDates = new Set(shootDatesRes.data?.map(r => r.shoot_date)).size;
+      const cameras = new Set(camerasRes.data?.flatMap(r => [r.camera, r.camera_id].filter(Boolean))).size;
+      const scenes = new Set(scenesRes.data?.map(r => r.scene)).size;
+      const withCDL = cdlRes.data?.length || 0;
+      
+      setSavedStats({ shootDates, cameras, scenes, withCDL });
     }
     loadSourceMedia();
   }, [selectedProjectId]);
@@ -475,25 +498,33 @@ export default function SourceMediaPage() {
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Shoot Dates</CardDescription>
-              <CardTitle className="text-3xl">{displaySummary.shootDates.length}</CardTitle>
+              <CardTitle className="text-3xl">
+                {allRecords.length > 0 ? displaySummary.shootDates.length : (savedStats?.shootDates || 0)}
+              </CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Cameras</CardDescription>
-              <CardTitle className="text-3xl">{displaySummary.cameras.length}</CardTitle>
+              <CardTitle className="text-3xl">
+                {allRecords.length > 0 ? displaySummary.cameras.length : (savedStats?.cameras || 0)}
+              </CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Scenes</CardDescription>
-              <CardTitle className="text-3xl">{displaySummary.scenes.length}</CardTitle>
+              <CardTitle className="text-3xl">
+                {allRecords.length > 0 ? displaySummary.scenes.length : (savedStats?.scenes || 0)}
+              </CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>With CDL</CardDescription>
-              <CardTitle className="text-3xl">{displaySummary.withCDL}</CardTitle>
+              <CardTitle className="text-3xl">
+                {allRecords.length > 0 ? displaySummary.withCDL : (savedStats?.withCDL || 0).toLocaleString()}
+              </CardTitle>
             </CardHeader>
           </Card>
         </div>
