@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Check, AlertCircle, Film, Video, FolderOpen, Loader2, 
-  MessageSquare, ArrowLeft, Send, Link2, Unlink 
+  MessageSquare, ArrowLeft, Send, Link2, Unlink, Upload, Plus, Image as ImageIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -89,6 +89,12 @@ export default function TurnoverReviewPage() {
   // Local edits
   const [shotNotes, setShotNotes] = useState<Record<string, string>>({});
   const [refAssignments, setRefAssignments] = useState<Record<string, string[]>>({}); // refId -> turnoverShotIds
+
+  // Upload state
+  const [uploadingRef, setUploadingRef] = useState(false);
+  const [uploadingPlate, setUploadingPlate] = useState<string | null>(null); // shot_id being uploaded to
+  const refInputRef = useRef<HTMLInputElement>(null);
+  const plateInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Load turnover data
   useEffect(() => {
@@ -209,6 +215,92 @@ export default function TurnoverReviewPage() {
       };
     });
   }, []);
+
+  // Upload ref file
+  const handleRefUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !turnover) return;
+    
+    setUploadingRef(true);
+    try {
+      const res = await fetch("/api/turnover/upload-media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          turnoverId: turnover.id,
+          projectId: turnover.project.id,
+          type: "ref",
+          filename: file.name,
+          fileSize: file.size,
+        }),
+      });
+      
+      if (!res.ok) throw new Error("Failed to prepare upload");
+      const { uploadUrl, accessKey, ref } = await res.json();
+      
+      // Upload to Bunny
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "AccessKey": accessKey, "Content-Type": "application/octet-stream" },
+        body: file,
+      });
+      
+      if (uploadRes.ok || uploadRes.status === 201) {
+        // Add to local refs list
+        setRefs(prev => [...prev, { ...ref, assigned_shots: [] }]);
+      }
+    } catch (err) {
+      console.error("Ref upload error:", err);
+      setError("Failed to upload reference");
+    } finally {
+      setUploadingRef(false);
+      if (refInputRef.current) refInputRef.current.value = "";
+    }
+  }, [turnover]);
+
+  // Upload plate file for a specific shot
+  const handlePlateUpload = useCallback(async (shotId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !turnover) return;
+    
+    setUploadingPlate(shotId);
+    try {
+      const res = await fetch("/api/turnover/upload-media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          turnoverId: turnover.id,
+          projectId: turnover.project.id,
+          type: "plate",
+          shotId,
+          filename: file.name,
+          fileSize: file.size,
+        }),
+      });
+      
+      if (!res.ok) throw new Error("Failed to prepare upload");
+      const { uploadUrl, accessKey, plate } = await res.json();
+      
+      // Upload to Bunny
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "AccessKey": accessKey, "Content-Type": "application/octet-stream" },
+        body: file,
+      });
+      
+      if (uploadRes.ok || uploadRes.status === 201) {
+        // Add to local plates list
+        setPlates(prev => [...prev, plate]);
+      }
+    } catch (err) {
+      console.error("Plate upload error:", err);
+      setError("Failed to upload plate");
+    } finally {
+      setUploadingPlate(null);
+      const input = plateInputRefs.current[shotId];
+      if (input) input.value = "";
+    }
+  }, [turnover]);
 
   // Save all changes
   const handleSave = useCallback(async () => {
@@ -400,47 +492,92 @@ export default function TurnoverReviewPage() {
       )}
 
       {/* Refs Section */}
-      {refs.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Video className="h-4 w-4" />
-              Reference Clips ({refs.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {refs.map(ref => (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Video className="h-4 w-4" />
+            Reference Clips ({refs.length})
+            <div className="ml-auto">
+              <input
+                ref={refInputRef}
+                type="file"
+                accept=".mov,.mp4,.mxf,.m4v"
+                className="hidden"
+                onChange={handleRefUpload}
+              />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 text-xs"
+                onClick={() => refInputRef.current?.click()}
+                disabled={uploadingRef}
+              >
+                {uploadingRef ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <Plus className="h-3 w-3 mr-1" />
+                )}
+                Add Ref
+              </Button>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {refs.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Video className="h-8 w-8 mx-auto mb-2 opacity-40" />
+              <p className="text-sm">No reference clips uploaded</p>
+              <p className="text-xs">Click "Add Ref" to upload</p>
+            </div>
+          ) : (
+            refs.map(ref => (
               <div key={ref.id} className="border rounded-lg p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <Film className="h-4 w-4 text-blue-400" />
-                  <span className="font-medium text-sm">{ref.filename}</span>
-                  {ref.auto_matched && (
-                    <Badge variant="outline" className="text-[10px]">Auto-matched</Badge>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="text-xs text-muted-foreground mr-2">Assign to shots:</span>
-                  {shots.map(shot => {
-                    const isAssigned = refAssignments[ref.id]?.includes(shot.id);
-                    return (
-                      <Button
-                        key={shot.id}
-                        variant={isAssigned ? "default" : "outline"}
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => toggleRefAssignment(ref.id, shot.id)}
-                      >
-                        {isAssigned ? <Link2 className="h-3 w-3 mr-1" /> : <Unlink className="h-3 w-3 mr-1" />}
-                        {shot.shot.code}
-                      </Button>
-                    );
-                  })}
+                <div className="flex items-start gap-3">
+                  {/* Thumbnail or placeholder */}
+                  <div className="w-24 h-16 bg-muted rounded overflow-hidden flex-shrink-0 flex items-center justify-center">
+                    {ref.preview_url ? (
+                      <video 
+                        src={ref.preview_url} 
+                        className="w-full h-full object-cover"
+                        muted
+                        playsInline
+                      />
+                    ) : (
+                      <Film className="h-6 w-6 text-muted-foreground/40" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm truncate">{ref.filename}</span>
+                      {ref.auto_matched && (
+                        <Badge variant="outline" className="text-[10px]">Auto-matched</Badge>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      <span className="text-xs text-muted-foreground">Assign:</span>
+                      {shots.map(shot => {
+                        const isAssigned = refAssignments[ref.id]?.includes(shot.id);
+                        return (
+                          <Button
+                            key={shot.id}
+                            variant={isAssigned ? "default" : "outline"}
+                            size="sm"
+                            className="h-6 text-[10px] px-2"
+                            onClick={() => toggleRefAssignment(ref.id, shot.id)}
+                          >
+                            {isAssigned ? <Link2 className="h-2.5 w-2.5 mr-0.5" /> : null}
+                            {shot.shot.code}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+            ))
+          )}
+        </CardContent>
+      </Card>
 
       {/* Shots with Notes and Plates */}
       <div className="space-y-4">
@@ -492,16 +629,61 @@ export default function TurnoverReviewPage() {
                   </div>
                 )}
 
-                {/* Plates list */}
-                {shotPlates.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
-                    {shotPlates.map(plate => (
-                      <Badge key={plate.id} variant="secondary" className="text-xs">
-                        <Film className="h-3 w-3 mr-1" />{plate.filename}
-                      </Badge>
-                    ))}
+                {/* Plates section with thumbnails and upload */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-medium flex items-center gap-1">
+                      <FolderOpen className="h-3 w-3" />
+                      Plates
+                    </label>
+                    <div>
+                      <input
+                        ref={(el) => { plateInputRefs.current[shot.shot_id] = el; }}
+                        type="file"
+                        accept=".mov,.mp4,.mxf,.exr,.dpx,.tif,.tiff"
+                        className="hidden"
+                        onChange={(e) => handlePlateUpload(shot.shot_id, e)}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={() => plateInputRefs.current[shot.shot_id]?.click()}
+                        disabled={uploadingPlate === shot.shot_id}
+                      >
+                        {uploadingPlate === shot.shot_id ? (
+                          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        ) : (
+                          <Upload className="h-3 w-3 mr-1" />
+                        )}
+                        Add Plate
+                      </Button>
+                    </div>
                   </div>
-                )}
+                  {shotPlates.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {shotPlates.map(plate => (
+                        <div key={plate.id} className="flex items-center gap-2 bg-muted/50 rounded px-2 py-1">
+                          {plate.preview_url ? (
+                            <div className="w-10 h-7 bg-muted rounded overflow-hidden">
+                              <video 
+                                src={plate.preview_url}
+                                className="w-full h-full object-cover"
+                                muted
+                                playsInline
+                              />
+                            </div>
+                          ) : (
+                            <ImageIcon className="h-4 w-4 text-muted-foreground/60" />
+                          )}
+                          <span className="text-xs truncate max-w-[120px]">{plate.filename}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground italic">No plates uploaded</p>
+                  )}
+                </div>
 
                 {/* VFX Notes */}
                 <div>
