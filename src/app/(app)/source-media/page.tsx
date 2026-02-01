@@ -292,19 +292,28 @@ export default function SourceMediaPage() {
       {saveResult && (
         <Card className={saveResult.errors.length > 0 ? "border-yellow-500" : "border-green-500"}>
           <CardContent className="py-3">
-            <div className="flex items-center gap-2">
-              {saveResult.errors.length > 0 ? (
-                <AlertCircle className="h-5 w-5 text-yellow-500" />
-              ) : (
-                <CheckCircle className="h-5 w-5 text-green-500" />
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                {saveResult.errors.length > 0 ? (
+                  <AlertCircle className="h-5 w-5 text-yellow-500" />
+                ) : (
+                  <CheckCircle className="h-5 w-5 text-green-500" />
+                )}
+                <span>
+                  Saved {saveResult.inserted} clips to database.
+                  {saveResult.errors.length > 0 && ` (${saveResult.errors.length} errors)`}
+                </span>
+                <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSaveResult(null)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              {saveResult.errors.length > 0 && (
+                <div className="text-xs text-muted-foreground font-mono bg-muted p-2 rounded max-h-24 overflow-auto">
+                  {saveResult.errors.map((err, i) => (
+                    <div key={i}>{err}</div>
+                  ))}
+                </div>
               )}
-              <span>
-                Saved {saveResult.inserted} clips to database.
-                {saveResult.errors.length > 0 && ` (${saveResult.errors.length} errors)`}
-              </span>
-              <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSaveResult(null)}>
-                <X className="h-4 w-4" />
-              </Button>
             </div>
           </CardContent>
         </Card>

@@ -87,16 +87,22 @@ export async function POST(request: NextRequest) {
         custom_metadata: r.custom_metadata,
       }));
       
-      // Upsert to handle duplicates (based on project_id, clip_name, tc_in_frames)
+      // Insert with conflict handling
+      // Using insert instead of upsert because tc_in_frames can be null
       const { data, error } = await supabase
         .from('source_media')
-        .upsert(dbRecords, { 
-          onConflict: 'project_id,clip_name,tc_in_frames',
-          ignoreDuplicates: false 
-        })
+        .insert(dbRecords)
         .select('id');
       
       if (error) {
+        // Log full error for debugging
+        console.error('Source media insert error:', {
+          batch: Math.floor(i / BATCH_SIZE) + 1,
+          error: error.message,
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+        });
         results.errors.push(`Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${error.message}`);
       } else {
         results.inserted += data?.length || 0;
@@ -104,7 +110,7 @@ export async function POST(request: NextRequest) {
     }
     
     return NextResponse.json({
-      success: true,
+      success: results.errors.length === 0,
       ...results,
       total: records.length,
     });
