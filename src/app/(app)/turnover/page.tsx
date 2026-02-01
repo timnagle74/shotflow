@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +40,8 @@ interface Sequence {
 }
 
 export default function TurnoverPage() {
+  const router = useRouter();
+  
   // Data from Supabase
   const [projects, setProjects] = useState<Project[]>([]);
   const [sequences, setSequences] = useState<Sequence[]>([]);
@@ -241,16 +244,7 @@ export default function TurnoverPage() {
   const handleEdlImport = useCallback(async () => {
     if (videoEvents.length === 0) return;
     
-    // Validate all shots have VFX notes
-    const shotsWithoutNotes = videoEvents.filter((event, idx) => {
-      const shotCode = getShotCode(event, idx);
-      return !shotNotes[shotCode]?.trim();
-    });
-
-    if (shotsWithoutNotes.length > 0) {
-      setImportError(`Please add VFX notes for all shots. ${shotsWithoutNotes.length} shot(s) missing notes.`);
-      return;
-    }
+    // No longer require VFX notes upfront - AE adds them in review step
 
     setImporting(true);
     setImportError(null);
@@ -363,16 +357,24 @@ export default function TurnoverPage() {
       console.log("Import result:", result);
       
       const toNum = result.turnoverNumber ? `TO${result.turnoverNumber}: ` : '';
-      const linked = result.shotsLinked ? ` (${result.shotsLinked} existing)` : '';
-      setImportStatus(`${toNum}Created ${result.shotsCreated} shot(s)${linked}`);
+      const refsInfo = result.refs ? ` | ${result.refs.matched}/${result.refs.created} refs matched` : '';
+      const platesInfo = result.plates ? ` | ${result.plates.matched}/${result.plates.created} plates matched` : '';
+      setImportStatus(`${toNum}Created ${result.shotsCreated} shot(s)${refsInfo}${platesInfo}`);
       setEdlImported(true);
+      
+      // Redirect to review page after short delay
+      if (result.reviewUrl) {
+        setTimeout(() => {
+          router.push(result.reviewUrl);
+        }, 1500);
+      }
     } catch (err) {
       console.error("Import error:", err);
       setImportError(err instanceof Error ? err.message : "Import failed");
     } finally {
       setImporting(false);
     }
-  }, [videoEvents, selectedProject, selectedSequence, parseResult, edlFileName, refFiles, plateFiles, getShotCode, shotNotes]);
+  }, [videoEvents, selectedProject, selectedSequence, parseResult, edlFileName, refFiles, plateFiles, getShotCode, shotNotes, generalVfxNotes, router]);
 
   const handleAleImport = () => {
     // In production: save to shot_metadata + shot_cdls via Supabase
@@ -587,31 +589,20 @@ export default function TurnoverPage() {
                       <div className="rounded-md bg-purple-600/10 p-2"><p className="text-lg font-bold text-purple-400">{parseResult.audioEvents}</p><p className="text-[10px] text-muted-foreground">AUDIO</p></div>
                     </div>
                     {parseResult.fcm !== 'UNKNOWN' && <Badge variant="outline" className="text-xs">{parseResult.fcm === 'DROP_FRAME' ? 'Drop Frame' : 'Non-Drop Frame'}</Badge>}
-                    {videoEvents.length > 0 && !edlImported && (() => {
-                      const filledNotes = videoEvents.filter((event, idx) => {
-                        const shotCode = getShotCode(event, idx);
-                        return shotNotes[shotCode]?.trim();
-                      }).length;
-                      const allNotesFilled = filledNotes === videoEvents.length;
-                      
-                      return (
-                        <>
-                          <div className={cn(
-                            "text-xs text-center py-1 rounded",
-                            allNotesFilled ? "text-green-400 bg-green-500/10" : "text-amber-400 bg-amber-500/10"
-                          )}>
-                            VFX Notes: {filledNotes}/{videoEvents.length} {allNotesFilled ? "✓" : "(required)"}
-                          </div>
-                          <Button className="w-full" onClick={handleEdlImport} disabled={importing}>
-                            {importing ? (
-                              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{importStatus || "Importing..."}</>
-                            ) : (
-                              <><Check className="h-4 w-4 mr-2" />Import {videoEvents.length} Shot{videoEvents.length !== 1 ? 's' : ''} + {refFiles.length} Refs + {plateFiles.length} Plates</>
-                            )}
-                          </Button>
-                        </>
-                      );
-                    })()}
+                    {videoEvents.length > 0 && !edlImported && (
+                      <>
+                        <div className="text-xs text-center py-1 rounded text-muted-foreground bg-muted/30">
+                          VFX notes can be added during review
+                        </div>
+                        <Button className="w-full" onClick={handleEdlImport} disabled={importing}>
+                          {importing ? (
+                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{importStatus || "Importing..."}</>
+                          ) : (
+                            <><Check className="h-4 w-4 mr-2" />Import {videoEvents.length} Shot{videoEvents.length !== 1 ? 's' : ''} + {refFiles.length} Refs + {plateFiles.length} Plates</>
+                          )}
+                        </Button>
+                      </>
+                    )}
                     {importError && <div className="flex items-center gap-2 text-red-400 text-sm"><AlertCircle className="h-4 w-4" />{importError}</div>}
                     {edlImported && (
                       <>
@@ -742,14 +733,14 @@ export default function TurnoverPage() {
                 </CardContent>
               </Card>
 
-              {/* VFX Shot Notes - Dedicated Section */}
+              {/* VFX Shot Notes - Optional, can be added during review */}
               {videoEvents.length > 0 && (
-                <Card className="border-primary/30">
+                <Card className="border-muted">
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm flex items-center gap-2">
+                    <CardTitle className="text-sm flex items-center gap-2 text-muted-foreground">
                       <MessageSquare className="h-4 w-4" />
                       VFX Shot Notes
-                      <Badge variant="secondary" className="ml-auto">Required</Badge>
+                      <Badge variant="outline" className="ml-auto text-[10px]">Optional — add during review</Badge>
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -761,18 +752,13 @@ export default function TurnoverPage() {
                           <div className="flex items-center gap-2">
                             <span className="font-mono text-sm font-bold">{shotCode}</span>
                             <span className="text-xs text-muted-foreground">{event.durationFrames}f</span>
-                            {hasNote ? (
+                            {hasNote && (
                               <Badge variant="outline" className="text-[10px] text-green-500 border-green-500/30">✓</Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-[10px] text-amber-500 border-amber-500/30">Required</Badge>
                             )}
                           </div>
                           <Textarea
-                            placeholder="Describe the VFX work needed for this shot..."
-                            className={cn(
-                              "min-h-[80px] text-sm resize-y",
-                              !hasNote && "border-amber-500/50 focus:border-amber-500"
-                            )}
+                            placeholder="Optional: Add VFX notes now, or during review step..."
+                            className="min-h-[60px] text-sm resize-y"
                             value={shotNotes[shotCode] || ""}
                             onChange={(e) => updateShotNote(shotCode, e.target.value)}
                           />
