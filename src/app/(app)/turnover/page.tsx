@@ -480,6 +480,133 @@ export default function TurnoverPage() {
     }
   }, [videoEvents, selectedProject, selectedSequence, parseResult, edlFileName, refFiles, plateFiles, getShotCode, shotNotes, generalVfxNotes, router]);
 
+  const handleXmlImport = useCallback(async () => {
+    if (!xmlResult || !xmlResult.sequences[0]?.clips.length) return;
+    
+    setImporting(true);
+    setImportError(null);
+    setImportStatus("Preparing...");
+
+    try {
+      const projectId = selectedProject;
+      const clips = xmlResult.sequences[0].clips;
+      
+      // Build file list for upload preparation
+      const allFiles = [
+        ...refFiles.map(f => ({ name: f.file.name, type: 'ref' as const })),
+        ...plateFiles.map(f => ({ name: f.file.name, type: 'plate' as const })),
+      ];
+
+      let uploadedFiles: Array<{
+        originalName: string;
+        type: 'ref' | 'plate';
+        storagePath: string;
+        cdnUrl: string;
+        fileSize: number;
+      }> = [];
+
+      // Upload files directly to Bunny if we have any
+      if (allFiles.length > 0) {
+        setImportStatus("Getting upload URLs...");
+        
+        const prepareRes = await fetch("/api/turnover/prepare-uploads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, files: allFiles }),
+        });
+
+        if (!prepareRes.ok) {
+          throw new Error("Failed to prepare uploads");
+        }
+
+        const { uploads } = await prepareRes.json();
+
+        const allTurnoverFiles = [...refFiles, ...plateFiles];
+        for (let i = 0; i < uploads.length; i++) {
+          const config = uploads[i];
+          const turnoverFile = allTurnoverFiles.find(f => f.file.name === config.originalName);
+          if (!turnoverFile) continue;
+
+          setImportStatus(`Uploading ${i + 1}/${uploads.length}: ${config.originalName}`);
+
+          const uploadRes = await fetch(config.uploadUrl, {
+            method: "PUT",
+            headers: {
+              "AccessKey": config.accessKey,
+              "Content-Type": "application/octet-stream",
+            },
+            body: turnoverFile.file,
+          });
+
+          if (uploadRes.ok || uploadRes.status === 201) {
+            uploadedFiles.push({
+              originalName: config.originalName,
+              type: config.type,
+              storagePath: config.storagePath,
+              cdnUrl: config.cdnUrl,
+              fileSize: turnoverFile.file.size,
+            });
+          }
+        }
+      }
+
+      setImportStatus("Creating shots...");
+      
+      const seqName = xmlResult.sequences[0].name || xmlFileName.replace(/\.xml$/i, "");
+      
+      const shots = clips.map((clip) => ({
+        code: clip.name,
+        clipName: clip.sourceFileName || clip.name,
+        cameraRoll: clip.cameraRoll || clip.reelName || null,
+        sourceIn: clip.sourceTimecode || null,
+        sourceOut: null, // Could calculate from sourceTimecode + duration
+        recordIn: null,
+        recordOut: null,
+        durationFrames: clip.duration,
+        vfxNotes: null,
+        hasReposition: clip.hasReposition,
+        hasSpeedChange: clip.hasSpeedChange,
+      }));
+
+      const response = await fetch("/api/turnover/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          sequenceId: selectedSequence !== "new" ? selectedSequence : undefined,
+          sequenceName: seqName,
+          sequenceCode: seqName.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase().slice(0, 20),
+          shots,
+          uploadedFiles,
+          generalVfxNotes: generalVfxNotes.trim() || null,
+          sourceEdlFilename: xmlFileName || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Import failed");
+      }
+
+      const result = await response.json();
+      
+      const toNum = result.turnoverNumber ? `TO${result.turnoverNumber}: ` : '';
+      setImportStatus(`${toNum}Created ${result.shotsCreated} shot(s)`);
+      setXmlImported(true);
+      
+      if (result.reviewUrl) {
+        setTimeout(() => {
+          router.push(result.reviewUrl);
+        }, 1500);
+      }
+    } catch (err) {
+      console.error("Import error:", err);
+      setImportError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }, [xmlResult, xmlFileName, selectedProject, selectedSequence, refFiles, plateFiles, generalVfxNotes, router]);
+
   const handleAleImport = () => {
     // In production: save to shot_metadata + shot_cdls via Supabase
     // For now, mark as imported
@@ -896,6 +1023,26 @@ export default function TurnoverPage() {
                     {xmlResult.warnings.length > 0 && (
                       <div className="text-xs text-yellow-400 flex items-center gap-1">
                         <AlertTriangle className="h-3 w-3" />{xmlResult.warnings.length} warnings
+                      </div>
+                    )}
+                    {xmlResult.sequences[0]?.clips.length > 0 && !xmlImported && (
+                      <>
+                        <div className="text-xs text-center py-1 rounded text-muted-foreground bg-muted/30">
+                          VFX notes can be added during review
+                        </div>
+                        <Button className="w-full" onClick={handleXmlImport} disabled={importing}>
+                          {importing ? (
+                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{importStatus || "Importing..."}</>
+                          ) : (
+                            <><Check className="h-4 w-4 mr-2" />Import {xmlResult.sequences[0].clips.length} Shot{xmlResult.sequences[0].clips.length !== 1 ? 's' : ''} + {refFiles.length} Refs + {plateFiles.length} Plates</>
+                          )}
+                        </Button>
+                      </>
+                    )}
+                    {importError && <div className="flex items-center gap-2 text-red-400 text-sm"><AlertCircle className="h-4 w-4" />{importError}</div>}
+                    {xmlImported && (
+                      <div className="flex items-center justify-center gap-2 py-2">
+                        <Badge className="bg-green-600 text-white border-0"><Check className="h-3 w-3 mr-1" />Imported Successfully</Badge>
                       </div>
                     )}
                   </CardContent>
