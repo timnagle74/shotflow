@@ -123,22 +123,19 @@ export default function SourceMediaPage() {
         setSavedRecordsTotal(count || data.length);
       }
       
-      // Get real stats by fetching ALL values (not limited) and counting unique
-      // Using range to get all records (up to 10k for stats)
-      const [shootDatesRes, camerasRes, scenesRes, cdlRes] = await Promise.all([
-        supabase.from('source_media').select('shoot_date').eq('project_id', selectedProjectId).not('shoot_date', 'is', null).range(0, 9999),
-        supabase.from('source_media').select('camera, camera_id').eq('project_id', selectedProjectId).range(0, 9999),
-        supabase.from('source_media').select('scene').eq('project_id', selectedProjectId).not('scene', 'is', null).range(0, 9999),
-        supabase.from('source_media').select('id', { count: 'exact', head: true }).eq('project_id', selectedProjectId).not('cdl_slope_r', 'is', null),
-      ]);
+      // Get real stats using database function (avoids row limits)
+      const { data: stats } = await supabase.rpc('get_source_media_stats', {
+        p_project_id: selectedProjectId
+      });
       
-      // Count unique values
-      const shootDates = new Set(shootDatesRes.data?.map(r => r.shoot_date)).size;
-      const cameras = new Set(camerasRes.data?.flatMap(r => [r.camera, r.camera_id].filter(Boolean))).size;
-      const scenes = new Set(scenesRes.data?.map(r => r.scene)).size;
-      const withCDL = cdlRes.count || 0;
-      
-      setSavedStats({ shootDates, cameras, scenes, withCDL });
+      if (stats) {
+        setSavedStats({
+          shootDates: stats.shootDates || 0,
+          cameras: stats.cameras || 0,
+          scenes: stats.scenes || 0,
+          withCDL: stats.withCDL || 0,
+        });
+      }
     }
     loadSourceMedia();
   }, [selectedProjectId]);
