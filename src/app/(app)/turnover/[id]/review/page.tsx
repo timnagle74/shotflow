@@ -384,8 +384,8 @@ export default function TurnoverReviewPage() {
         })
         .eq("id", turnoverId);
 
-      // Redirect to shots page
-      router.push("/shots");
+      // Redirect to assignment page
+      router.push(`/turnover/${turnoverId}/assign`);
     } catch (err) {
       console.error("Publish error:", err);
       setError("Failed to publish turnover");
@@ -448,7 +448,7 @@ export default function TurnoverReviewPage() {
           </Button>
           <Button onClick={handlePublish} disabled={publishing}>
             {publishing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-            Publish to Shot Board
+            Continue to Assignment
           </Button>
         </div>
       </div>
@@ -716,7 +716,7 @@ export default function TurnoverReviewPage() {
         </Button>
         <Button onClick={handlePublish} disabled={publishing}>
           {publishing ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-          Publish to Shot Board
+          Continue to Assignment
         </Button>
       </div>
     </div>
