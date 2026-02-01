@@ -321,6 +321,7 @@ export default function TurnoverPage() {
         return {
           code,
           clipName: event.clipName,
+          cameraRoll: event.reelName, // Camera roll ID from EDL reel field
           sourceIn: event.sourceIn,
           sourceOut: event.sourceOut,
           recordIn: event.recordIn,

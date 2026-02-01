@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
       shots: Array<{
         code: string;
         clipName?: string;
+        cameraRoll?: string;
         sourceIn?: string;
         sourceOut?: string;
         recordIn?: string;
@@ -165,6 +166,7 @@ export async function POST(request: NextRequest) {
         record_out: shot.recordOut || null,
         duration_frames: shot.durationFrames || null,
         clip_name: shot.clipName || null,
+        reel_name: shot.cameraRoll || null,
         sort_order: i,
       });
     }
