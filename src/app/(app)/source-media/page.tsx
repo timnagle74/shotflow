@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   Upload, 
   Film, 
@@ -34,13 +41,13 @@ import {
   X,
   CheckCircle,
   AlertCircle,
-  Loader2
+  Loader2,
+  Database,
+  RefreshCw
 } from "lucide-react";
 import { aleToSourceMedia, summarizeSourceMedia } from "@/lib/source-media-importer";
 import type { SourceMediaInsert } from "@/lib/source-media.types";
-
-// Mock project for demo
-const MOCK_PROJECT_ID = "proj-001";
+import { createBrowserClient } from "@supabase/ssr";
 
 interface ImportedALE {
   filename: string;
@@ -48,15 +55,115 @@ interface ImportedALE {
   warnings: string[];
 }
 
+interface Project {
+  id: string;
+  name: string;
+  code: string;
+}
+
 export default function SourceMediaPage() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [importedALEs, setImportedALEs] = useState<ImportedALE[]>([]);
   const [allRecords, setAllRecords] = useState<SourceMediaInsert[]>([]);
+  const [savedRecords, setSavedRecords] = useState<any[]>([]);
   const [isImporting, setIsImporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [saveResult, setSaveResult] = useState<{ inserted: number; errors: string[] } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedRecord, setSelectedRecord] = useState<SourceMediaInsert | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  // Load projects on mount
+  useEffect(() => {
+    async function loadProjects() {
+      const { data } = await supabase
+        .from('projects')
+        .select('id, name, code')
+        .order('name');
+      
+      if (data && data.length > 0) {
+        setProjects(data);
+        setSelectedProjectId(data[0].id);
+      }
+      setIsLoading(false);
+    }
+    loadProjects();
+  }, []);
+
+  // Load existing source media when project changes
+  useEffect(() => {
+    async function loadSourceMedia() {
+      if (!selectedProjectId) return;
+      
+      const { data } = await supabase
+        .from('source_media')
+        .select('*')
+        .eq('project_id', selectedProjectId)
+        .order('clip_name')
+        .limit(500);
+      
+      if (data) {
+        setSavedRecords(data);
+      }
+    }
+    loadSourceMedia();
+  }, [selectedProjectId]);
+
+  // Save to database
+  const handleSave = async () => {
+    if (!selectedProjectId || allRecords.length === 0) return;
+    
+    setIsSaving(true);
+    setSaveResult(null);
+    
+    try {
+      const response = await fetch('/api/source-media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          records: allRecords,
+        }),
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setSaveResult({ inserted: result.inserted, errors: result.errors });
+        // Reload saved records
+        const { data } = await supabase
+          .from('source_media')
+          .select('*')
+          .eq('project_id', selectedProjectId)
+          .order('clip_name')
+          .limit(500);
+        if (data) setSavedRecords(data);
+        // Clear imported ALEs
+        setImportedALEs([]);
+        setAllRecords([]);
+      } else {
+        setSaveResult({ inserted: 0, errors: [result.error] });
+      }
+    } catch (err) {
+      setSaveResult({ inserted: 0, errors: [String(err)] });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleFilesDrop = useCallback(async (files: FileList) => {
+    if (!selectedProjectId) {
+      alert('Please select a project first');
+      return;
+    }
+    
     setIsImporting(true);
     const newImports: ImportedALE[] = [];
     
@@ -68,7 +175,7 @@ export default function SourceMediaPage() {
       try {
         const content = await file.text();
         const { records, warnings } = aleToSourceMedia(content, {
-          projectId: MOCK_PROJECT_ID,
+          projectId: selectedProjectId,
           aleSource: file.name,
         });
         
@@ -90,7 +197,7 @@ export default function SourceMediaPage() {
     setImportedALEs(prev => [...prev, ...newImports]);
     setAllRecords(prev => [...prev, ...newImports.flatMap(i => i.records)]);
     setIsImporting(false);
-  }, []);
+  }, [selectedProjectId]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -123,16 +230,28 @@ export default function SourceMediaPage() {
 
   const summary = summarizeSourceMedia(allRecords as any);
   
-  const filteredRecords = allRecords.filter(r => {
+  // Combined display: pending imports + saved records
+  const displayRecords = allRecords.length > 0 ? allRecords : savedRecords;
+  const displaySummary = allRecords.length > 0 ? summary : summarizeSourceMedia(savedRecords as any);
+  
+  const filteredRecords = displayRecords.filter((r: any) => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
-      r.clip_name.toLowerCase().includes(q) ||
+      r.clip_name?.toLowerCase().includes(q) ||
       r.scene?.toLowerCase().includes(q) ||
       r.camera?.toLowerCase().includes(q) ||
       r.camera_roll?.toLowerCase().includes(q)
     );
   });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -143,17 +262,65 @@ export default function SourceMediaPage() {
             Import dailies metadata from ALE files. Shots will auto-link to this master database.
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" disabled>
-            <FileVideo className="h-4 w-4 mr-2" />
-            Export CSV
-          </Button>
-          <Button disabled={allRecords.length === 0}>
-            <CheckCircle className="h-4 w-4 mr-2" />
-            Save to Database
+        <div className="flex items-center gap-3">
+          <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Select project" />
+            </SelectTrigger>
+            <SelectContent>
+              {projects.map(p => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name} ({p.code})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button 
+            onClick={handleSave}
+            disabled={allRecords.length === 0 || isSaving || !selectedProjectId}
+          >
+            {isSaving ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</>
+            ) : (
+              <><Database className="h-4 w-4 mr-2" />Save {allRecords.length > 0 ? `(${allRecords.length})` : ''}</>
+            )}
           </Button>
         </div>
       </div>
+
+      {/* Save Result Toast */}
+      {saveResult && (
+        <Card className={saveResult.errors.length > 0 ? "border-yellow-500" : "border-green-500"}>
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2">
+              {saveResult.errors.length > 0 ? (
+                <AlertCircle className="h-5 w-5 text-yellow-500" />
+              ) : (
+                <CheckCircle className="h-5 w-5 text-green-500" />
+              )}
+              <span>
+                Saved {saveResult.inserted} clips to database.
+                {saveResult.errors.length > 0 && ` (${saveResult.errors.length} errors)`}
+              </span>
+              <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setSaveResult(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Saved Records Count */}
+      {savedRecords.length > 0 && allRecords.length === 0 && (
+        <Card>
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Database className="h-4 w-4" />
+              <span>{savedRecords.length} clips already in database for this project</span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Import Drop Zone */}
       <Card>
@@ -234,43 +401,43 @@ export default function SourceMediaPage() {
       )}
 
       {/* Summary Stats */}
-      {allRecords.length > 0 && (
+      {displayRecords.length > 0 && (
         <div className="grid gap-4 md:grid-cols-5">
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Total Clips</CardDescription>
-              <CardTitle className="text-3xl">{summary.totalClips}</CardTitle>
+              <CardTitle className="text-3xl">{displaySummary.totalClips}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Shoot Dates</CardDescription>
-              <CardTitle className="text-3xl">{summary.shootDates.length}</CardTitle>
+              <CardTitle className="text-3xl">{displaySummary.shootDates.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Cameras</CardDescription>
-              <CardTitle className="text-3xl">{summary.cameras.length}</CardTitle>
+              <CardTitle className="text-3xl">{displaySummary.cameras.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>Scenes</CardDescription>
-              <CardTitle className="text-3xl">{summary.scenes.length}</CardTitle>
+              <CardTitle className="text-3xl">{displaySummary.scenes.length}</CardTitle>
             </CardHeader>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardDescription>With CDL</CardDescription>
-              <CardTitle className="text-3xl">{summary.withCDL}</CardTitle>
+              <CardTitle className="text-3xl">{displaySummary.withCDL}</CardTitle>
             </CardHeader>
           </Card>
         </div>
       )}
 
       {/* Records Table */}
-      {allRecords.length > 0 && (
+      {displayRecords.length > 0 && (
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
