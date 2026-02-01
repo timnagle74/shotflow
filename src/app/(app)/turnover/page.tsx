@@ -782,6 +782,8 @@ export default function TurnoverPage() {
               )}
             </div>
 
+            {/* EDL Preview - only show when EDL is active */}
+            {activeImportType === 'edl' && (
             <div className="lg:col-span-2">
               <Card>
                 <CardHeader>
@@ -794,8 +796,7 @@ export default function TurnoverPage() {
                   {videoEvents.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
                       <Film className="h-12 w-12 mb-3 opacity-20" />
-                      <p className="text-sm">Upload an EDL file to preview shots</p>
-                      <p className="text-xs text-muted-foreground/60 mt-1">Supports CMX 3600 format (Avid, Resolve, Premiere)</p>
+                      <p className="text-sm">Parsing EDL...</p>
                     </div>
                   ) : (
                     <div className="overflow-auto max-h-[300px] -mx-2">
@@ -865,6 +866,7 @@ export default function TurnoverPage() {
                 </Card>
               )}
             </div>
+            )}
           </div>
 
         {/* ─── XML Results (shown when XML detected) ─── */}
