@@ -123,19 +123,41 @@ export default function SourceMediaPage() {
   const handleSave = async () => {
     if (!selectedProjectId || allRecords.length === 0) return;
     
+    // Deduplicate records by clip_name + tc_in_frames (keep last occurrence)
+    const seen = new Map<string, number>();
+    const deduped: typeof allRecords = [];
+    for (let i = 0; i < allRecords.length; i++) {
+      const r = allRecords[i];
+      const key = `${r.clip_name}|${r.tc_in_frames ?? 'null'}`;
+      if (seen.has(key)) {
+        // Replace previous occurrence with this one
+        deduped[seen.get(key)!] = r;
+      } else {
+        seen.set(key, deduped.length);
+        deduped.push(r);
+      }
+    }
+    
+    const recordsToSave = deduped;
+    const duplicatesRemoved = allRecords.length - recordsToSave.length;
+    
     setIsSaving(true);
     setSaveResult(null);
-    setSaveProgress({ current: 0, total: allRecords.length });
+    setSaveProgress({ current: 0, total: recordsToSave.length });
     
-    const totalBatches = Math.ceil(allRecords.length / CLIENT_BATCH_SIZE);
+    const totalBatches = Math.ceil(recordsToSave.length / CLIENT_BATCH_SIZE);
     let totalInserted = 0;
     const allErrors: string[] = [];
     
+    if (duplicatesRemoved > 0) {
+      allErrors.push(`Note: ${duplicatesRemoved} duplicate clips removed before import`);
+    }
+    
     try {
-      for (let i = 0; i < allRecords.length; i += CLIENT_BATCH_SIZE) {
-        const batch = allRecords.slice(i, i + CLIENT_BATCH_SIZE);
+      for (let i = 0; i < recordsToSave.length; i += CLIENT_BATCH_SIZE) {
+        const batch = recordsToSave.slice(i, i + CLIENT_BATCH_SIZE);
         const batchNum = Math.floor(i / CLIENT_BATCH_SIZE) + 1;
-        setSaveProgress({ current: i, total: allRecords.length });
+        setSaveProgress({ current: i, total: recordsToSave.length });
         
         const response = await fetch('/api/source-media', {
           method: 'POST',
