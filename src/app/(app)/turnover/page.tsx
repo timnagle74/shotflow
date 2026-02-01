@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// Tabs removed - using unified drop zone with auto-detection
 import { parseEDL, getVideoEvents, type EDLParseResult } from "@/lib/edl-parser";
 import { parseAleFile, getClipName, isCircled, getSceneTake, parseAscSop, parseAscSat, type AleParseResult } from "@/lib/ale-parser";
 import { parseXML, type XMLParseResult, type XMLClip } from "@/lib/xml-parser";
@@ -256,6 +256,60 @@ export default function TurnoverPage() {
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
+
+  // Unified import state
+  type ImportType = 'none' | 'edl' | 'xml' | 'ale';
+  const [activeImportType, setActiveImportType] = useState<ImportType>('none');
+  const [unifiedDragOver, setUnifiedDragOver] = useState(false);
+  const unifiedFileRef = useRef<HTMLInputElement>(null);
+
+  // Unified file handler - auto-detects file type
+  const handleUnifiedFile = useCallback((file: File) => {
+    const ext = file.name.toLowerCase();
+    if (ext.endsWith('.edl')) {
+      handleEdlFile(file);
+      setActiveImportType('edl');
+    } else if (ext.endsWith('.xml')) {
+      handleXmlFile(file);
+      setActiveImportType('xml');
+    } else if (ext.endsWith('.ale') || ext.endsWith('.txt')) {
+      // Check if it's actually an ALE by reading first line
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const content = ev.target?.result as string;
+        if (content.trim().startsWith('Heading') || content.includes('\tName\t') || content.includes('FIELD_DELIM')) {
+          handleAleFile(file);
+          setActiveImportType('ale');
+        }
+      };
+      reader.readAsText(file.slice(0, 1000)); // Just check first 1KB
+      handleAleFile(file);
+      setActiveImportType('ale');
+    }
+  }, [handleEdlFile, handleXmlFile, handleAleFile]);
+
+  const handleUnifiedUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) handleUnifiedFile(f);
+  }, [handleUnifiedFile]);
+
+  const handleUnifiedDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setUnifiedDragOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) handleUnifiedFile(f);
+  }, [handleUnifiedFile]);
+
+  const clearUnified = useCallback(() => {
+    clearEdl();
+    clearXml();
+    clearAle();
+    setActiveImportType('none');
+    if (unifiedFileRef.current) unifiedFileRef.current.value = "";
+  }, []);
+
+  // Get the current file name for display
+  const currentFileName = edlFileName || xmlFileName || aleFileName;
 
   const videoEvents = parseResult ? getVideoEvents(parseResult) : [];
   const [importing, setImporting] = useState(false);
@@ -576,52 +630,43 @@ export default function TurnoverPage() {
         </Card>
       </div>
 
-      <Tabs defaultValue="edl">
-        <TabsList>
-          <TabsTrigger value="edl" className="gap-1.5"><FileText className="h-3.5 w-3.5" />EDL Import</TabsTrigger>
-          <TabsTrigger value="xml" className="gap-1.5"><FileCode className="h-3.5 w-3.5" />XML Import</TabsTrigger>
-          <TabsTrigger value="ale" className="gap-1.5"><Database className="h-3.5 w-3.5" />ALE Import</TabsTrigger>
-        </TabsList>
-
-        {/* ─── EDL Tab ─── */}
-        <TabsContent value="edl">
+      {/* ─── Unified Import Zone ─── */}
+      <div className="space-y-6">
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="space-y-4">
               <Card>
-                <CardHeader><CardTitle className="text-sm">EDL File</CardTitle></CardHeader>
+                <CardHeader><CardTitle className="text-sm">Timeline Import</CardTitle></CardHeader>
                 <CardContent>
                   <div
-                    className={cn("relative", edlDragOver && "ring-2 ring-primary ring-offset-2 ring-offset-background rounded-lg")}
-                    onDrop={handleEdlDrop}
-                    onDragOver={(e) => { e.preventDefault(); setEdlDragOver(true); }}
-                    onDragLeave={() => setEdlDragOver(false)}
+                    className={cn("relative", unifiedDragOver && "ring-2 ring-primary ring-offset-2 ring-offset-background rounded-lg")}
+                    onDrop={handleUnifiedDrop}
+                    onDragOver={(e) => { e.preventDefault(); setUnifiedDragOver(true); }}
+                    onDragLeave={() => setUnifiedDragOver(false)}
                   >
                     <label className={cn(
                       "flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
-                      edlDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50",
-                      edlFileName && "border-primary/30 bg-primary/5"
+                      unifiedDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50",
+                      currentFileName && "border-primary/30 bg-primary/5"
                     )}>
-                      {edlFileName ? (
+                      {currentFileName ? (
                         <div className="flex flex-col items-center gap-2">
-                          <FileText className="h-8 w-8 text-primary" />
-                          <span className="text-sm text-primary font-medium">{edlFileName}</span>
-                          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={(e) => { e.preventDefault(); clearEdl(); }}><X className="h-3 w-3 mr-1" />Clear</Button>
+                          {activeImportType === 'edl' && <FileText className="h-8 w-8 text-primary" />}
+                          {activeImportType === 'xml' && <FileCode className="h-8 w-8 text-primary" />}
+                          {activeImportType === 'ale' && <Database className="h-8 w-8 text-primary" />}
+                          <span className="text-sm text-primary font-medium">{currentFileName}</span>
+                          <Badge variant="outline" className="text-[10px]">{activeImportType.toUpperCase()}</Badge>
+                          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={(e) => { e.preventDefault(); clearUnified(); }}><X className="h-3 w-3 mr-1" />Clear</Button>
                         </div>
                       ) : (
                         <>
                           <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                          <span className="text-sm text-muted-foreground">Drop EDL file here</span>
+                          <span className="text-sm text-muted-foreground">Drop EDL, XML, or ALE here</span>
                           <span className="text-xs text-muted-foreground/60 mt-1">or click to browse</span>
                         </>
                       )}
-                      <input ref={edlFileRef} type="file" accept=".edl" className="hidden" onChange={handleEdlUpload} />
+                      <input ref={unifiedFileRef} type="file" accept=".edl,.xml,.ale,.txt" className="hidden" onChange={handleUnifiedUpload} />
                     </label>
                   </div>
-                  {edlFileName && !edlFileName.toLowerCase().endsWith(".edl") && (
-                    <div className="flex items-center gap-2 text-amber-400 text-sm mt-3">
-                      <AlertCircle className="h-4 w-4 shrink-0" />Only CMX 3600 EDL files are supported.
-                    </div>
-                  )}
                 </CardContent>
               </Card>
 
@@ -821,45 +866,11 @@ export default function TurnoverPage() {
               )}
             </div>
           </div>
-        </TabsContent>
 
-        {/* ─── XML Tab ─── */}
-        <TabsContent value="xml">
-          <div className="grid gap-6 lg:grid-cols-3">
+        {/* ─── XML Results (shown when XML detected) ─── */}
+        {activeImportType === 'xml' && (
+          <div className="grid gap-6 lg:grid-cols-3 mt-6">
             <div className="space-y-4">
-              <Card>
-                <CardHeader><CardTitle className="text-sm">XML File (Premiere/Resolve/FCP)</CardTitle></CardHeader>
-                <CardContent>
-                  <div
-                    className={cn("relative", xmlDragOver && "ring-2 ring-primary ring-offset-2 ring-offset-background rounded-lg")}
-                    onDrop={handleXmlDrop}
-                    onDragOver={(e) => { e.preventDefault(); setXmlDragOver(true); }}
-                    onDragLeave={() => setXmlDragOver(false)}
-                  >
-                    <label className={cn(
-                      "flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
-                      xmlDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50",
-                      xmlFileName && "border-primary/30 bg-primary/5"
-                    )}>
-                      {xmlFileName ? (
-                        <div className="flex flex-col items-center gap-2">
-                          <FileCode className="h-8 w-8 text-primary" />
-                          <span className="text-sm text-primary font-medium">{xmlFileName}</span>
-                          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={(e) => { e.preventDefault(); clearXml(); }}><X className="h-3 w-3 mr-1" />Clear</Button>
-                        </div>
-                      ) : (
-                        <>
-                          <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                          <span className="text-sm text-muted-foreground">Drop XML file here</span>
-                          <span className="text-xs text-muted-foreground/60 mt-1">Includes reposition & speed data</span>
-                        </>
-                      )}
-                      <input ref={xmlFileRef} type="file" accept=".xml" className="hidden" onChange={handleXmlUpload} />
-                    </label>
-                  </div>
-                </CardContent>
-              </Card>
-
               {xmlResult && (
                 <Card>
                   <CardContent className="p-4 space-y-3">
@@ -937,50 +948,12 @@ export default function TurnoverPage() {
               </div>
             )}
           </div>
-        </TabsContent>
+        )}
 
-        {/* ─── ALE Tab ─── */}
-        <TabsContent value="ale">
-          <div className="grid gap-6 lg:grid-cols-3">
+        {/* ─── ALE Results (shown when ALE detected) ─── */}
+        {activeImportType === 'ale' && (
+          <div className="grid gap-6 lg:grid-cols-3 mt-6">
             <div className="space-y-4">
-              <Card>
-                <CardHeader><CardTitle className="text-sm">ALE File</CardTitle></CardHeader>
-                <CardContent>
-                  <div
-                    className={cn("relative", aleDragOver && "ring-2 ring-primary ring-offset-2 ring-offset-background rounded-lg")}
-                    onDrop={handleAleDrop}
-                    onDragOver={(e) => { e.preventDefault(); setAleDragOver(true); }}
-                    onDragLeave={() => setAleDragOver(false)}
-                  >
-                    <label className={cn(
-                      "flex flex-col items-center justify-center w-full h-36 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
-                      aleDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50",
-                      aleFileName && "border-primary/30 bg-primary/5"
-                    )}>
-                      {aleFileName ? (
-                        <div className="flex flex-col items-center gap-2">
-                          <Database className="h-8 w-8 text-primary" />
-                          <span className="text-sm text-primary font-medium">{aleFileName}</span>
-                          <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={(e) => { e.preventDefault(); clearAle(); }}><X className="h-3 w-3 mr-1" />Clear</Button>
-                        </div>
-                      ) : (
-                        <>
-                          <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                          <span className="text-sm text-muted-foreground">Drop ALE file here</span>
-                          <span className="text-xs text-muted-foreground/60 mt-1">.ale or .txt — Avid Log Exchange format</span>
-                        </>
-                      )}
-                      <input ref={aleFileRef} type="file" accept=".ale,.txt" className="hidden" onChange={handleAleUpload} />
-                    </label>
-                  </div>
-                  {aleFileName && !aleFileName.toLowerCase().endsWith(".ale") && !aleFileName.toLowerCase().endsWith(".txt") && (
-                    <div className="flex items-center gap-2 text-amber-400 text-sm mt-3">
-                      <AlertCircle className="h-4 w-4 shrink-0" />Only .ale and .txt files are supported.
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
               {/* ALE Summary */}
               {aleResult && (
                 <Card>
@@ -1102,8 +1075,8 @@ export default function TurnoverPage() {
               </Card>
             </div>
           </div>
-        </TabsContent>
-      </Tabs>
+        )}
+      </div>
     </div>
   );
 }
