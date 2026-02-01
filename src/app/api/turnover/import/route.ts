@@ -68,22 +68,36 @@ export async function POST(request: NextRequest) {
       const code = sequenceCode || `SEQ_${Date.now()}`;
       const name = sequenceName || code;
       
-      const { data: newSeq, error: seqError } = await supabase
+      // Check if sequence with this code already exists for this project
+      const { data: existingSeq } = await supabase
         .from("sequences")
-        .insert({ 
-          project_id: projectId, 
-          code, 
-          name, 
-          sort_order: 0,
-        })
-        .select()
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("code", code)
         .single();
+      
+      if (existingSeq) {
+        // Reuse existing sequence
+        finalSequenceId = existingSeq.id;
+      } else {
+        // Create new sequence
+        const { data: newSeq, error: seqError } = await supabase
+          .from("sequences")
+          .insert({ 
+            project_id: projectId, 
+            code, 
+            name, 
+            sort_order: 0,
+          })
+          .select()
+          .single();
 
-      if (seqError) {
-        console.error("Sequence create error:", seqError);
-        return NextResponse.json({ error: "Failed to create sequence" }, { status: 500 });
+        if (seqError) {
+          console.error("Sequence create error:", seqError);
+          return NextResponse.json({ error: "Failed to create sequence" }, { status: 500 });
+        }
+        finalSequenceId = newSeq.id;
       }
-      finalSequenceId = newSeq.id;
     }
 
     // Get next turnover number for this project
