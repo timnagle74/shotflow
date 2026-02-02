@@ -152,6 +152,13 @@ export async function POST(request: NextRequest) {
       
       if (existingShot) {
         shotId = existingShot.id;
+        // Update existing shot with VFX notes if provided
+        if (shot.vfxNotes) {
+          await supabase
+            .from("shots")
+            .update({ description: shot.vfxNotes })
+            .eq("id", shotId);
+        }
         createdShots.push({ id: shotId, code: shot.code, existing: true });
       } else {
         const { data: newShot, error: shotError } = await supabase
@@ -159,7 +166,8 @@ export async function POST(request: NextRequest) {
           .insert({
             sequence_id: finalSequenceId,
             code: shot.code,
-            description: shot.clipName || null,
+            // Use VFX notes as description if available, otherwise clip name
+            description: shot.vfxNotes || shot.clipName || null,
             status: "NOT_STARTED",
             complexity: "MEDIUM",
             frame_start: shot.sourceIn ? parseTimecodeToFrames(shot.sourceIn) : null,
