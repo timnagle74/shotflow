@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { parseEDL, getVideoEvents, type EDLParseResult } from "@/lib/edl-parser";
 import { parseAleFile, getClipName, isCircled, getSceneTake, parseAscSop, parseAscSat, type AleParseResult } from "@/lib/ale-parser";
 import { parseXML, type XMLParseResult, type XMLClip } from "@/lib/xml-parser";
+import { parseMarkerFile, matchMarkersToShots, type MarkerEntry, type MarkerParseResult } from "@/lib/marker-parser";
 import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2, Loader2, MessageSquare, Download, FileCode } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -198,6 +199,17 @@ export default function TurnoverPage() {
     if (xmlFileRef.current) xmlFileRef.current.value = ""; 
   };
 
+  // Marker/Notes file state
+  const [markerResult, setMarkerResult] = useState<MarkerParseResult | null>(null);
+  const [markerFileName, setMarkerFileName] = useState("");
+  const [markerDragOver, setMarkerDragOver] = useState(false);
+  const [markerMatchResult, setMarkerMatchResult] = useState<{
+    matchedCount: number;
+    totalMarkers: number;
+    unmatchedMarkers: MarkerEntry[];
+  } | null>(null);
+  const markerFileRef = useRef<HTMLInputElement>(null);
+
   // Ref/Plate handlers
   const handleRefFiles = useCallback((files: FileList | File[]) => {
     const newFiles: TurnoverFile[] = Array.from(files).map(file => ({
@@ -341,6 +353,78 @@ export default function TurnoverPage() {
   
   const updateShotNote = useCallback((shotCode: string, note: string) => {
     setShotNotes(prev => ({ ...prev, [shotCode]: note }));
+  }, []);
+
+  // Marker file handlers (must be after videoEvents and getShotCode are defined)
+  const handleMarkerFile = useCallback((file: File) => {
+    setMarkerFileName(file.name);
+    setMarkerResult(null);
+    setMarkerMatchResult(null);
+    
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const content = ev.target?.result as string;
+      try {
+        const result = parseMarkerFile(content);
+        setMarkerResult(result);
+        
+        // If we have shots parsed, auto-match
+        if (videoEvents.length > 0) {
+          const shots = videoEvents.map((event, idx) => ({
+            code: getShotCode(event, idx),
+            recordIn: event.recordIn,
+            recordOut: event.recordOut,
+          }));
+          
+          const { matches, matchedCount, unmatchedMarkers } = matchMarkersToShots(result.markers, shots);
+          
+          // Pre-fill shot notes
+          setShotNotes(prev => ({ ...prev, ...matches }));
+          setMarkerMatchResult({
+            matchedCount,
+            totalMarkers: result.markers.length,
+            unmatchedMarkers,
+          });
+        } else if (xmlResult?.sequences[0]?.clips.length) {
+          // Match to XML clips
+          const shots = xmlResult.sequences[0].clips.map(clip => ({
+            code: clip.name,
+            recordIn: clip.sourceTimecode || undefined,
+            recordOut: undefined, // XML doesn't always have out TC
+          }));
+          
+          const { matches, matchedCount, unmatchedMarkers } = matchMarkersToShots(result.markers, shots);
+          setShotNotes(prev => ({ ...prev, ...matches }));
+          setMarkerMatchResult({
+            matchedCount,
+            totalMarkers: result.markers.length,
+            unmatchedMarkers,
+          });
+        }
+      } catch (err) {
+        console.error("Failed to parse marker file:", err);
+      }
+    };
+    reader.readAsText(file);
+  }, [videoEvents, xmlResult, getShotCode]);
+
+  const handleMarkerUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (f) handleMarkerFile(f);
+  }, [handleMarkerFile]);
+
+  const handleMarkerDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setMarkerDragOver(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) handleMarkerFile(f);
+  }, [handleMarkerFile]);
+
+  const clearMarkers = useCallback(() => {
+    setMarkerFileName("");
+    setMarkerResult(null);
+    setMarkerMatchResult(null);
+    if (markerFileRef.current) markerFileRef.current.value = "";
   }, []);
 
   const [importStatus, setImportStatus] = useState("");
@@ -904,6 +988,91 @@ export default function TurnoverPage() {
                     <div className="space-y-1.5 max-h-40 overflow-auto">
                       {parseResult.warnings.map((w, i) => <div key={i} className="text-xs"><span className="text-muted-foreground">Line {w.line}:</span> <span className="text-amber-300">{w.message}</span></div>)}
                     </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* VFX Notes/Marker File Upload - shown after timeline is parsed */}
+              {(videoEvents.length > 0 || xmlResult?.sequences[0]?.clips.length) && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      VFX Notes File
+                      <Badge variant="outline" className="ml-auto text-[10px]">Optional</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div
+                      className={cn("relative", markerDragOver && "ring-2 ring-primary ring-offset-2 ring-offset-background rounded-lg")}
+                      onDrop={handleMarkerDrop}
+                      onDragOver={(e) => { e.preventDefault(); setMarkerDragOver(true); }}
+                      onDragLeave={() => setMarkerDragOver(false)}
+                    >
+                      <label className={cn(
+                        "flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+                        markerDragOver ? "border-primary bg-primary/5" : "border-border hover:border-primary/50",
+                        markerFileName && "border-primary/30 bg-primary/5"
+                      )}>
+                        {markerFileName ? (
+                          <div className="flex flex-col items-center gap-1">
+                            <MessageSquare className="h-6 w-6 text-primary" />
+                            <span className="text-xs text-primary font-medium">{markerFileName}</span>
+                            <Button variant="ghost" size="sm" className="text-[10px] text-muted-foreground h-6" onClick={(e) => { e.preventDefault(); clearMarkers(); }}>
+                              <X className="h-3 w-3 mr-1" />Clear
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <MessageSquare className="h-6 w-6 text-muted-foreground mb-1" />
+                            <span className="text-xs text-muted-foreground">Drop marker export here</span>
+                            <span className="text-[10px] text-muted-foreground/60">Avid marker export (.txt)</span>
+                          </>
+                        )}
+                        <input ref={markerFileRef} type="file" accept=".txt,.tsv" className="hidden" onChange={handleMarkerUpload} />
+                      </label>
+                    </div>
+
+                    {markerMatchResult && (
+                      <div className={cn(
+                        "p-3 rounded-md text-sm",
+                        markerMatchResult.matchedCount === markerMatchResult.totalMarkers
+                          ? "bg-green-600/10 text-green-400"
+                          : markerMatchResult.matchedCount > 0
+                          ? "bg-amber-600/10 text-amber-400"
+                          : "bg-red-600/10 text-red-400"
+                      )}>
+                        <div className="flex items-center gap-2">
+                          {markerMatchResult.matchedCount === markerMatchResult.totalMarkers ? (
+                            <Check className="h-4 w-4" />
+                          ) : (
+                            <AlertTriangle className="h-4 w-4" />
+                          )}
+                          <span className="font-medium">
+                            {markerMatchResult.matchedCount}/{markerMatchResult.totalMarkers} markers matched
+                          </span>
+                        </div>
+                        {markerMatchResult.unmatchedMarkers.length > 0 && (
+                          <div className="mt-2 text-xs space-y-1">
+                            <p className="text-muted-foreground">Unmatched markers (TC outside shot ranges):</p>
+                            {markerMatchResult.unmatchedMarkers.slice(0, 5).map((m, i) => (
+                              <div key={i} className="font-mono">{m.id} @ {m.timecode}</div>
+                            ))}
+                            {markerMatchResult.unmatchedMarkers.length > 5 && (
+                              <div className="text-muted-foreground">...and {markerMatchResult.unmatchedMarkers.length - 5} more</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {markerResult && markerResult.warnings.length > 0 && (
+                      <div className="text-xs text-amber-400 space-y-1">
+                        {markerResult.warnings.slice(0, 3).map((w, i) => (
+                          <div key={i}>{w}</div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )}
