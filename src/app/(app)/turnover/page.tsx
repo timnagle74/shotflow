@@ -13,6 +13,7 @@ import { parseEDL, getVideoEvents, type EDLParseResult } from "@/lib/edl-parser"
 import { parseAleFile, getClipName, isCircled, getSceneTake, parseAscSop, parseAscSat, type AleParseResult } from "@/lib/ale-parser";
 import { parseXML, type XMLParseResult, type XMLClip } from "@/lib/xml-parser";
 import { parseMarkerFile, matchMarkersToShots, type MarkerEntry, type MarkerParseResult } from "@/lib/marker-parser";
+import { isFilmScribeXML, parseFilmScribe, filmScribeToShots, type FilmScribeParseResult } from "@/lib/filmscribe-parser";
 import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2, Loader2, MessageSquare, Download, FileCode } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -111,6 +112,10 @@ export default function TurnoverPage() {
   const xmlFileRef = useRef<HTMLInputElement>(null);
   const [useXmlMode, setUseXmlMode] = useState(false); // Toggle between EDL and XML mode
 
+  // FilmScribe state (Avid film finishing XML)
+  const [filmscribeResult, setFilmscribeResult] = useState<FilmScribeParseResult | null>(null);
+  const [filmscribeImported, setFilmscribeImported] = useState(false);
+
   // Turnover files (refs + plates)
   const [turnoverFiles, setTurnoverFiles] = useState<TurnoverFile[]>([]);
   const [refDragOver, setRefDragOver] = useState(false);
@@ -158,22 +163,34 @@ export default function TurnoverPage() {
   const clearEdl = () => { setEdlFileName(""); setParseResult(null); setEdlImported(false); if (edlFileRef.current) edlFileRef.current.value = ""; };
   const clearAle = () => { setAleFileName(""); setAleResult(null); setAleImported(false); if (aleFileRef.current) aleFileRef.current.value = ""; };
 
-  // XML handlers
-  const handleXmlFile = useCallback((file: File) => {
+  // XML handlers (detects FilmScribe vs standard XML)
+  const handleXmlFile = useCallback((file: File, setImportType?: (t: ImportType) => void) => {
     setXmlFileName(file.name);
     setXmlImported(false);
     setXmlResult(null);
+    setFilmscribeResult(null);
+    setFilmscribeImported(false);
     const ext = file.name.toLowerCase();
     if (!ext.endsWith(".xml")) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
       const content = ev.target?.result as string;
       try { 
-        const result = parseXML(content);
-        setXmlResult(result);
-        setUseXmlMode(true);
+        // Detect FilmScribe XML format
+        if (isFilmScribeXML(content)) {
+          const result = parseFilmScribe(content);
+          setFilmscribeResult(result);
+          setUseXmlMode(true);
+          setImportType?.('filmscribe');
+        } else {
+          const result = parseXML(content);
+          setXmlResult(result);
+          setUseXmlMode(true);
+          setImportType?.('xml');
+        }
       } catch { 
-        setXmlResult(null); 
+        setXmlResult(null);
+        setFilmscribeResult(null);
       }
     };
     reader.readAsText(file);
@@ -270,7 +287,7 @@ export default function TurnoverPage() {
   };
 
   // Unified import state
-  type ImportType = 'none' | 'edl' | 'xml' | 'ale';
+  type ImportType = 'none' | 'edl' | 'xml' | 'ale' | 'filmscribe';
   const [activeImportType, setActiveImportType] = useState<ImportType>('none');
   const [unifiedDragOver, setUnifiedDragOver] = useState(false);
   const unifiedFileRef = useRef<HTMLInputElement>(null);
@@ -282,8 +299,8 @@ export default function TurnoverPage() {
       handleEdlFile(file);
       setActiveImportType('edl');
     } else if (ext.endsWith('.xml')) {
-      handleXmlFile(file);
-      setActiveImportType('xml');
+      // handleXmlFile will detect FilmScribe vs standard XML and set the import type
+      handleXmlFile(file, setActiveImportType);
     } else if (ext.endsWith('.ale') || ext.endsWith('.txt')) {
       // Check if it's actually an ALE by reading first line
       const reader = new FileReader();
@@ -691,6 +708,121 @@ export default function TurnoverPage() {
     }
   }, [xmlResult, xmlFileName, selectedProject, selectedSequence, refFiles, plateFiles, generalVfxNotes, router]);
 
+  const handleFilmscribeImport = useCallback(async () => {
+    if (!filmscribeResult || filmscribeResult.eventsWithClips === 0) return;
+    
+    setImporting(true);
+    setImportError(null);
+    setImportStatus("Preparing...");
+
+    try {
+      const projectId = selectedProject;
+      
+      // Build file list for upload preparation
+      const allFiles = [
+        ...refFiles.map(f => ({ name: f.file.name, type: 'ref' as const })),
+        ...plateFiles.map(f => ({ name: f.file.name, type: 'plate' as const })),
+      ];
+
+      let uploadedFiles: Array<{
+        originalName: string;
+        type: 'ref' | 'plate';
+        storagePath: string;
+        cdnUrl: string;
+        fileSize: number;
+      }> = [];
+
+      // Upload files directly to Bunny if we have any
+      if (allFiles.length > 0) {
+        setImportStatus("Getting upload URLs...");
+        
+        const prepareRes = await fetch("/api/turnover/prepare-uploads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId, files: allFiles }),
+        });
+
+        if (!prepareRes.ok) {
+          throw new Error("Failed to prepare uploads");
+        }
+
+        const { uploads } = await prepareRes.json();
+
+        const allTurnoverFiles = [...refFiles, ...plateFiles];
+        for (let i = 0; i < uploads.length; i++) {
+          const config = uploads[i];
+          const turnoverFile = allTurnoverFiles.find(f => f.file.name === config.originalName);
+          if (!turnoverFile) continue;
+
+          setImportStatus(`Uploading ${i + 1}/${uploads.length}: ${config.originalName}`);
+
+          const uploadRes = await fetch(config.uploadUrl, {
+            method: "PUT",
+            headers: {
+              "AccessKey": config.accessKey,
+              "Content-Type": "application/octet-stream",
+            },
+            body: turnoverFile.file,
+          });
+
+          if (uploadRes.ok || uploadRes.status === 201) {
+            uploadedFiles.push({
+              originalName: config.originalName,
+              type: config.type,
+              storagePath: config.storagePath,
+              cdnUrl: config.cdnUrl,
+              fileSize: turnoverFile.file.size,
+            });
+          }
+        }
+      }
+
+      setImportStatus("Creating shots...");
+      
+      const seqName = filmscribeResult.title || xmlFileName.replace(/\.xml$/i, "");
+      
+      // Convert FilmScribe events to shots format
+      const shots = filmScribeToShots(filmscribeResult);
+
+      const response = await fetch("/api/turnover/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          sequenceId: selectedSequence !== "new" ? selectedSequence : undefined,
+          sequenceName: seqName,
+          sequenceCode: seqName.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase().slice(0, 20),
+          shots,
+          uploadedFiles,
+          generalVfxNotes: generalVfxNotes.trim() || null,
+          sourceEdlFilename: xmlFileName || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Import failed");
+      }
+
+      const result = await response.json();
+      
+      const toNum = result.turnoverNumber ? `TO${result.turnoverNumber}: ` : '';
+      setImportStatus(`${toNum}Created ${result.shotsCreated} shot(s) with VFX notes`);
+      setFilmscribeImported(true);
+      
+      if (result.reviewUrl) {
+        setTimeout(() => {
+          router.push(result.reviewUrl);
+        }, 1500);
+      }
+    } catch (err) {
+      console.error("Import error:", err);
+      setImportError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }, [filmscribeResult, xmlFileName, selectedProject, selectedSequence, refFiles, plateFiles, generalVfxNotes, router]);
+
   const handleAleImport = () => {
     // In production: save to shot_metadata + shot_cdls via Supabase
     // For now, mark as imported
@@ -864,6 +996,7 @@ export default function TurnoverPage() {
                           {activeImportType === 'edl' && <FileText className="h-8 w-8 text-primary" />}
                           {activeImportType === 'xml' && <FileCode className="h-8 w-8 text-primary" />}
                           {activeImportType === 'ale' && <Database className="h-8 w-8 text-primary" />}
+                          {activeImportType === 'filmscribe' && <Film className="h-8 w-8 text-primary" />}
                           <span className="text-sm text-primary font-medium">{currentFileName}</span>
                           <Badge variant="outline" className="text-[10px]">{activeImportType.toUpperCase()}</Badge>
                           <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={(e) => { e.preventDefault(); clearUnified(); }}><X className="h-3 w-3 mr-1" />Clear</Button>
@@ -1265,6 +1398,114 @@ export default function TurnoverPage() {
                 </Card>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ─── FilmScribe Results (shown when FilmScribe XML detected) ─── */}
+        {activeImportType === 'filmscribe' && filmscribeResult && (
+          <div className="grid gap-6 lg:grid-cols-3 mt-6">
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="p-4 space-y-3">
+                  <div>
+                    <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Title</label>
+                    <p className="text-sm font-mono font-medium">{filmscribeResult.title}</p>
+                  </div>
+                  <Badge variant="outline" className="text-xs">FilmScribe XML</Badge>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-md bg-muted/50 p-2">
+                      <p className="text-lg font-bold">{filmscribeResult.eventsWithClips}</p>
+                      <p className="text-[10px] text-muted-foreground">SHOTS</p>
+                    </div>
+                    <div className="rounded-md bg-purple-600/10 p-2">
+                      <p className="text-lg font-bold text-purple-400">{filmscribeResult.totalVfxMarkers}</p>
+                      <p className="text-[10px] text-muted-foreground">VFX MARKERS</p>
+                    </div>
+                    <div className="rounded-md bg-green-600/10 p-2">
+                      <p className="text-lg font-bold text-green-400">{filmscribeResult.matchedVfxMarkers}</p>
+                      <p className="text-[10px] text-muted-foreground">MATCHED</p>
+                    </div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {filmscribeResult.editRate}fps • {filmscribeResult.tracks}
+                  </div>
+                  {filmscribeResult.warnings.length > 0 && (
+                    <div className="text-xs text-yellow-400 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" />{filmscribeResult.warnings.length} warnings
+                    </div>
+                  )}
+                  {filmscribeResult.eventsWithClips > 0 && !filmscribeImported && (
+                    <>
+                      <div className="text-xs text-center py-1 rounded text-green-400/80 bg-green-600/10">
+                        ✓ VFX notes auto-matched from markers
+                      </div>
+                      <Button className="w-full" onClick={handleFilmscribeImport} disabled={importing}>
+                        {importing ? (
+                          <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{importStatus || "Importing..."}</>
+                        ) : (
+                          <><Check className="h-4 w-4 mr-2" />Import {filmscribeResult.eventsWithClips} Shots + {filmscribeResult.matchedVfxMarkers} VFX Notes</>
+                        )}
+                      </Button>
+                    </>
+                  )}
+                  {importError && <div className="flex items-center gap-2 text-red-400 text-sm"><AlertCircle className="h-4 w-4" />{importError}</div>}
+                  {filmscribeImported && (
+                    <div className="flex items-center justify-center gap-2 py-2">
+                      <Badge className="bg-green-600 text-white border-0"><Check className="h-3 w-3 mr-1" />Imported Successfully</Badge>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* FilmScribe events preview */}
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    VFX Shots
+                    <Badge variant="secondary" className="ml-auto">{filmscribeResult.eventsWithClips} shots</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="border rounded-md overflow-hidden max-h-[500px] overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50 sticky top-0">
+                        <tr>
+                          <th className="text-left p-2 font-medium">Clip Name</th>
+                          <th className="text-left p-2 font-medium">Rec TC</th>
+                          <th className="text-left p-2 font-medium">Scene</th>
+                          <th className="text-center p-2 font-medium">Dur</th>
+                          <th className="text-left p-2 font-medium">VFX Note</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {filmscribeResult.events
+                          .filter(e => e.clipName !== null)
+                          .map((event, i) => (
+                            <tr key={i} className="hover:bg-muted/30">
+                              <td className="p-2 font-mono font-medium">{event.clipName}</td>
+                              <td className="p-2 font-mono text-muted-foreground">{event.recordIn}</td>
+                              <td className="p-2">{event.scene ? `Sc${event.scene} T${event.take || '?'}` : '—'}</td>
+                              <td className="p-2 text-center font-mono">{event.length}f</td>
+                              <td className="p-2 max-w-[300px]">
+                                {event.vfxNotes.length > 0 ? (
+                                  <span className="text-purple-400">{event.vfxNotes[0]}</span>
+                                ) : (
+                                  <span className="text-muted-foreground/50">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3 text-center">
+                    FilmScribe import includes shots with VFX markers auto-matched by timecode
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         )}
 
