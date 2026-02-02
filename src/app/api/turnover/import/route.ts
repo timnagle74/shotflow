@@ -342,6 +342,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Build shot code to VFX notes map for plate descriptions
+    const shotCodeToVfxNotes: Record<string, string | null> = {};
+    for (const shot of shots) {
+      shotCodeToVfxNotes[shot.code] = shot.vfxNotes || null;
+    }
+
     // Process plates - match to specific shots by filename
     for (let i = 0; i < plateFiles.length; i++) {
       const plate = plateFiles[i];
@@ -356,6 +362,9 @@ export async function POST(request: NextRequest) {
         console.log(`Plate ${plate.originalName} didn't match any shot codes`);
         continue;
       }
+      
+      // Get VFX description from matched shot
+      const plateDescription = matchedCode ? shotCodeToVfxNotes[matchedCode] : null;
 
       let platePreviewUrl: string | null = null;
       let plateVideoId: string | null = null;
@@ -415,6 +424,7 @@ export async function POST(request: NextRequest) {
           sort_order: i,
           video_id: plateVideoId,
           preview_url: platePreviewUrl,
+          description: plateDescription, // Auto-fill from VFX notes
         });
 
       if (!plateError) {
