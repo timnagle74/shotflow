@@ -709,7 +709,7 @@ export default function TurnoverPage() {
   }, [xmlResult, xmlFileName, selectedProject, selectedSequence, refFiles, plateFiles, generalVfxNotes, router]);
 
   const handleFilmscribeImport = useCallback(async () => {
-    if (!filmscribeResult || filmscribeResult.eventsWithClips === 0) return;
+    if (!filmscribeResult || filmscribeResult.eventsWithVfx === 0) return;
     
     setImporting(true);
     setImportError(null);
@@ -1414,16 +1414,16 @@ export default function TurnoverPage() {
                   <Badge variant="outline" className="text-xs">FilmScribe XML</Badge>
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="rounded-md bg-muted/50 p-2">
-                      <p className="text-lg font-bold">{filmscribeResult.eventsWithClips}</p>
-                      <p className="text-[10px] text-muted-foreground">SHOTS</p>
+                      <p className="text-lg font-bold">{filmscribeResult.eventsWithVfx}</p>
+                      <p className="text-[10px] text-muted-foreground">VFX SHOTS</p>
                     </div>
                     <div className="rounded-md bg-purple-600/10 p-2">
                       <p className="text-lg font-bold text-purple-400">{filmscribeResult.totalVfxMarkers}</p>
-                      <p className="text-[10px] text-muted-foreground">VFX MARKERS</p>
+                      <p className="text-[10px] text-muted-foreground">MARKERS</p>
                     </div>
-                    <div className="rounded-md bg-green-600/10 p-2">
-                      <p className="text-lg font-bold text-green-400">{filmscribeResult.matchedVfxMarkers}</p>
-                      <p className="text-[10px] text-muted-foreground">MATCHED</p>
+                    <div className="rounded-md bg-blue-600/10 p-2">
+                      <p className="text-lg font-bold text-blue-400">{filmscribeResult.eventsWithClips}</p>
+                      <p className="text-[10px] text-muted-foreground">TOTAL CLIPS</p>
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -1434,16 +1434,16 @@ export default function TurnoverPage() {
                       <AlertTriangle className="h-3 w-3" />{filmscribeResult.warnings.length} warnings
                     </div>
                   )}
-                  {filmscribeResult.eventsWithClips > 0 && !filmscribeImported && (
+                  {filmscribeResult.eventsWithVfx > 0 && !filmscribeImported && (
                     <>
                       <div className="text-xs text-center py-1 rounded text-green-400/80 bg-green-600/10">
-                        ✓ VFX notes auto-matched from markers
+                        ✓ Shot codes derived from VFX marker IDs
                       </div>
                       <Button className="w-full" onClick={handleFilmscribeImport} disabled={importing}>
                         {importing ? (
                           <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{importStatus || "Importing..."}</>
                         ) : (
-                          <><Check className="h-4 w-4 mr-2" />Import {filmscribeResult.eventsWithClips} Shots + {filmscribeResult.matchedVfxMarkers} VFX Notes</>
+                          <><Check className="h-4 w-4 mr-2" />Import {filmscribeResult.eventsWithVfx} VFX Shots</>
                         )}
                       </Button>
                     </>
@@ -1464,7 +1464,7 @@ export default function TurnoverPage() {
                 <CardHeader>
                   <CardTitle className="text-sm flex items-center gap-2">
                     VFX Shots
-                    <Badge variant="secondary" className="ml-auto">{filmscribeResult.eventsWithClips} shots</Badge>
+                    <Badge variant="secondary" className="ml-auto">{filmscribeResult.eventsWithVfx} shots</Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1472,25 +1472,25 @@ export default function TurnoverPage() {
                     <table className="w-full text-xs">
                       <thead className="bg-muted/50 sticky top-0">
                         <tr>
-                          <th className="text-left p-2 font-medium">Clip Name</th>
+                          <th className="text-left p-2 font-medium">Shot Code</th>
+                          <th className="text-left p-2 font-medium">Source Clip</th>
                           <th className="text-left p-2 font-medium">Rec TC</th>
-                          <th className="text-left p-2 font-medium">Scene</th>
                           <th className="text-center p-2 font-medium">Dur</th>
-                          <th className="text-left p-2 font-medium">VFX Note</th>
+                          <th className="text-left p-2 font-medium">VFX Description</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
                         {filmscribeResult.events
-                          .filter(e => e.clipName !== null)
+                          .filter(e => e.clipName !== null && e.vfxShotCode !== null)
                           .map((event, i) => (
                             <tr key={i} className="hover:bg-muted/30">
-                              <td className="p-2 font-mono font-medium">{event.clipName}</td>
+                              <td className="p-2 font-mono font-bold text-green-400">{event.vfxShotCode}</td>
+                              <td className="p-2 font-mono text-muted-foreground">{event.clipName}</td>
                               <td className="p-2 font-mono text-muted-foreground">{event.recordIn}</td>
-                              <td className="p-2">{event.scene ? `Sc${event.scene} T${event.take || '?'}` : '—'}</td>
                               <td className="p-2 text-center font-mono">{event.length}f</td>
                               <td className="p-2 max-w-[300px]">
-                                {event.vfxNotes.length > 0 ? (
-                                  <span className="text-purple-400">{event.vfxNotes[0]}</span>
+                                {event.vfxDescription ? (
+                                  <span className="text-purple-400">{event.vfxDescription}</span>
                                 ) : (
                                   <span className="text-muted-foreground/50">—</span>
                                 )}
@@ -1501,7 +1501,7 @@ export default function TurnoverPage() {
                     </table>
                   </div>
                   <p className="text-xs text-muted-foreground mt-3 text-center">
-                    FilmScribe import includes shots with VFX markers auto-matched by timecode
+                    Shot codes derived from VFX marker IDs (e.g., VFX_41_0010 → 041_0010)
                   </p>
                 </CardContent>
               </Card>

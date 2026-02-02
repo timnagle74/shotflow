@@ -28,8 +28,10 @@ export interface FilmScribeEvent {
   camera: string | null;
   comments: string | null;
   
-  // Matched VFX notes (populated after parsing)
+  // Matched VFX data (populated after parsing from locators)
   vfxNotes: string[];
+  vfxShotCode: string | null;      // Derived from marker: "044_0010"
+  vfxDescription: string | null;   // Just the description part
 }
 
 export interface FilmScribeLocator {
@@ -38,6 +40,11 @@ export interface FilmScribeLocator {
   text: string;
   clipName: string | null;
   color: string | null;
+  // Parsed from VFX ID in marker text (e.g., VFX_44_0010)
+  vfxScene: string | null;      // "44"
+  vfxSequence: string | null;   // "0010"
+  vfxShotCode: string | null;   // "044_0010"
+  vfxDescription: string | null; // "Clean up Line on Jades makeup"
 }
 
 export interface FilmScribeParseResult {
@@ -53,6 +60,7 @@ export interface FilmScribeParseResult {
   
   // Stats
   eventsWithClips: number;
+  eventsWithVfx: number;      // Events with VFX markers (these become shots)
   totalVfxMarkers: number;
   matchedVfxMarkers: number;
   
@@ -144,6 +152,8 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
       camera: cameraMatch?.[1] || null,
       comments: commentsMatch?.[1] || null,
       vfxNotes: [],
+      vfxShotCode: null,
+      vfxDescription: null,
     };
     
     events.push(event);
@@ -163,12 +173,34 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
     const colorMatch = locContent.match(/<Color>([^<]*)<\/Color>/);
     
     if (textMatch) {
+      const markerText = textMatch[1];
+      
+      // Parse VFX ID from marker text: "VFX_44_0010 - Description"
+      const vfxMatch = markerText.match(/^VFX_(\d+)_(\d+)\s*[-–—]?\s*(.*)/i);
+      
+      let vfxScene: string | null = null;
+      let vfxSequence: string | null = null;
+      let vfxShotCode: string | null = null;
+      let vfxDescription: string | null = null;
+      
+      if (vfxMatch) {
+        vfxScene = vfxMatch[1];
+        vfxSequence = vfxMatch[2];
+        // Pad scene to 3 digits, keep sequence as-is (already 4 digits)
+        vfxShotCode = `${vfxScene.padStart(3, '0')}_${vfxSequence}`;
+        vfxDescription = vfxMatch[3]?.trim() || null;
+      }
+      
       locators.push({
         timecode: tcMatch?.[1] || '',
         frame: parseInt(frameMatch?.[1] || '0', 10),
-        text: textMatch[1],
+        text: markerText,
         clipName: clipMatch?.[1] || null,
         color: colorMatch?.[1] || null,
+        vfxScene,
+        vfxSequence,
+        vfxShotCode,
+        vfxDescription,
       });
     }
   }
@@ -182,14 +214,20 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
     for (const event of events) {
       if (locFrame >= event.recordInFrame && locFrame <= event.recordOutFrame) {
         event.vfxNotes.push(locator.text);
+        // Set VFX shot code and description from the first matched locator
+        if (!event.vfxShotCode && locator.vfxShotCode) {
+          event.vfxShotCode = locator.vfxShotCode;
+          event.vfxDescription = locator.vfxDescription;
+        }
         matchedCount++;
         break;
       }
     }
   }
   
-  // Count events with actual clips
+  // Count events with actual clips and VFX markers
   const eventsWithClips = events.filter(e => e.clipName !== null).length;
+  const eventsWithVfx = events.filter(e => e.clipName !== null && e.vfxShotCode !== null).length;
   
   if (events.length !== eventCount) {
     warnings.push(`Expected ${eventCount} events, found ${events.length}`);
@@ -205,6 +243,7 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
     events,
     locators,
     eventsWithClips,
+    eventsWithVfx,
     totalVfxMarkers: locators.length,
     matchedVfxMarkers: matchedCount,
     warnings,
@@ -213,6 +252,7 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
 
 /**
  * Convert FilmScribe events to shot import format
+ * Only includes events that have VFX markers (vfxShotCode)
  */
 export function filmScribeToShots(result: FilmScribeParseResult): Array<{
   code: string;
@@ -229,9 +269,10 @@ export function filmScribeToShots(result: FilmScribeParseResult): Array<{
   camera: string | null;
 }> {
   return result.events
-    .filter(e => e.clipName !== null) // Only events with actual clips
+    .filter(e => e.clipName !== null && e.vfxShotCode !== null) // Only VFX shots with markers
     .map(event => ({
-      code: event.clipName!,
+      // Use VFX shot code derived from marker (e.g., "044_0010")
+      code: event.vfxShotCode!,
       clipName: event.clipName,
       cameraRoll: event.tapeId || event.tapeName,
       sourceIn: event.sourceIn,
@@ -239,7 +280,8 @@ export function filmScribeToShots(result: FilmScribeParseResult): Array<{
       recordIn: event.recordIn,
       recordOut: event.recordOut,
       durationFrames: event.length,
-      vfxNotes: event.vfxNotes.length > 0 ? event.vfxNotes.join('\n') : null,
+      // Use just the description part, not the full VFX ID string
+      vfxNotes: event.vfxDescription || (event.vfxNotes.length > 0 ? event.vfxNotes.join('\n') : null),
       scene: event.scene,
       take: event.take,
       camera: event.camera,
