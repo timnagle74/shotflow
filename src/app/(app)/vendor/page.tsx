@@ -1,18 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { 
-  Film, Loader2, Building2, Upload, Clock, CheckCircle2, 
-  AlertCircle, ExternalLink, User, Calendar
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Film,
+  Loader2,
+  Building2,
+  Upload,
+  Clock,
+  CheckCircle2,
+  ExternalLink,
+  User,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
+import { VendorVersionUpload } from "@/components/vendor-version-upload";
+import { VersionTimeline } from "@/components/version-timeline";
 
 interface VendorShot {
   id: string;
@@ -41,12 +57,18 @@ interface VendorShot {
     id: string;
     name: string;
   };
-  latest_version?: {
-    id: string;
-    version_code: string;
-    status: string;
-    created_at: string;
-  };
+  versions: VersionEntry[];
+}
+
+interface VersionEntry {
+  id: string;
+  shot_id: string;
+  version_number: number;
+  version_code: string;
+  status: string;
+  description: string | null;
+  created_at: string;
+  preview_url: string | null;
 }
 
 interface Vendor {
@@ -79,6 +101,7 @@ export default function VendorPortalPage() {
   const [shots, setShots] = useState<VendorShot[]>([]);
   const [artists, setArtists] = useState<Artist[]>([]);
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [expandedShotId, setExpandedShotId] = useState<string | null>(null);
 
   // Load vendors
   useEffect(() => {
@@ -107,61 +130,89 @@ export default function VendorPortalPage() {
   }, []);
 
   // Load shots for selected vendor
-  useEffect(() => {
-    async function loadVendorShots() {
-      if (!supabase || !selectedVendor) return;
+  const loadVendorShots = useCallback(async () => {
+    if (!supabase || !selectedVendor) return;
 
-      // Get assigned shots
-      const { data: shotsData } = await (supabase as any)
-        .from("turnover_shots")
-        .select(`
-          id, shot_id, vendor_id, artist_id, vfx_notes, assigned_at,
-          shot:shots(id, code, description, status),
-          turnover:turnovers(
-            id, turnover_number, title,
-            project:projects(id, name, code)
-          ),
-          artist:artists(id, name)
-        `)
-        .eq("vendor_id", selectedVendor)
-        .order("assigned_at", { ascending: false });
+    // Get assigned shots
+    const { data: shotsData } = await (supabase as any)
+      .from("turnover_shots")
+      .select(
+        `
+        id, shot_id, vendor_id, artist_id, vfx_notes, assigned_at,
+        shot:shots(id, code, description, status),
+        turnover:turnovers(
+          id, turnover_number, title,
+          project:projects(id, name, code)
+        ),
+        artist:artists(id, name)
+      `
+      )
+      .eq("vendor_id", selectedVendor)
+      .order("assigned_at", { ascending: false });
 
-      if (shotsData) {
-        // Get latest versions for each shot
-        const shotIds = shotsData.map((s: any) => s.shot_id);
-        const { data: versionsData } = await supabase
+    if (shotsData) {
+      // Get all versions for these shots
+      const shotIds = shotsData.map((s: any) => s.shot_id);
+
+      let allVersions: VersionEntry[] = [];
+
+      if (shotIds.length > 0) {
+        // Try shot_versions first
+        const { data: versionsData } = await (supabase as any)
           .from("shot_versions")
-          .select("id, shot_id, version_code, status, created_at")
+          .select(
+            "id, shot_id, version_number, version_code, status, description, created_at, preview_url"
+          )
           .in("shot_id", shotIds)
           .order("version_number", { ascending: false });
 
-        // Map latest version to each shot
-        const shotsWithVersions = shotsData.map((shot: any) => {
-          const versions = (versionsData || []).filter((v: any) => v.shot_id === shot.shot_id);
-          return {
-            ...shot,
-            latest_version: versions[0] || null,
-          };
-        });
+        if (versionsData && versionsData.length > 0) {
+          allVersions = versionsData as VersionEntry[];
+        } else {
+          // Fallback to versions table
+          const { data: fallbackVersions } = await supabase
+            .from("versions")
+            .select(
+              "id, shot_id, version_number, status, description, created_at, preview_url"
+            )
+            .in("shot_id", shotIds)
+            .order("version_number", { ascending: false });
 
-        setShots(shotsWithVersions);
+          allVersions = ((fallbackVersions || []) as any[]).map((v) => ({
+            ...v,
+            version_code: `v${String(v.version_number).padStart(3, "0")}`,
+          }));
+        }
       }
 
-      // Get artists for this vendor
-      const { data: artistsData } = await supabase
-        .from("artists")
-        .select("id, vendor_id, name, role")
-        .eq("vendor_id", selectedVendor)
-        .eq("active", true)
-        .order("name");
+      // Map versions to each shot
+      const shotsWithVersions: VendorShot[] = shotsData.map((shot: any) => ({
+        ...shot,
+        versions: allVersions.filter((v) => v.shot_id === shot.shot_id),
+      }));
 
-      setArtists((artistsData || []) as Artist[]);
+      setShots(shotsWithVersions);
     }
 
-    loadVendorShots();
+    // Get artists for this vendor
+    const { data: artistsData } = await supabase
+      .from("artists")
+      .select("id, vendor_id, name, role")
+      .eq("vendor_id", selectedVendor)
+      .eq("active", true)
+      .order("name");
+
+    setArtists((artistsData || []) as Artist[]);
   }, [selectedVendor]);
 
-  const updateArtistAssignment = async (turnoverShotId: string, artistId: string | null) => {
+  useEffect(() => {
+    loadVendorShots();
+  }, [loadVendorShots]);
+
+  const updateArtistAssignment = async (
+    turnoverShotId: string,
+    artistId: string | null
+  ) => {
     if (!supabase) return;
 
     await (supabase as any)
@@ -170,22 +221,58 @@ export default function VendorPortalPage() {
       .eq("id", turnoverShotId);
 
     // Update local state
-    setShots(prev => prev.map(s => 
-      s.id === turnoverShotId ? { ...s, artist_id: artistId } : s
-    ));
+    setShots((prev) =>
+      prev.map((s) =>
+        s.id === turnoverShotId ? { ...s, artist_id: artistId } : s
+      )
+    );
   };
 
-  const filteredShots = shots.filter(s => {
+  const handleVersionUploaded = (shotId: string, version: any) => {
+    // Add version to local state
+    setShots((prev) =>
+      prev.map((s) => {
+        if (s.shot_id === shotId) {
+          return {
+            ...s,
+            versions: [
+              {
+                id: version.id,
+                shot_id: shotId,
+                version_number: version.version_number,
+                version_code:
+                  version.version_code ||
+                  `v${String(version.version_number).padStart(3, "0")}`,
+                status: version.status || "INTERNAL_REVIEW",
+                description: version.description,
+                created_at: version.created_at || new Date().toISOString(),
+                preview_url: version.preview_url,
+              },
+              ...s.versions,
+            ],
+          };
+        }
+        return s;
+      })
+    );
+  };
+
+  const filteredShots = shots.filter((s) => {
     if (statusFilter === "all") return true;
     return s.shot?.status === statusFilter;
   });
 
   const statusCounts = {
     all: shots.length,
-    NOT_STARTED: shots.filter(s => s.shot?.status === 'NOT_STARTED').length,
-    IN_PROGRESS: shots.filter(s => s.shot?.status === 'IN_PROGRESS').length,
-    CLIENT_REVIEW: shots.filter(s => s.shot?.status === 'CLIENT_REVIEW').length,
-    APPROVED: shots.filter(s => s.shot?.status === 'APPROVED').length,
+    NOT_STARTED: shots.filter((s) => s.shot?.status === "NOT_STARTED").length,
+    IN_PROGRESS: shots.filter((s) => s.shot?.status === "IN_PROGRESS").length,
+    INTERNAL_REVIEW: shots.filter(
+      (s) => s.shot?.status === "INTERNAL_REVIEW"
+    ).length,
+    CLIENT_REVIEW: shots.filter(
+      (s) => s.shot?.status === "CLIENT_REVIEW"
+    ).length,
+    APPROVED: shots.filter((s) => s.shot?.status === "APPROVED").length,
   };
 
   if (loading) {
@@ -201,7 +288,9 @@ export default function VendorPortalPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Vendor Portal</h1>
-          <p className="text-muted-foreground mt-1">View and manage assigned shots</p>
+          <p className="text-muted-foreground mt-1">
+            View assigned shots, upload versions, and track progress
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <Building2 className="h-5 w-5 text-muted-foreground" />
@@ -210,7 +299,7 @@ export default function VendorPortalPage() {
               <SelectValue placeholder="Select vendor" />
             </SelectTrigger>
             <SelectContent>
-              {vendors.map(v => (
+              {vendors.map((v) => (
                 <SelectItem key={v.id} value={v.id}>
                   {v.name} {v.code && `(${v.code})`}
                 </SelectItem>
@@ -221,7 +310,7 @@ export default function VendorPortalPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <Card>
           <CardContent className="p-4 text-center">
             <p className="text-3xl font-bold">{shots.length}</p>
@@ -230,19 +319,33 @@ export default function VendorPortalPage() {
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-blue-500">{statusCounts.IN_PROGRESS}</p>
+            <p className="text-3xl font-bold text-gray-400">
+              {statusCounts.NOT_STARTED}
+            </p>
+            <p className="text-xs text-muted-foreground">Not Started</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 text-center">
+            <p className="text-3xl font-bold text-blue-500">
+              {statusCounts.IN_PROGRESS}
+            </p>
             <p className="text-xs text-muted-foreground">In Progress</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-amber-500">{statusCounts.CLIENT_REVIEW}</p>
+            <p className="text-3xl font-bold text-amber-500">
+              {statusCounts.CLIENT_REVIEW + statusCounts.INTERNAL_REVIEW}
+            </p>
             <p className="text-xs text-muted-foreground">In Review</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold text-green-500">{statusCounts.APPROVED}</p>
+            <p className="text-3xl font-bold text-green-500">
+              {statusCounts.APPROVED}
+            </p>
             <p className="text-xs text-muted-foreground">Approved</p>
           </CardContent>
         </Card>
@@ -253,11 +356,14 @@ export default function VendorPortalPage() {
         <TabsList>
           <TabsTrigger value="all">
             All
-            <Badge variant="secondary" className="ml-1">{statusCounts.all}</Badge>
+            <Badge variant="secondary" className="ml-1">
+              {statusCounts.all}
+            </Badge>
           </TabsTrigger>
           <TabsTrigger value="NOT_STARTED">Not Started</TabsTrigger>
           <TabsTrigger value="IN_PROGRESS">In Progress</TabsTrigger>
-          <TabsTrigger value="CLIENT_REVIEW">In Review</TabsTrigger>
+          <TabsTrigger value="INTERNAL_REVIEW">Internal Review</TabsTrigger>
+          <TabsTrigger value="CLIENT_REVIEW">Client Review</TabsTrigger>
           <TabsTrigger value="APPROVED">Approved</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -267,53 +373,82 @@ export default function VendorPortalPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Film className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <p className="text-muted-foreground">No shots assigned to this vendor</p>
+            <p className="text-muted-foreground">
+              No shots assigned to this vendor
+            </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3">
-          {filteredShots.map(shot => {
-            const statusConfig = STATUS_CONFIG[shot.shot?.status || 'NOT_STARTED'] || STATUS_CONFIG.NOT_STARTED;
-            
+          {filteredShots.map((shot) => {
+            const statusConfig =
+              STATUS_CONFIG[shot.shot?.status || "NOT_STARTED"] ||
+              STATUS_CONFIG.NOT_STARTED;
+            const isExpanded = expandedShotId === shot.id;
+            const latestVersion = shot.versions[0];
+            const nextVersionNumber =
+              shot.versions.length > 0
+                ? Math.max(...shot.versions.map((v) => v.version_number)) + 1
+                : 1;
+
             return (
               <Card key={shot.id}>
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
                     {/* Shot code and status */}
-                    <div className="w-40">
+                    <div className="w-36">
                       <Link href={`/shots/${shot.shot_id}`}>
-                        <span className="font-mono font-bold hover:underline">{shot.shot?.code}</span>
+                        <span className="font-mono font-bold hover:underline">
+                          {shot.shot?.code}
+                        </span>
                       </Link>
-                      <Badge className={cn("ml-2 text-[10px] text-white", statusConfig.color)}>
-                        {statusConfig.label}
-                      </Badge>
+                      <div className="mt-1">
+                        <Badge
+                          className={cn(
+                            "text-[10px] text-white",
+                            statusConfig.color
+                          )}
+                        >
+                          {statusConfig.label}
+                        </Badge>
+                      </div>
                     </div>
 
                     {/* Project/Turnover */}
-                    <div className="flex-1">
-                      <p className="text-sm">{shot.turnover?.project?.name}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm">
+                        {shot.turnover?.project?.name}
+                      </p>
                       <p className="text-xs text-muted-foreground">
-                        TO{shot.turnover?.turnover_number} • {shot.turnover?.title}
+                        TO{shot.turnover?.turnover_number} •{" "}
+                        {shot.turnover?.title}
                       </p>
                     </div>
 
-                    {/* VFX Notes */}
-                    <div className="flex-1 max-w-xs">
+                    {/* VFX Notes (truncated) */}
+                    <div className="flex-1 max-w-xs hidden lg:block">
                       {shot.vfx_notes ? (
-                        <p className="text-sm text-muted-foreground truncate">{shot.vfx_notes}</p>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {shot.vfx_notes}
+                        </p>
                       ) : (
-                        <p className="text-sm text-muted-foreground/50 italic">No notes</p>
+                        <p className="text-sm text-muted-foreground/50 italic">
+                          No notes
+                        </p>
                       )}
                     </div>
 
                     {/* Latest Version */}
                     <div className="w-24">
-                      {shot.latest_version ? (
+                      {latestVersion ? (
                         <Badge variant="outline">
-                          {shot.latest_version.version_code}
+                          {latestVersion.version_code}
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-muted-foreground">
+                        <Badge
+                          variant="outline"
+                          className="text-muted-foreground"
+                        >
                           No versions
                         </Badge>
                       )}
@@ -323,7 +458,12 @@ export default function VendorPortalPage() {
                     <div className="w-40">
                       <Select
                         value={shot.artist_id || "unassigned"}
-                        onValueChange={(v) => updateArtistAssignment(shot.id, v === "unassigned" ? null : v)}
+                        onValueChange={(v) =>
+                          updateArtistAssignment(
+                            shot.id,
+                            v === "unassigned" ? null : v
+                          )
+                        }
                       >
                         <SelectTrigger className="h-8">
                           <SelectValue>
@@ -334,9 +474,13 @@ export default function VendorPortalPage() {
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="unassigned">Unassigned</SelectItem>
-                          {artists.map(a => (
-                            <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                          <SelectItem value="unassigned">
+                            Unassigned
+                          </SelectItem>
+                          {artists.map((a) => (
+                            <SelectItem key={a.id} value={a.id}>
+                              {a.name}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -344,9 +488,27 @@ export default function VendorPortalPage() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-2">
-                      <Button variant="outline" size="sm">
-                        <Upload className="h-3 w-3 mr-1" />
-                        Upload Version
+                      <VendorVersionUpload
+                        shotId={shot.shot_id}
+                        shotCode={shot.shot?.code || ""}
+                        vfxNotes={shot.vfx_notes}
+                        nextVersionNumber={nextVersionNumber}
+                        onUploadComplete={(version) =>
+                          handleVersionUploaded(shot.shot_id, version)
+                        }
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() =>
+                          setExpandedShotId(isExpanded ? null : shot.id)
+                        }
+                      >
+                        {isExpanded ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
                       </Button>
                       <Link href={`/shots/${shot.shot_id}`}>
                         <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -355,6 +517,54 @@ export default function VendorPortalPage() {
                       </Link>
                     </div>
                   </div>
+
+                  {/* Expanded: VFX Notes + Version Timeline */}
+                  {isExpanded && (
+                    <div className="mt-4 pt-4 border-t grid grid-cols-2 gap-6">
+                      {/* Shot Details */}
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-medium">Shot Details</h4>
+                        {shot.shot?.description && (
+                          <p className="text-sm text-muted-foreground">
+                            {shot.shot.description}
+                          </p>
+                        )}
+                        {shot.vfx_notes && (
+                          <div className="bg-muted/50 rounded-lg p-3">
+                            <p className="text-xs font-medium text-muted-foreground mb-1">
+                              VFX Notes
+                            </p>
+                            <p className="text-sm">{shot.vfx_notes}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Version History */}
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm font-medium">
+                            Version History ({shot.versions.length})
+                          </h4>
+                          <VendorVersionUpload
+                            shotId={shot.shot_id}
+                            shotCode={shot.shot?.code || ""}
+                            vfxNotes={shot.vfx_notes}
+                            nextVersionNumber={nextVersionNumber}
+                            onUploadComplete={(version) =>
+                              handleVersionUploaded(shot.shot_id, version)
+                            }
+                            trigger={
+                              <Button size="sm" variant="outline" className="h-7">
+                                <Upload className="h-3 w-3 mr-1" />
+                                New Version
+                              </Button>
+                            }
+                          />
+                        </div>
+                        <VersionTimeline versions={shot.versions} />
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
