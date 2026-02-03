@@ -78,6 +78,16 @@ export default function UsersPage() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null);
 
+  // Vendor invite form
+  const [showVendorInvite, setShowVendorInvite] = useState(false);
+  const [vendorCompanyName, setVendorCompanyName] = useState("");
+  const [vendorContactName, setVendorContactName] = useState("");
+  const [vendorContactEmail, setVendorContactEmail] = useState("");
+  const [isFreelancer, setIsFreelancer] = useState(false);
+  const [vendorInviting, setVendorInviting] = useState(false);
+  const [vendorInviteError, setVendorInviteError] = useState<string | null>(null);
+  const [vendorInviteSuccess, setVendorInviteSuccess] = useState<string | null>(null);
+
   // Edit form
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [editRole, setEditRole] = useState<UserRole>("ARTIST");
@@ -176,6 +186,52 @@ export default function UsersPage() {
       setInviting(false);
     }
   }, [inviteEmail, inviteName, inviteRole, loadUsers]);
+
+  // Send vendor invite
+  const handleVendorInvite = useCallback(async () => {
+    setVendorInviting(true);
+    setVendorInviteError(null);
+    setVendorInviteSuccess(null);
+
+    try {
+      const res = await fetch("/api/vendors/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          companyName: isFreelancer ? undefined : vendorCompanyName,
+          contactName: vendorContactName,
+          contactEmail: vendorContactEmail,
+          isFreelancer,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setVendorInviteError(data.error || "Failed to create vendor invite");
+        return;
+      }
+
+      setVendorInviteSuccess(data.message || "Vendor invited!");
+      setVendorCompanyName("");
+      setVendorContactName("");
+      setVendorContactEmail("");
+      setIsFreelancer(false);
+
+      // Reload users
+      await loadUsers();
+
+      // Close dialog after brief delay
+      setTimeout(() => {
+        setShowVendorInvite(false);
+        setVendorInviteSuccess(null);
+      }, 1500);
+    } catch (err) {
+      setVendorInviteError("Failed to create vendor invite");
+    } finally {
+      setVendorInviting(false);
+    }
+  }, [vendorCompanyName, vendorContactName, vendorContactEmail, isFreelancer, loadUsers]);
 
   // Edit user
   const handleEdit = useCallback(async () => {
@@ -294,6 +350,119 @@ export default function UsersPage() {
             Manage team members, roles, and permissions
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          <Dialog open={showVendorInvite} onOpenChange={setShowVendorInvite}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Briefcase className="h-4 w-4 mr-2" />
+                Invite Vendor
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Invite Vendor</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                {/* Freelancer toggle */}
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <button
+                    type="button"
+                    onClick={() => setIsFreelancer(!isFreelancer)}
+                    className="flex items-center"
+                  >
+                    {isFreelancer ? (
+                      <ToggleRight className="h-6 w-6 text-green-400" />
+                    ) : (
+                      <ToggleLeft className="h-6 w-6 text-muted-foreground" />
+                    )}
+                  </button>
+                  <div>
+                    <span className="text-sm font-medium">Freelancer</span>
+                    <p className="text-xs text-muted-foreground">
+                      {isFreelancer
+                        ? "Auto-creates a vendor named after the person"
+                        : "Invite a vendor company with a primary contact"}
+                    </p>
+                  </div>
+                </label>
+
+                {/* Company Name — hidden for freelancers */}
+                {!isFreelancer && (
+                  <div>
+                    <label className="text-sm font-medium">Company Name</label>
+                    <Input
+                      placeholder="Acme VFX"
+                      className="mt-1.5"
+                      value={vendorCompanyName}
+                      onChange={(e) => setVendorCompanyName(e.target.value)}
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-sm font-medium">Primary Contact Name</label>
+                  <Input
+                    placeholder="Full name"
+                    className="mt-1.5"
+                    value={vendorContactName}
+                    onChange={(e) => setVendorContactName(e.target.value)}
+                  />
+                  {isFreelancer && vendorContactName && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Vendor will be named: &quot;{vendorContactName} VFX&quot;
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium">Primary Contact Email</label>
+                  <Input
+                    placeholder="vendor@studio.com"
+                    className="mt-1.5"
+                    value={vendorContactEmail}
+                    onChange={(e) => setVendorContactEmail(e.target.value)}
+                  />
+                </div>
+
+                <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+                  {isFreelancer
+                    ? "User will be invited as an Artist and auto-linked to their personal vendor."
+                    : "User will be invited as a VFX Vendor and linked to the new vendor company."}
+                </div>
+
+                {vendorInviteError && (
+                  <div className="flex items-center gap-2 text-red-400 text-sm">
+                    <AlertCircle className="h-4 w-4" />
+                    {vendorInviteError}
+                  </div>
+                )}
+                {vendorInviteSuccess && (
+                  <div className="flex items-center gap-2 text-green-400 text-sm">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {vendorInviteSuccess}
+                  </div>
+                )}
+                <Button
+                  className="w-full"
+                  onClick={handleVendorInvite}
+                  disabled={
+                    vendorInviting ||
+                    !vendorContactEmail ||
+                    !vendorContactName ||
+                    (!isFreelancer && !vendorCompanyName)
+                  }
+                >
+                  {vendorInviting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Briefcase className="h-4 w-4 mr-2" />
+                  )}
+                  {isFreelancer ? "Invite Freelancer" : "Create Vendor & Invite"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+
         <Dialog open={showInvite} onOpenChange={setShowInvite}>
           <DialogTrigger asChild>
             <Button>
@@ -369,6 +538,7 @@ export default function UsersPage() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Error banner */}
