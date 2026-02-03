@@ -87,6 +87,7 @@ export interface Database {
           role: UserRole;
           avatar: string | null;
           can_view_all_shots: boolean;
+          vendor_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -97,6 +98,7 @@ export interface Database {
           role: UserRole;
           avatar?: string | null;
           can_view_all_shots?: boolean;
+          vendor_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -107,8 +109,29 @@ export interface Database {
           role?: UserRole;
           avatar?: string | null;
           can_view_all_shots?: boolean;
+          vendor_id?: string | null;
           created_at?: string;
           updated_at?: string;
+        };
+      };
+      user_vendors: {
+        Row: {
+          id: string;
+          user_id: string;
+          vendor_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          vendor_id: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          vendor_id?: string;
+          created_at?: string;
         };
       };
       projects: {
