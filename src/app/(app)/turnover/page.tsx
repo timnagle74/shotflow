@@ -1473,7 +1473,8 @@ export default function TurnoverPage() {
                       <thead className="bg-muted/50 sticky top-0">
                         <tr>
                           <th className="text-left p-2 font-medium">Shot Code</th>
-                          <th className="text-left p-2 font-medium">Source Clip</th>
+                          <th className="text-left p-2 font-medium">Camera File</th>
+                          <th className="text-left p-2 font-medium">Cam</th>
                           <th className="text-left p-2 font-medium">Rec TC</th>
                           <th className="text-center p-2 font-medium">Dur</th>
                           <th className="text-left p-2 font-medium">VFX Description</th>
@@ -1485,10 +1486,11 @@ export default function TurnoverPage() {
                           .map((event, i) => (
                             <tr key={i} className="hover:bg-muted/30">
                               <td className="p-2 font-mono font-bold text-green-400">{event.vfxShotCode}</td>
-                              <td className="p-2 font-mono text-muted-foreground">{event.clipName}</td>
+                              <td className="p-2 font-mono text-blue-400 text-[10px]" title={event.tapeId || undefined}>{event.tapeId || event.tapeName || '—'}</td>
+                              <td className="p-2 font-mono text-center">{event.camera || '—'}</td>
                               <td className="p-2 font-mono text-muted-foreground">{event.recordIn}</td>
                               <td className="p-2 text-center font-mono">{event.length}f</td>
-                              <td className="p-2 max-w-[300px]">
+                              <td className="p-2 max-w-[250px]">
                                 {event.vfxDescription ? (
                                   <span className="text-purple-400">{event.vfxDescription}</span>
                                 ) : (
@@ -1501,7 +1503,7 @@ export default function TurnoverPage() {
                     </table>
                   </div>
                   <p className="text-xs text-muted-foreground mt-3 text-center">
-                    Shot codes derived from VFX marker IDs (e.g., VFX_41_0010 → 041_0010)
+                    Camera File = original source filename from camera
                   </p>
                 </CardContent>
               </Card>
