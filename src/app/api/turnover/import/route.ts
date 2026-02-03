@@ -337,6 +337,23 @@ export async function POST(request: NextRequest) {
               .from("turnover_shots")
               .update({ refs_assigned: true })
               .in("id", refShotLinks.map(l => l.turnover_shot_id));
+            
+            // Also update the shots table with ref data so it shows in shot board/detail
+            for (const code of matchedCodes) {
+              const shotId = shotCodeToId[code];
+              if (shotId) {
+                await supabase
+                  .from("shots")
+                  .update({
+                    ref_filename: ref.originalName,
+                    ref_storage_path: ref.storagePath,
+                    ref_cdn_url: ref.cdnUrl,
+                    ref_video_id: refVideoId,
+                    ref_preview_url: refPreviewUrl,
+                  })
+                  .eq("id", shotId);
+              }
+            }
           }
         }
       }
