@@ -146,6 +146,10 @@ export default function VendorPortalPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [allVendors, setAllVendors] = useState<Vendor[]>([]);
 
+  // Freelancer detection
+  const [isSoloFreelancer, setIsSoloFreelancer] = useState(false);
+  const [vendorUserCount, setVendorUserCount] = useState<number>(0);
+
   // Project-level view
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
 
@@ -255,6 +259,18 @@ export default function VendorPortalPage() {
         setUserVendors(vendors);
         if (vendors.length > 0) {
           setSelectedVendorId(vendors[0].id);
+
+          // Detect solo freelancer: ARTIST role + vendor with only 1 user
+          if (typedUser.role === "ARTIST" && vendors.length === 1) {
+            const { count } = await (supabase as any)
+              .from("user_vendors")
+              .select("*", { count: "exact", head: true })
+              .eq("vendor_id", vendors[0].id);
+
+            const userCount = count || 1;
+            setVendorUserCount(userCount);
+            setIsSoloFreelancer(userCount <= 1);
+          }
         }
       }
 
@@ -525,6 +541,8 @@ export default function VendorPortalPage() {
     setExpandedShotId(null);
     setShowMyTeam(false);
     setTeamArtists([]);
+    setIsSoloFreelancer(false);
+    setVendorUserCount(0);
   };
 
   const updateArtistAssignment = async (
@@ -653,7 +671,7 @@ export default function VendorPortalPage() {
                   onClick={handleBackToProjects}
                   className="hover:text-foreground transition-colors"
                 >
-                  Vendor Portal
+                  {isSoloFreelancer ? "My Projects" : "Vendor Portal"}
                 </button>
                 <span>/</span>
                 <span className="text-foreground">
@@ -674,8 +692,9 @@ export default function VendorPortalPage() {
                     {selectedProject.name}
                   </h1>
                   <p className="text-muted-foreground mt-1">
-                    Shots assigned to{" "}
-                    {currentVendor?.name || "your vendor"}
+                    {isSoloFreelancer
+                      ? "Your assigned shots"
+                      : `Shots assigned to ${currentVendor?.name || "your vendor"}`}
                   </p>
                 </div>
               </div>
@@ -683,12 +702,18 @@ export default function VendorPortalPage() {
           ) : (
             <>
               <h1 className="text-3xl font-bold tracking-tight">
-                Vendor Portal
+                {isSoloFreelancer
+                  ? "My Projects"
+                  : currentVendor && !isAdmin
+                    ? `${currentVendor.name} — Projects`
+                    : "Vendor Portal"}
               </h1>
               <p className="text-muted-foreground mt-1">
-                {currentVendor
-                  ? `${currentVendor.name} — View your projects and assigned shots`
-                  : "View assigned shots, upload versions, and track progress"}
+                {isSoloFreelancer
+                  ? "View your projects and assigned shots"
+                  : currentVendor
+                    ? `${currentVendor.name} — View your projects and assigned shots`
+                    : "View assigned shots, upload versions, and track progress"}
               </p>
             </>
           )}
@@ -696,8 +721,8 @@ export default function VendorPortalPage() {
 
         {/* Vendor switcher + My Team button */}
         <div className="flex items-center gap-3">
-          {/* My Team toggle - only on projects level */}
-          {!selectedProject && canInviteArtists && selectedVendorId && (
+          {/* My Team toggle - only on projects level, hidden for solo freelancers */}
+          {!selectedProject && canInviteArtists && selectedVendorId && !isSoloFreelancer && (
             <Button
               variant={showMyTeam ? "default" : "outline"}
               onClick={() => setShowMyTeam(!showMyTeam)}
@@ -750,8 +775,8 @@ export default function VendorPortalPage() {
         </div>
       </div>
 
-      {/* ─── My Team Section (Level 1 only) ───────────────────────────── */}
-      {!selectedProject && showMyTeam && canInviteArtists && (
+      {/* ─── My Team Section (Level 1 only, hidden for solo freelancers) ─ */}
+      {!selectedProject && showMyTeam && canInviteArtists && !isSoloFreelancer && (
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
