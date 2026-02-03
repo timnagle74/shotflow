@@ -17,6 +17,7 @@ import { downloadEDL } from "@/lib/edl-export";
 import { downloadALE } from "@/lib/ale-export";
 import { downloadFCPXML } from "@/lib/xml-export";
 import { cn } from "@/lib/utils";
+import { TurnoverStepper } from "@/components/turnover-stepper";
 
 interface Turnover {
   id: string;
@@ -54,12 +55,12 @@ interface TurnoverShot {
   shot?: { code: string };
 }
 
-const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
-  draft: { label: "Draft", color: "bg-gray-500", icon: Clock },
-  reviewed: { label: "Needs Assignment", color: "bg-amber-500", icon: AlertCircle },
-  assigned: { label: "Assigned", color: "bg-green-500", icon: CheckCircle2 },
-  in_progress: { label: "In Progress", color: "bg-blue-500", icon: Building2 },
-  delivered: { label: "Delivered", color: "bg-purple-500", icon: CheckCircle2 },
+const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any; step: "import" | "review" | "assign" | "production" }> = {
+  draft: { label: "Imported — Needs Review", color: "bg-amber-500", icon: Clock, step: "import" },
+  reviewed: { label: "Reviewed — Needs Assignment", color: "bg-blue-500", icon: AlertCircle, step: "review" },
+  assigned: { label: "Assigned — In Production", color: "bg-green-500", icon: CheckCircle2, step: "production" },
+  in_progress: { label: "In Production", color: "bg-green-500", icon: Building2, step: "production" },
+  delivered: { label: "Delivered", color: "bg-purple-500", icon: CheckCircle2, step: "production" },
 };
 
 export default function TurnoversPage() {
@@ -348,6 +349,9 @@ export default function TurnoversPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {/* Pipeline stepper */}
+                  <TurnoverStepper currentStep={statusConfig.step} className="pb-2" />
+
                   {turnover.general_notes && (
                     <p className="text-sm text-muted-foreground bg-muted/30 rounded-md p-2">
                       {turnover.general_notes}

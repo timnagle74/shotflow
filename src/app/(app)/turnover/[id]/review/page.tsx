@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { TurnoverStepper } from "@/components/turnover-stepper";
 
 interface TurnoverShot {
   id: string;
@@ -423,6 +424,9 @@ export default function TurnoverReviewPage() {
 
   return (
     <div className="space-y-6">
+      {/* Pipeline Stepper */}
+      <TurnoverStepper currentStep="review" />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
