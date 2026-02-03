@@ -12,6 +12,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Film,
   Loader2,
@@ -26,6 +35,10 @@ import {
   ArrowLeft,
   FolderOpen,
   AlertCircle,
+  Plus,
+  Users,
+  Mail,
+  Paintbrush,
 } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -147,6 +160,18 @@ export default function VendorPortalPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [expandedShotId, setExpandedShotId] = useState<string | null>(null);
   const [loadingShots, setLoadingShots] = useState(false);
+
+  // My Team state
+  const [showMyTeam, setShowMyTeam] = useState(false);
+  const [teamArtists, setTeamArtists] = useState<Artist[]>([]);
+  const [loadingTeam, setLoadingTeam] = useState(false);
+  const [showInviteArtist, setShowInviteArtist] = useState(false);
+  const [inviteArtistName, setInviteArtistName] = useState("");
+  const [inviteArtistEmail, setInviteArtistEmail] = useState("");
+  const [inviteArtistSpecialty, setInviteArtistSpecialty] = useState("");
+  const [invitingArtist, setInvitingArtist] = useState(false);
+  const [inviteArtistError, setInviteArtistError] = useState<string | null>(null);
+  const [inviteArtistSuccess, setInviteArtistSuccess] = useState<string | null>(null);
 
   // ─── Step 1: Resolve the user's vendor(s) ──────────────────────────────
 
@@ -407,6 +432,72 @@ export default function VendorPortalPage() {
     [selectedVendorId]
   );
 
+  // ─── My Team: load artists for this vendor ──────────────────────────────
+
+  const loadTeamArtists = useCallback(async () => {
+    if (!supabase || !selectedVendorId) return;
+    setLoadingTeam(true);
+
+    const { data: artistsData } = await (supabase as any)
+      .from("artists")
+      .select("id, vendor_id, name, role")
+      .eq("vendor_id", selectedVendorId)
+      .eq("active", true)
+      .order("name");
+
+    setTeamArtists((artistsData || []) as Artist[]);
+    setLoadingTeam(false);
+  }, [selectedVendorId]);
+
+  useEffect(() => {
+    if (selectedVendorId && showMyTeam) {
+      loadTeamArtists();
+    }
+  }, [selectedVendorId, showMyTeam, loadTeamArtists]);
+
+  const handleInviteArtist = useCallback(async () => {
+    if (!selectedVendorId) return;
+    setInvitingArtist(true);
+    setInviteArtistError(null);
+    setInviteArtistSuccess(null);
+
+    try {
+      const res = await fetch(`/api/vendors/${selectedVendorId}/artists`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: inviteArtistName,
+          email: inviteArtistEmail,
+          specialty: inviteArtistSpecialty || undefined,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setInviteArtistError(data.error || "Failed to invite artist");
+        return;
+      }
+
+      setInviteArtistSuccess(data.message || "Artist invited!");
+      setInviteArtistName("");
+      setInviteArtistEmail("");
+      setInviteArtistSpecialty("");
+
+      // Reload team
+      await loadTeamArtists();
+
+      setTimeout(() => {
+        setShowInviteArtist(false);
+        setInviteArtistSuccess(null);
+      }, 1500);
+    } catch (err) {
+      setInviteArtistError("Failed to invite artist");
+    } finally {
+      setInvitingArtist(false);
+    }
+  }, [selectedVendorId, inviteArtistName, inviteArtistEmail, inviteArtistSpecialty, loadTeamArtists]);
+
   // ─── Handlers ──────────────────────────────────────────────────────────
 
   const handleProjectClick = (project: ProjectSummary) => {
@@ -432,6 +523,8 @@ export default function VendorPortalPage() {
     setProjects([]);
     setStatusFilter("all");
     setExpandedShotId(null);
+    setShowMyTeam(false);
+    setTeamArtists([]);
   };
 
   const updateArtistAssignment = async (
@@ -542,6 +635,9 @@ export default function VendorPortalPage() {
   const currentVendor = userVendors.find((v) => v.id === selectedVendorId);
   const showVendorSwitcher = userVendors.length > 1;
 
+  // Permissions: only VFX_VENDOR and admins can invite artists
+  const canInviteArtists = isAdmin || appUser?.role === "VFX_VENDOR";
+
   // ─── Render ────────────────────────────────────────────────────────────
 
   return (
@@ -598,8 +694,18 @@ export default function VendorPortalPage() {
           )}
         </div>
 
-        {/* Vendor switcher (multi-vendor freelancers) or admin "View as" */}
+        {/* Vendor switcher + My Team button */}
         <div className="flex items-center gap-3">
+          {/* My Team toggle - only on projects level */}
+          {!selectedProject && canInviteArtists && selectedVendorId && (
+            <Button
+              variant={showMyTeam ? "default" : "outline"}
+              onClick={() => setShowMyTeam(!showMyTeam)}
+            >
+              <Users className="h-4 w-4 mr-2" />
+              My Team
+            </Button>
+          )}
           {isAdmin && allVendors.length > 0 && (
             <>
               <span className="text-xs text-muted-foreground">View as:</span>
@@ -643,6 +749,128 @@ export default function VendorPortalPage() {
           )}
         </div>
       </div>
+
+      {/* ─── My Team Section (Level 1 only) ───────────────────────────── */}
+      {!selectedProject && showMyTeam && canInviteArtists && (
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Team Artists ({teamArtists.length})
+              </CardTitle>
+              <Dialog open={showInviteArtist} onOpenChange={setShowInviteArtist}>
+                <DialogTrigger asChild>
+                  <Button size="sm">
+                    <Plus className="h-3 w-3 mr-1" />
+                    Invite Artist
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Invite Artist</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 pt-4">
+                    <div>
+                      <label className="text-sm font-medium">Name</label>
+                      <Input
+                        placeholder="Full name"
+                        className="mt-1.5"
+                        value={inviteArtistName}
+                        onChange={(e) => setInviteArtistName(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Email</label>
+                      <Input
+                        placeholder="artist@example.com"
+                        className="mt-1.5"
+                        value={inviteArtistEmail}
+                        onChange={(e) => setInviteArtistEmail(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium">Role / Specialty</label>
+                      <Input
+                        placeholder="e.g. Compositor, Animator, Modeler"
+                        className="mt-1.5"
+                        value={inviteArtistSpecialty}
+                        onChange={(e) => setInviteArtistSpecialty(e.target.value)}
+                      />
+                    </div>
+                    {inviteArtistError && (
+                      <div className="flex items-center gap-2 text-red-400 text-sm">
+                        <AlertCircle className="h-4 w-4" />
+                        {inviteArtistError}
+                      </div>
+                    )}
+                    {inviteArtistSuccess && (
+                      <div className="flex items-center gap-2 text-green-400 text-sm">
+                        <CheckCircle2 className="h-4 w-4" />
+                        {inviteArtistSuccess}
+                      </div>
+                    )}
+                    <Button
+                      className="w-full"
+                      onClick={handleInviteArtist}
+                      disabled={invitingArtist || !inviteArtistName || !inviteArtistEmail}
+                    >
+                      {invitingArtist ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Mail className="h-4 w-4 mr-2" />
+                      )}
+                      Send Invite
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loadingTeam ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : teamArtists.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Paintbrush className="h-8 w-8 text-muted-foreground/30 mb-2" />
+                <p className="text-sm text-muted-foreground">
+                  No artists yet. Invite your first team member!
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {teamArtists.map((artist) => (
+                  <div
+                    key={artist.id}
+                    className="flex items-center gap-3 rounded-lg border p-3"
+                  >
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="bg-purple-400/10 text-purple-400 text-xs">
+                        {artist.name
+                          .split(" ")
+                          .map((n) => n[0])
+                          .join("")}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {artist.name}
+                      </p>
+                      {artist.role && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {artist.role}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ─── Level 1: Projects View ────────────────────────────────────── */}
       {!selectedProject && (
