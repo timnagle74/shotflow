@@ -175,8 +175,8 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
     if (textMatch) {
       const markerText = textMatch[1];
       
-      // Parse VFX ID from marker text: "VFX_44_0010 - Description"
-      const vfxMatch = markerText.match(/^VFX_(\d+)_(\d+)\s*[-–—]?\s*(.*)/i);
+      // Parse VFX ID from marker text: "VFX_44_0010 - Description" or "VFX 05_0010 - Description"
+      const vfxMatch = markerText.match(/^VFX[_ ]?(\d+)[_ ](\d+)\s*[-–—]?\s*(.*)/i);
       
       let vfxScene: string | null = null;
       let vfxSequence: string | null = null;
@@ -226,8 +226,17 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
   }
   
   // Count events with actual clips and VFX markers
-  const eventsWithClips = events.filter(e => e.clipName !== null).length;
-  const eventsWithVfx = events.filter(e => e.clipName !== null && e.vfxShotCode !== null).length;
+  const eventsWithClips = events.filter(e => e.clipName !== null && !e.clipName?.startsWith('Opt')).length;
+  
+  // eventsWithVfx: either from events (if they have clips) or from locators (fallback)
+  let eventsWithVfx: number;
+  if (eventsWithClips > 0) {
+    // Events have clips — count events with VFX markers
+    eventsWithVfx = events.filter(e => e.clipName !== null && e.vfxShotCode !== null && !e.clipName?.startsWith('Opt')).length;
+  } else {
+    // Events don't have clips — count locators with VFX codes (these become shots)
+    eventsWithVfx = locators.filter(l => l.vfxShotCode !== null && l.clipName !== null && !l.clipName?.startsWith('Opt')).length;
+  }
   
   if (events.length !== eventCount) {
     warnings.push(`Expected ${eventCount} events, found ${events.length}`);
@@ -252,7 +261,10 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
 
 /**
  * Convert FilmScribe events to shot import format
- * Only includes events that have VFX markers (vfxShotCode)
+ * 
+ * Handles two cases:
+ * 1. Events have clips → use events with matched VFX markers
+ * 2. Events don't have clips → use locators directly as shots (fallback)
  */
 export function filmScribeToShots(result: FilmScribeParseResult): Array<{
   code: string;
@@ -268,22 +280,45 @@ export function filmScribeToShots(result: FilmScribeParseResult): Array<{
   take: string | null;
   camera: string | null;
 }> {
-  return result.events
-    .filter(e => e.clipName !== null && e.vfxShotCode !== null) // Only VFX shots with markers
-    .map(event => ({
-      // Use VFX shot code derived from marker (e.g., "044_0010")
-      code: event.vfxShotCode!,
-      clipName: event.clipName,
-      cameraRoll: event.tapeId || event.tapeName,
-      sourceIn: event.sourceIn,
-      sourceOut: event.sourceOut,
-      recordIn: event.recordIn,
-      recordOut: event.recordOut,
-      durationFrames: event.length,
-      // Use just the description part, not the full VFX ID string
-      vfxNotes: event.vfxDescription || (event.vfxNotes.length > 0 ? event.vfxNotes.join('\n') : null),
-      scene: event.scene,
-      take: event.take,
-      camera: event.camera,
+  // Check if events have clips (REEL03 style)
+  const eventsWithClips = result.events.filter(e => e.clipName !== null && !e.clipName.startsWith('Opt'));
+  
+  if (eventsWithClips.length > 0) {
+    // Case 1: Events have clips — use existing logic
+    return result.events
+      .filter(e => e.clipName !== null && e.vfxShotCode !== null && !e.clipName.startsWith('Opt'))
+      .map(event => ({
+        code: event.vfxShotCode!,
+        clipName: event.clipName,
+        cameraRoll: event.tapeId || event.tapeName,
+        sourceIn: event.sourceIn,
+        sourceOut: event.sourceOut,
+        recordIn: event.recordIn,
+        recordOut: event.recordOut,
+        durationFrames: event.length,
+        vfxNotes: event.vfxDescription || (event.vfxNotes.length > 0 ? event.vfxNotes.join('\n') : null),
+        scene: event.scene,
+        take: event.take,
+        camera: event.camera,
+      }));
+  }
+  
+  // Case 2: Events don't have clips — build shots from locators directly (REEL01 style)
+  // Each locator with a VFX code becomes a shot
+  return result.locators
+    .filter(loc => loc.vfxShotCode !== null && loc.clipName !== null && !loc.clipName.startsWith('Opt'))
+    .map(locator => ({
+      code: locator.vfxShotCode!,
+      clipName: locator.clipName,
+      cameraRoll: null, // Not available in locator-only mode
+      sourceIn: null,
+      sourceOut: null,
+      recordIn: locator.timecode,
+      recordOut: null,
+      durationFrames: 0, // Not available in locator-only mode
+      vfxNotes: locator.vfxDescription,
+      scene: null,
+      take: null,
+      camera: null,
     }));
 }
