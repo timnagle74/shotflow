@@ -237,10 +237,11 @@ export default function TurnoverReviewPage() {
       });
       
       if (!res.ok) throw new Error("Failed to prepare upload");
-      const { uploadUrl, ref, storagePath } = await res.json();
+      const { ref, storagePath, videoId } = await res.json();
       
-      // Upload via server proxy (Bunny Storage requires AccessKey, can't use signed URLs for PUT)
-      const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(storagePath || '')}`;
+      // Upload via server proxy (Bunny Storage requires AccessKey)
+      // Pass videoId to trigger Bunny Stream transcoding after upload
+      const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(storagePath || '')}${videoId ? `&videoId=${videoId}` : ''}`;
       const uploadRes = await fetch(proxyUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/octet-stream" },
@@ -283,10 +284,11 @@ export default function TurnoverReviewPage() {
       });
       
       if (!res.ok) throw new Error("Failed to prepare upload");
-      const { storagePath, plate } = await res.json();
+      const { storagePath, plate, videoId } = await res.json();
       
       // Upload via server proxy (Bunny Storage requires AccessKey)
-      const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(storagePath || '')}`;
+      // Pass videoId to trigger Bunny Stream transcoding after upload
+      const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(storagePath || '')}${videoId ? `&videoId=${videoId}` : ''}`;
       const uploadRes = await fetch(proxyUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/octet-stream" },

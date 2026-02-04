@@ -8,12 +8,15 @@ export const dynamic = "force-dynamic";
 const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
 const BUNNY_STORAGE_HOSTNAME = process.env.BUNNY_STORAGE_HOSTNAME || 'storage.bunnycdn.com';
 const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
+const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
+const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
+const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
 
 /**
- * PUT /api/turnover/upload-file?path=/some/storage/path
+ * PUT /api/turnover/upload-file?path=/some/storage/path&videoId=xxx
  * 
  * Proxies file upload to Bunny Storage with proper AccessKey authentication.
- * Client sends raw file body, server forwards to Bunny with credentials.
+ * If videoId is provided, triggers Bunny Stream fetch for transcoding after upload.
  */
 export async function PUT(request: NextRequest) {
   try {
@@ -24,6 +27,8 @@ export async function PUT(request: NextRequest) {
     if (roleCheck) return roleCheck;
 
     const storagePath = request.nextUrl.searchParams.get("path");
+    const videoId = request.nextUrl.searchParams.get("videoId");
+    
     if (!storagePath) {
       return NextResponse.json({ error: "Missing path parameter" }, { status: 400 });
     }
@@ -53,6 +58,30 @@ export async function PUT(request: NextRequest) {
         { error: "Storage upload failed", status: bunnyRes.status },
         { status: 502 }
       );
+    }
+
+    // If videoId provided, trigger Bunny Stream to fetch and transcode
+    if (videoId && BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY && BUNNY_STORAGE_CDN_URL) {
+      try {
+        const sourceUrl = `${BUNNY_STORAGE_CDN_URL}${storagePath}`;
+        const fetchRes = await fetch(
+          `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos/${videoId}/fetch`,
+          {
+            method: 'POST',
+            headers: {
+              'AccessKey': BUNNY_STREAM_API_KEY,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ url: sourceUrl }),
+          }
+        );
+        
+        if (!fetchRes.ok) {
+          console.error(`Bunny Stream fetch failed: ${fetchRes.status}`);
+        }
+      } catch (err) {
+        console.error("Failed to trigger Bunny Stream fetch:", err);
+      }
     }
 
     return NextResponse.json({ success: true });

@@ -839,9 +839,10 @@ export default function TurnoverPage() {
 
           const mediaData = await mediaRes.json();
           
-          // Upload file via server proxy (Bunny Storage requires AccessKey, not signed URLs)
+          // Upload file via server proxy (Bunny Storage requires AccessKey)
+          // Pass videoId to trigger Bunny Stream transcoding after upload
           try {
-            const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(mediaData.storagePath || '')}`;
+            const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(mediaData.storagePath || '')}${mediaData.videoId ? `&videoId=${mediaData.videoId}` : ''}`;
             const uploadRes = await fetch(proxyUrl, {
               method: "PUT",
               headers: { "Content-Type": "application/octet-stream" },
