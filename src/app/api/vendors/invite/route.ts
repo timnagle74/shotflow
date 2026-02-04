@@ -16,11 +16,13 @@ export async function POST(req: NextRequest) {
       contactName,
       contactEmail,
       isFreelancer,
+      projectId,
     } = body as {
       companyName?: string;
       contactName: string;
       contactEmail: string;
       isFreelancer: boolean;
+      projectId?: string;
     };
 
     if (!contactName || !contactEmail) {
@@ -51,12 +53,15 @@ export async function POST(req: NextRequest) {
       .replace(/[^A-Z0-9]/g, "")
       .slice(0, 10);
 
-    // 1. Create vendor record
+    // 1. Create vendor record (project_id is optional — vendors can be global)
     const { data: vendor, error: vendorError } = await adminClient
       .from("vendors")
       .insert({
         name: vendorName,
         code: vendorCode,
+        contact_name: contactName,
+        contact_email: contactEmail,
+        project_id: projectId || null,
         active: true,
       })
       .select()

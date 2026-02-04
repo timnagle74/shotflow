@@ -43,11 +43,12 @@ export async function POST(
       );
     }
 
-    // 1. Create artist record linked to vendor
+    // 1. Create artist record linked to vendor (include email for matching)
     const { data: artist, error: artistError } = await adminClient
       .from("artists")
       .insert({
         name,
+        email,
         vendor_id: vendorId,
         role: specialty || null,
         active: true,
@@ -125,10 +126,10 @@ export async function POST(
             { onConflict: "user_id,vendor_id", ignoreDuplicates: true }
           );
 
-        // 5. Link artist record to user via email
+        // 5. Link artist record to user via user_id column
         await adminClient
           .from("artists")
-          .update({ email })
+          .update({ user_id: publicUserId })
           .eq("id", artist.id);
       }
     }

@@ -137,6 +137,76 @@ export interface Database {
           created_at?: string;
         };
       };
+      vendors: {
+        Row: {
+          id: string;
+          project_id: string | null;
+          name: string;
+          code: string | null;
+          contact_name: string | null;
+          contact_email: string | null;
+          notes: string | null;
+          active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id?: string | null;
+          name: string;
+          code?: string | null;
+          contact_name?: string | null;
+          contact_email?: string | null;
+          notes?: string | null;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string | null;
+          name?: string;
+          code?: string | null;
+          contact_name?: string | null;
+          contact_email?: string | null;
+          notes?: string | null;
+          active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      artists: {
+        Row: {
+          id: string;
+          vendor_id: string;
+          user_id: string | null;
+          name: string;
+          email: string | null;
+          role: string | null;
+          active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          vendor_id: string;
+          user_id?: string | null;
+          name: string;
+          email?: string | null;
+          role?: string | null;
+          active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          vendor_id?: string;
+          user_id?: string | null;
+          name?: string;
+          email?: string | null;
+          role?: string | null;
+          active?: boolean;
+          created_at?: string;
+        };
+      };
       projects: {
         Row: {
           id: string;
