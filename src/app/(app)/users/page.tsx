@@ -112,26 +112,30 @@ export default function UsersPage() {
       const { data: usersData, error: usersError } = await supabase
         .from("users")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(500);
 
       if (usersError) throw usersError;
 
-      // Get assigned shot counts for each user
-      const typedUsers = (usersData || []) as UserRow[];
-      const usersWithCounts: UserRow[] = await Promise.all(
-        typedUsers.map(async (user) => {
-          // Count shots directly assigned
-          const { count: directCount } = await supabase!
-            .from("shots")
-            .select("*", { count: "exact", head: true })
-            .eq("assigned_to_id", user.id);
+      // Batch fetch assigned shot counts (avoids N+1 per-user queries)
+      const { data: shotAssignments } = await supabase
+        .from("shots")
+        .select("assigned_to_id")
+        .not("assigned_to_id", "is", null)
+        .limit(10000);
 
-          return {
-            ...user,
-            shot_count: directCount || 0,
-          } as UserRow;
-        })
-      );
+      const shotCountMap = new Map<string, number>();
+      for (const s of shotAssignments || []) {
+        if (s.assigned_to_id) {
+          shotCountMap.set(s.assigned_to_id, (shotCountMap.get(s.assigned_to_id) || 0) + 1);
+        }
+      }
+
+      const typedUsers = (usersData || []) as UserRow[];
+      const usersWithCounts: UserRow[] = typedUsers.map((user) => ({
+        ...user,
+        shot_count: shotCountMap.get(user.id) || 0,
+      }));
 
       setUsers(usersWithCounts);
     } catch (err) {

@@ -90,27 +90,30 @@ export default function TurnoversPage() {
       if (error) {
         console.error("Error loading turnovers:", error);
       } else if (data) {
-        // Get shot counts and assignment counts for each turnover
-        const turnoversWithCounts = await Promise.all(
-          data.map(async (t: Turnover) => {
-            const { count: shotCount } = await supabase!
+        // Batch fetch all turnover_shots to compute counts (avoids N+1)
+        const turnoverIds = data.map(t => t.id);
+        const { data: allTurnoverShots } = turnoverIds.length > 0
+          ? await supabase!
               .from("turnover_shots")
-              .select("*", { count: "exact", head: true })
-              .eq("turnover_id", t.id);
-            
-            const { count: assignedCount } = await supabase!
-              .from("turnover_shots")
-              .select("*", { count: "exact", head: true })
-              .eq("turnover_id", t.id)
-              .not("vendor_id", "is", null);
+              .select("turnover_id, vendor_id")
+              .in("turnover_id", turnoverIds)
+          : { data: [] as { turnover_id: string; vendor_id: string | null }[] };
 
-            return { 
-              ...t, 
-              shot_count: shotCount || 0,
-              assigned_count: assignedCount || 0,
-            };
-          })
-        );
+        // Build count maps
+        const shotCountMap = new Map<string, number>();
+        const assignedCountMap = new Map<string, number>();
+        for (const ts of allTurnoverShots || []) {
+          shotCountMap.set(ts.turnover_id, (shotCountMap.get(ts.turnover_id) || 0) + 1);
+          if (ts.vendor_id) {
+            assignedCountMap.set(ts.turnover_id, (assignedCountMap.get(ts.turnover_id) || 0) + 1);
+          }
+        }
+
+        const turnoversWithCounts = data.map((t: Turnover) => ({
+          ...t,
+          shot_count: shotCountMap.get(t.id) || 0,
+          assigned_count: assignedCountMap.get(t.id) || 0,
+        }));
         setTurnovers(turnoversWithCounts);
       }
 
