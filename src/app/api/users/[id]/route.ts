@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { Database } from "@/lib/database.types";
 import { authenticateRequest, requireAdmin, getServiceClient } from "@/lib/auth";
 
 // PATCH /api/users/[id] — update user role / name
