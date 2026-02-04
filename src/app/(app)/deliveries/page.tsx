@@ -102,7 +102,7 @@ export default function DeliveriesPage() {
       const [deliveriesRes, shotsRes, versionsRes, usersRes, projectsRes, specsRes] = await Promise.all([
         supabase.from("deliveries").select("*"),
         supabase.from("shots").select("id, code, status, assigned_to_id, due_date"),
-        supabase.from("versions").select("id, shot_id, version_number"),
+        supabase.from("shot_versions").select("id, shot_id, version_number"),
         supabase.from("users").select("id, name"),
         supabase.from("projects").select("id, name, code").order("name"),
         supabase.from("delivery_specs").select("*"),

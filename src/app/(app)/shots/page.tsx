@@ -255,13 +255,17 @@ function ShotsPageContent() {
         if (shotsData) {
           setShots(shotsData as Shot[]);
 
-          // Fetch version counts
+          // Fetch version counts — prefer shot_versions, fall back to versions
           const shotIds = shotsData.map(s => s.id);
           if (shotIds.length > 0) {
-            const { data: versionsData } = await supabase
-              .from("versions")
+            const { data: svData, error: svErr } = await supabase
+              .from("shot_versions")
               .select("shot_id")
               .in("shot_id", shotIds);
+            
+            const versionsData = (!svErr && svData && svData.length > 0)
+              ? svData
+              : (await supabase.from("versions").select("shot_id").in("shot_id", shotIds)).data;
 
             if (versionsData) {
               const counts: Record<string, number> = {};

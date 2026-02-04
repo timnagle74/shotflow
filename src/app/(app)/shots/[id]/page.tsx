@@ -93,14 +93,19 @@ interface Version {
   id: string;
   shot_id: string;
   version_number: number;
+  version_code?: string | null;
   status: string;
   description: string | null;
-  file_path: string | null;
-  thumbnail_path: string | null;
+  file_path?: string | null;
+  thumbnail_path?: string | null;
   preview_url: string | null;
-  download_url: string | null;
-  bunny_video_id: string | null;
+  download_url?: string | null;
+  bunny_video_id?: string | null;
+  video_id?: string | null;
+  cdn_url?: string | null;
+  filename?: string | null;
   created_by_id: string | null;
+  submitted_by_id?: string | null;
   created_at: string;
 }
 
@@ -187,16 +192,40 @@ export default function ShotDetailPage() {
           }
         }
 
-        // Fetch versions
-        const { data: versionsData } = await supabase
-          .from("versions")
+        // Fetch versions — prefer shot_versions (richer schema), fall back to legacy versions table
+        const { data: shotVersionsData, error: svError } = await supabase
+          .from("shot_versions")
           .select("*")
           .eq("shot_id", shotId)
-          .order("version_number", { ascending: false }) as { data: Version[] | null; error: any };
+          .order("version_number", { ascending: false });
 
-        if (versionsData) {
-          setVersions(versionsData);
-          if (versionsData.length > 0) {
+        if (!svError && shotVersionsData && shotVersionsData.length > 0) {
+          const mapped: Version[] = shotVersionsData.map((sv) => ({
+            id: sv.id,
+            shot_id: sv.shot_id,
+            version_number: sv.version_number,
+            version_code: sv.version_code,
+            status: sv.status,
+            description: null,
+            preview_url: sv.preview_url,
+            video_id: sv.video_id,
+            cdn_url: sv.cdn_url,
+            filename: sv.filename,
+            created_by_id: sv.submitted_by_id,
+            created_at: sv.created_at,
+          }));
+          setVersions(mapped);
+          setSelectedVersion(mapped[0].id);
+        } else {
+          // Fallback to legacy versions table
+          const { data: versionsData } = await supabase
+            .from("versions")
+            .select("*")
+            .eq("shot_id", shotId)
+            .order("version_number", { ascending: false });
+
+          if (versionsData && versionsData.length > 0) {
+            setVersions(versionsData as unknown as Version[]);
             setSelectedVersion(versionsData[0].id);
           }
         }
@@ -272,16 +301,44 @@ export default function ShotDetailPage() {
   const refreshVersions = useCallback(async () => {
     if (!supabase) return;
     
-    const { data: versionsData } = await supabase
-      .from("versions")
+    // Prefer shot_versions, fall back to legacy versions
+    const { data: svData, error: svError } = await supabase
+      .from("shot_versions")
       .select("*")
       .eq("shot_id", shotId)
-      .order("version_number", { ascending: false }) as { data: Version[] | null; error: any };
+      .order("version_number", { ascending: false });
 
-    if (versionsData) {
-      setVersions(versionsData as Version[]);
-      if (versionsData.length > 0 && !selectedVersion) {
-        setSelectedVersion(versionsData[0].id);
+    if (!svError && svData && svData.length > 0) {
+      const mapped: Version[] = svData.map((sv) => ({
+        id: sv.id,
+        shot_id: sv.shot_id,
+        version_number: sv.version_number,
+        version_code: sv.version_code,
+        status: sv.status,
+        description: null,
+        preview_url: sv.preview_url,
+        video_id: sv.video_id,
+        cdn_url: sv.cdn_url,
+        filename: sv.filename,
+        created_by_id: sv.submitted_by_id,
+        created_at: sv.created_at,
+      }));
+      setVersions(mapped);
+      if (mapped.length > 0 && !selectedVersion) {
+        setSelectedVersion(mapped[0].id);
+      }
+    } else {
+      const { data: versionsData } = await supabase
+        .from("versions")
+        .select("*")
+        .eq("shot_id", shotId)
+        .order("version_number", { ascending: false });
+
+      if (versionsData) {
+        setVersions(versionsData as unknown as Version[]);
+        if (versionsData.length > 0 && !selectedVersion) {
+          setSelectedVersion(versionsData[0].id);
+        }
       }
     }
   }, [shotId, selectedVersion]);
@@ -291,9 +348,9 @@ export default function ShotDetailPage() {
     
     setUpdating(true);
     try {
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from("shots")
-        .update({ status: newStatus })
+        .update({ status: newStatus as any })
         .eq("id", shotId);
 
       if (error) {
