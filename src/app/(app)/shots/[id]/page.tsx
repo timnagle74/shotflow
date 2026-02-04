@@ -14,6 +14,7 @@ import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
 import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download, Play, Video, FolderOpen } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/components/auth-provider";
 import type { ShotStatus } from "@/lib/database.types";
 import { VideoPlayer } from "@/components/video-player";
 import { VersionUpload } from "@/components/version-upload";
@@ -128,6 +129,7 @@ interface UserProfile {
 export default function ShotDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user: authUser } = useAuth();
   const shotId = params.id as string;
 
   const [loading, setLoading] = useState(true);
@@ -199,6 +201,8 @@ export default function ShotDetailPage() {
           .eq("shot_id", shotId)
           .order("version_number", { ascending: false });
 
+        let allVersionIds: string[] = [];
+
         if (!svError && shotVersionsData && shotVersionsData.length > 0) {
           const mapped: Version[] = shotVersionsData.map((sv) => ({
             id: sv.id,
@@ -216,6 +220,7 @@ export default function ShotDetailPage() {
           }));
           setVersions(mapped);
           setSelectedVersion(mapped[0].id);
+          allVersionIds = mapped.map(v => v.id);
         } else {
           // Fallback to legacy versions table
           const { data: versionsData } = await supabase
@@ -227,23 +232,27 @@ export default function ShotDetailPage() {
           if (versionsData && versionsData.length > 0) {
             setVersions(versionsData as unknown as Version[]);
             setSelectedVersion(versionsData[0].id);
+            allVersionIds = versionsData.map((v: any) => v.id);
           }
         }
 
-        // Fetch notes
-        const { data: notesData } = await supabase
-          .from("notes")
-          .select("*")
-          .order("created_at", { ascending: true }) as { data: Note[] | null; error: any };
+        if (allVersionIds.length > 0) {
+          const { data: notesData } = await supabase
+            .from("notes")
+            .select("*")
+            .in("version_id", allVersionIds)
+            .order("created_at", { ascending: true }) as { data: Note[] | null; error: any };
 
-        if (notesData) {
-          setNotes(notesData);
+          if (notesData) {
+            setNotes(notesData);
+          }
         }
 
-        // Fetch users
+        // Fetch users with limited columns
         const { data: usersData } = await supabase
           .from("users")
-          .select("*") as { data: UserProfile[] | null; error: any };
+          .select("id, name, email, role")
+          .limit(500) as { data: UserProfile[] | null; error: any };
 
         if (usersData) {
           setUsers(usersData);
@@ -364,6 +373,62 @@ export default function ShotDetailPage() {
       console.error("Status update error:", err);
     }
     setUpdating(false);
+  }, [shotId]);
+
+  const [postingNote, setPostingNote] = useState(false);
+
+  const handlePostNote = useCallback(async () => {
+    if (!supabase || !noteText.trim() || !selectedVersion || !authUser) return;
+    setPostingNote(true);
+    try {
+      // Look up the public user id from auth id
+      const { data: pubUser } = await supabase
+        .from("users")
+        .select("id")
+        .eq("auth_id", authUser.id)
+        .single();
+
+      const authorId = pubUser?.id || authUser.id;
+
+      const { data: newNote, error } = await supabase
+        .from("notes")
+        .insert({
+          version_id: selectedVersion,
+          author_id: authorId,
+          content: noteText.trim(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Failed to post note:", error);
+      } else if (newNote) {
+        setNotes(prev => [...prev, newNote as Note]);
+        setNoteText("");
+      }
+    } catch (err) {
+      console.error("Post note error:", err);
+    }
+    setPostingNote(false);
+  }, [noteText, selectedVersion, authUser]);
+
+  const handleAssignmentChange = useCallback(async (userId: string) => {
+    if (!supabase) return;
+    const assignedId = userId === "unassigned" ? null : userId;
+    try {
+      const { error } = await supabase
+        .from("shots")
+        .update({ assigned_to_id: assignedId })
+        .eq("id", shotId);
+
+      if (error) {
+        console.error("Failed to update assignment:", error);
+      } else {
+        setShot(prev => prev ? { ...prev, assigned_to_id: assignedId } : prev);
+      }
+    } catch (err) {
+      console.error("Assignment update error:", err);
+    }
   }, [shotId]);
 
   if (loading) {
@@ -510,7 +575,7 @@ export default function ShotDetailPage() {
                   </div>
                 </div>
               )}
-              <Select defaultValue={assignee?.id || ""}>
+              <Select defaultValue={assignee?.id || "unassigned"} onValueChange={handleAssignmentChange}>
                 <SelectTrigger><SelectValue placeholder="Assign artist" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
@@ -899,7 +964,9 @@ export default function ShotDetailPage() {
                     value={noteText}
                     onChange={e => setNoteText(e.target.value)}
                   />
-                  <Button className="self-end" disabled={!noteText.trim()}>Post</Button>
+                  <Button className="self-end" disabled={!noteText.trim() || postingNote} onClick={handlePostNote}>
+                    {postingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : "Post"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>
