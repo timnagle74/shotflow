@@ -48,6 +48,12 @@ interface Shot {
   due_date: string | null;
   frame_start: number | null;
   frame_end: number | null;
+  record_frame_in: number | null;
+  record_frame_out: number | null;
+  record_tc_in: string | null;
+  record_tc_out: string | null;
+  source_tc_in: string | null;
+  source_tc_out: string | null;
   handle_head: number | null;
   handle_tail: number | null;
   plate_source: string | null;

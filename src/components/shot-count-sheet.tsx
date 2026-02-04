@@ -16,6 +16,12 @@ interface ShotCountSheetProps {
     complexity: string;
     frame_start: number | null;
     frame_end: number | null;
+    record_frame_in: number | null;
+    record_frame_out: number | null;
+    record_tc_in: string | null;
+    record_tc_out: string | null;
+    source_tc_in: string | null;
+    source_tc_out: string | null;
     handle_head: number | null;
     handle_tail: number | null;
     notes: string | null;
@@ -87,13 +93,17 @@ export function ShotCountSheet({
   }, [shot.ref_video_id]);
 
   // Calculate frame counts
-  const frameIn = shot.frame_start || 0;
-  const frameOut = shot.frame_end || 0;
   const handleHead = shot.handle_head || 8;
   const handleTail = shot.handle_tail || 8;
   
-  const cutLength = frameOut - frameIn;
-  const compLength = cutLength + handleHead + handleTail;
+  // Prefer record TC range for cut length, fall back to frame_start/frame_end
+  let cutLength = 0;
+  if (shot.record_frame_in != null && shot.record_frame_out != null && shot.record_frame_out > shot.record_frame_in) {
+    cutLength = shot.record_frame_out - shot.record_frame_in;
+  } else if (shot.frame_start != null && shot.frame_end != null && shot.frame_end > shot.frame_start) {
+    cutLength = shot.frame_end - shot.frame_start;
+  }
+  const compLength = cutLength > 0 ? cutLength + handleHead + handleTail : 0;
   
   const cutSeconds = cutLength / frameRate;
   const compSeconds = compLength / frameRate;
@@ -345,10 +355,10 @@ export function ShotCountSheet({
       const boxW = 40;
       const boxH = 20;
       const boxes = [
-        { x: margin + 5, label: "Frame In", value: frameIn.toString(), sub: framesToTC(frameIn) },
-        { x: margin + 50, label: "Frame Out", value: frameOut.toString(), sub: framesToTC(frameOut) },
-        { x: margin + 95, label: "Cut", value: `${cutLength}f`, sub: `${cutSeconds.toFixed(2)}s` },
-        { x: margin + 140, label: "Total Comp", value: `${compLength}f`, sub: `${compSeconds.toFixed(2)}s`, highlight: true },
+        { x: margin + 5, label: "Src TC In", value: shot.source_tc_in || '—', sub: shot.record_tc_in || '' },
+        { x: margin + 50, label: "Src TC Out", value: shot.source_tc_out || '—', sub: shot.record_tc_out || '' },
+        { x: margin + 95, label: "Cut", value: cutLength > 0 ? `${cutLength}f` : '—', sub: cutLength > 0 ? `${cutSeconds.toFixed(2)}s` : '' },
+        { x: margin + 140, label: "Total Comp", value: compLength > 0 ? `${compLength}f` : '—', sub: compLength > 0 ? `${compSeconds.toFixed(2)}s` : '', highlight: true },
       ];
       
       boxes.forEach(box => {
@@ -449,11 +459,11 @@ export function ShotCountSheet({
             </div>
             <div className="p-2">
               <span className="text-muted-foreground">Comp Length</span>
-              <p className="font-mono font-bold text-primary">{compLength}</p>
+              <p className="font-mono font-bold text-primary">{compLength > 0 ? `${compLength}f` : '—'}</p>
             </div>
             <div className="p-2">
               <span className="text-muted-foreground">Cut Length</span>
-              <p className="font-mono font-bold">{cutLength}</p>
+              <p className="font-mono font-bold">{cutLength > 0 ? `${cutLength}f` : '—'}</p>
             </div>
             <div className="p-2">
               <span className="text-muted-foreground">Handles</span>
@@ -510,14 +520,14 @@ export function ShotCountSheet({
           </div>
           <div className="grid grid-cols-4 gap-3 text-center">
             <div className="bg-background rounded-md p-2">
-              <p className="text-[10px] text-muted-foreground">Frame In</p>
-              <p className="font-mono font-bold">{frameIn}</p>
-              <p className="text-[10px] text-muted-foreground font-mono">{framesToTC(frameIn)}</p>
+              <p className="text-[10px] text-muted-foreground">Src TC In</p>
+              <p className="font-mono font-bold text-xs">{shot.source_tc_in || '—'}</p>
+              <p className="text-[10px] text-muted-foreground font-mono">{shot.record_tc_in || '—'}</p>
             </div>
             <div className="bg-background rounded-md p-2">
-              <p className="text-[10px] text-muted-foreground">Frame Out</p>
-              <p className="font-mono font-bold">{frameOut}</p>
-              <p className="text-[10px] text-muted-foreground font-mono">{framesToTC(frameOut)}</p>
+              <p className="text-[10px] text-muted-foreground">Src TC Out</p>
+              <p className="font-mono font-bold text-xs">{shot.source_tc_out || '—'}</p>
+              <p className="text-[10px] text-muted-foreground font-mono">{shot.record_tc_out || '—'}</p>
             </div>
             <div className="bg-background rounded-md p-2">
               <p className="text-[10px] text-muted-foreground">Cut</p>
