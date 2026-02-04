@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import * as tus from "tus-js-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -217,7 +218,7 @@ export default function TurnoverReviewPage() {
     });
   }, []);
 
-  // Upload ref file
+  // Upload ref file using TUS (direct to Bunny Stream, bypasses Vercel size limits)
   const handleRefUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !turnover) return;
@@ -237,22 +238,37 @@ export default function TurnoverReviewPage() {
       });
       
       if (!res.ok) throw new Error("Failed to prepare upload");
-      const { ref, storagePath, videoId } = await res.json();
+      const { ref, tusUpload } = await res.json();
       
-      // Upload via server proxy (Bunny Storage requires AccessKey)
-      // Pass videoId to trigger Bunny Stream transcoding after upload
-      const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(storagePath || '')}${videoId ? `&videoId=${videoId}` : ''}`;
-      const uploadRes = await fetch(proxyUrl, {
-        method: "PUT",
-        headers: { "Content-Type": "application/octet-stream" },
-        body: file,
-      });
-      
-      // Add to local refs list regardless (DB record already created)
+      // Add to local refs list immediately (DB record exists)
       setRefs(prev => [...prev, { ...ref, assigned_shots: [] }]);
       
-      if (!uploadRes.ok) {
-        console.error("File upload failed, but ref record exists:", await uploadRes.text());
+      // Upload using TUS (direct to Bunny Stream, bypasses Vercel size limits)
+      if (tusUpload) {
+        await new Promise<void>((resolve, reject) => {
+          const upload = new tus.Upload(file, {
+            endpoint: tusUpload.url,
+            headers: {
+              'AuthorizationSignature': tusUpload.authHeader,
+              'AuthorizationExpire': String(tusUpload.expiresAt),
+              'VideoId': ref.video_id || '',
+              'LibraryId': tusUpload.authHeader.split(':')[0],
+            },
+            metadata: {
+              filename: file.name,
+              filetype: file.type,
+            },
+            onError: (error) => {
+              console.error("TUS upload error:", error);
+              reject(error);
+            },
+            onSuccess: () => {
+              console.log("TUS upload complete");
+              resolve();
+            },
+          });
+          upload.start();
+        });
       }
     } catch (err) {
       console.error("Ref upload error:", err);
@@ -263,7 +279,7 @@ export default function TurnoverReviewPage() {
     }
   }, [turnover]);
 
-  // Upload plate file for a specific shot
+  // Upload plate file using TUS (direct to Bunny Stream, bypasses Vercel size limits)
   const handlePlateUpload = useCallback(async (shotId: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !turnover) return;
@@ -284,22 +300,37 @@ export default function TurnoverReviewPage() {
       });
       
       if (!res.ok) throw new Error("Failed to prepare upload");
-      const { storagePath, plate, videoId } = await res.json();
+      const { plate, tusUpload, videoId } = await res.json();
       
-      // Upload via server proxy (Bunny Storage requires AccessKey)
-      // Pass videoId to trigger Bunny Stream transcoding after upload
-      const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(storagePath || '')}${videoId ? `&videoId=${videoId}` : ''}`;
-      const uploadRes = await fetch(proxyUrl, {
-        method: "PUT",
-        headers: { "Content-Type": "application/octet-stream" },
-        body: file,
-      });
-      
-      // Add to local plates list regardless (DB record already created)
+      // Add to local plates list immediately (DB record exists)
       setPlates(prev => [...prev, plate]);
       
-      if (!uploadRes.ok) {
-        console.error("Plate file upload failed:", await uploadRes.text());
+      // Upload using TUS (direct to Bunny Stream, bypasses Vercel size limits)
+      if (tusUpload) {
+        await new Promise<void>((resolve, reject) => {
+          const upload = new tus.Upload(file, {
+            endpoint: tusUpload.url,
+            headers: {
+              'AuthorizationSignature': tusUpload.authHeader,
+              'AuthorizationExpire': String(tusUpload.expiresAt),
+              'VideoId': videoId || '',
+              'LibraryId': tusUpload.authHeader.split(':')[0],
+            },
+            metadata: {
+              filename: file.name,
+              filetype: file.type,
+            },
+            onError: (error) => {
+              console.error("TUS upload error:", error);
+              reject(error);
+            },
+            onSuccess: () => {
+              console.log("TUS plate upload complete");
+              resolve();
+            },
+          });
+          upload.start();
+        });
       }
     } catch (err) {
       console.error("Plate upload error:", err);

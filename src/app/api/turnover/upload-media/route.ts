@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHmac } from "crypto";
 import { generateSignedUploadUrl } from "@/lib/bunny";
 import { authenticateRequest, requireInternal, getServiceClient } from "@/lib/auth";
+
+// Generate TUS upload signature for Bunny Stream
+async function generateTusSignature(libraryId: string, apiKey: string, videoId: string, expiresAt: number): Promise<string> {
+  const signatureData = `${libraryId}${apiKey}${expiresAt}${videoId}`;
+  return createHmac('sha256', apiKey).update(signatureData).digest('hex');
+}
 
 const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
@@ -48,8 +55,9 @@ export async function POST(request: NextRequest) {
       // Create ref record in database
       let previewUrl: string | null = null;
       let videoId: string | null = null;
+      let tusUpload: { url: string; authHeader: string; expiresAt: number } | null = null;
 
-      // Create Bunny Stream entry for HLS
+      // Create Bunny Stream entry for HLS and TUS upload
       if (BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
         try {
           const title = `ref_${filename.replace(/\.[^/.]+$/, "")}`;
@@ -70,6 +78,17 @@ export async function POST(request: NextRequest) {
             videoId = videoData.guid;
             if (BUNNY_STREAM_CDN) {
               previewUrl = `${BUNNY_STREAM_CDN}/${videoData.guid}/playlist.m3u8`;
+            }
+            
+            // Generate TUS upload credentials (direct browser upload, bypasses Vercel limits)
+            if (videoId) {
+              const expiresAt = Math.floor(Date.now() / 1000) + 3600; // 1 hour
+              const authSignature = await generateTusSignature(BUNNY_STREAM_LIBRARY_ID, BUNNY_STREAM_API_KEY, videoId, expiresAt);
+              tusUpload = {
+                url: `https://video.bunnycdn.com/tusupload`,
+                authHeader: `${BUNNY_STREAM_LIBRARY_ID}:${authSignature}:${expiresAt}:${videoId}`,
+                expiresAt,
+              };
             }
           }
         } catch (err) {
@@ -161,6 +180,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         uploadUrl,
         storagePath,
+        tusUpload, // TUS direct upload for large files (bypasses Vercel limits)
         ref: {
           id: refData.id,
           filename: refData.filename,
@@ -176,6 +196,7 @@ export async function POST(request: NextRequest) {
       // Plate upload
       let previewUrl: string | null = null;
       let videoId: string | null = null;
+      let tusUpload: { url: string; authHeader: string; expiresAt: number } | null = null;
 
       // Create Bunny Stream entry for video plates
       const isVideo = /\.(mov|mp4|mxf|m4v)$/i.test(filename);
@@ -199,6 +220,17 @@ export async function POST(request: NextRequest) {
             videoId = videoData.guid;
             if (BUNNY_STREAM_CDN) {
               previewUrl = `${BUNNY_STREAM_CDN}/${videoData.guid}/playlist.m3u8`;
+            }
+            
+            // Generate TUS upload credentials (direct browser upload, bypasses Vercel limits)
+            if (videoId) {
+              const expiresAt = Math.floor(Date.now() / 1000) + 3600;
+              const authSignature = await generateTusSignature(BUNNY_STREAM_LIBRARY_ID, BUNNY_STREAM_API_KEY, videoId, expiresAt);
+              tusUpload = {
+                url: `https://video.bunnycdn.com/tusupload`,
+                authHeader: `${BUNNY_STREAM_LIBRARY_ID}:${authSignature}:${expiresAt}:${videoId}`,
+                expiresAt,
+              };
             }
           }
         } catch (err) {
@@ -229,6 +261,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         uploadUrl,
         storagePath,
+        tusUpload, // TUS direct upload for large files (bypasses Vercel limits)
         plate: {
           id: plateData.id,
           shot_id: plateData.shot_id,
