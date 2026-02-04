@@ -37,94 +37,71 @@ export async function POST(req: NextRequest) {
       (u: any) => u.email === email
     );
 
-    let authUserId: string;
-    let isNew = false;
-
     if (existingAuth) {
-      authUserId = existingAuth.id;
-    } else {
-      // Create auth user and send them a password reset to set up their account
-      const tempPassword = crypto.randomUUID() + "!Aa1";
-      const { data: authData, error: createError } =
-        await adminClient.auth.admin.createUser({
-          email,
-          password: tempPassword,
-          email_confirm: true,
-          user_metadata: { name, role },
-        });
-
-      if (createError) {
-        console.error("Auth create error:", JSON.stringify(createError));
-        return NextResponse.json(
-          { error: `Failed to create user: ${createError.message}` },
-          { status: 500 }
-        );
-      }
-
-      authUserId = authData.user.id;
-      isNew = true;
-
-      // Send password recovery email so they can set their own password
-      const { error: resetError } =
-        await adminClient.auth.admin.generateLink({
-          type: "recovery",
-          email,
-        });
-
-      if (resetError) {
-        console.error("Recovery email error:", JSON.stringify(resetError));
-        // Don't fail — user was created, they can use "forgot password" later
-      }
-    }
-
-    // Upsert into public.users table
-    const { data: user, error: upsertError } = await adminClient
-      .from("users")
-      .upsert(
-        {
-          id: authUserId,
-          auth_id: authUserId,
-          email,
-          name: name || null,
-          role,
-        },
-        { onConflict: "id" }
-      )
-      .select()
-      .single();
-
-    if (upsertError) {
-      // Try with just auth_id match if id conflict
-      const { data: user2, error: upsertError2 } = await adminClient
+      // User exists in auth — upsert public.users and update role
+      const { data: user, error: upsertError } = await adminClient
         .from("users")
         .upsert(
-          {
-            auth_id: authUserId,
-            email,
-            name: name || null,
-            role,
-          },
+          { auth_id: existingAuth.id, email, name: name || null, role },
           { onConflict: "email" }
         )
         .select()
         .single();
 
-      if (upsertError2) {
+      if (upsertError) {
         return NextResponse.json(
-          { error: `Database error: ${upsertError2.message}` },
+          { error: `Failed to update user: ${upsertError.message}` },
           { status: 500 }
         );
       }
 
       return NextResponse.json({
-        user: user2,
-        message: isNew ? "User created (invite email pending SMTP setup)" : "User updated",
+        user,
+        message: "User already exists, role updated",
       });
     }
 
+    // New user — send invite email via Supabase Auth
+    const { data: authData, error: authError } =
+      await adminClient.auth.admin.inviteUserByEmail(email, {
+        data: { name, role },
+      });
+
+    if (authError) {
+      console.error("Auth invite error:", JSON.stringify(authError));
+      return NextResponse.json(
+        { error: `Invite failed: ${authError.message}` },
+        { status: 500 }
+      );
+    }
+
+    // The handle_new_user trigger on auth.users will auto-create 
+    // the public.users record. Update it with the correct role/name.
+    if (authData?.user) {
+      // Small delay to let the trigger fire
+      await new Promise(r => setTimeout(r, 500));
+
+      const { error: updateError } = await adminClient
+        .from("users")
+        .update({ name: name || null, role })
+        .eq("auth_id", authData.user.id);
+
+      if (updateError) {
+        // Trigger might not have fired yet — try upsert by email
+        await adminClient
+          .from("users")
+          .upsert(
+            { auth_id: authData.user.id, email, name: name || null, role },
+            { onConflict: "email" }
+          );
+      }
+    }
+
     return NextResponse.json({
-      user: user || { id: authUserId, email, name, role },
-      message: isNew ? "User created (invite email pending SMTP setup)" : "User updated",
+      user: authData?.user
+        ? { id: authData.user.id, email, name, role }
+        : null,
+      message: "Invite email sent",
     });
   } catch (err) {
     console.error("Invite error:", err);
