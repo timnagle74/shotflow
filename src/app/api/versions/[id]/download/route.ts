@@ -8,14 +8,14 @@ import { authenticateRequest, getServiceClient } from '@/lib/auth';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     // Auth: any authenticated user can download (clients may need downloads too)
     const auth = await authenticateRequest(request);
     if (auth.error) return auth.error;
 
-    const { id } = await params;
+    const { id } = params;
     const supabaseAdmin = getServiceClient();
     
     // Get version with download path

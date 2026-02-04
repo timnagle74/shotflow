@@ -6,7 +6,7 @@ import { authenticateRequest, requireAdmin, getServiceClient } from "@/lib/auth"
 // NOTE: [id] is public.users.id, NOT auth.users.id
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     // Auth: only ADMIN/SUPERVISOR/PRODUCER can update users
@@ -15,7 +15,7 @@ export async function PATCH(
     const roleCheck = requireAdmin(auth.user);
     if (roleCheck) return roleCheck;
 
-    const { id } = await params;
+    const { id } = params;
     const body = await req.json();
     const adminClient = getServiceClient();
 
@@ -58,7 +58,7 @@ export async function PATCH(
 // NOTE: [id] is public.users.id, NOT auth.users.id
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     // Auth: only ADMIN/SUPERVISOR/PRODUCER can delete users
@@ -67,7 +67,7 @@ export async function DELETE(
     const roleCheck = requireAdmin(auth.user);
     if (roleCheck) return roleCheck;
 
-    const { id } = await params;
+    const { id } = params;
     const adminClient = getServiceClient();
 
     // Look up the auth_id from the public.users row first

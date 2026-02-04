@@ -4,9 +4,9 @@ const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN || 'https://vz
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ videoId: string }> }
+  { params }: { params: { videoId: string } }
 ) {
-  const { videoId } = await params;
+  const { videoId } = params;
   
   if (!videoId) {
     return NextResponse.json({ error: 'Missing videoId' }, { status: 400 });
