@@ -108,8 +108,8 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
   const editRate = parseInt(editRateMatch?.[1] || '24', 10);
   const masterDuration = masterDurMatch?.[1] || null;
   
-  // Parse Events
-  const eventRegex = /<Event Num="(\d+)"\s+Type="([^"]*)" Length="(\d+)"[^>]*>([\s\S]*?)<\/Event>/g;
+  // Parse Events (handle attributes in any order)
+  const eventRegex = /<Event Num="(\d+)"[^>]*Type="([^"]*)"[^>]*Length="(\d+)"[^>]*>([\s\S]*?)<\/Event>/g;
   let eventMatch;
   
   while ((eventMatch = eventRegex.exec(content)) !== null) {
