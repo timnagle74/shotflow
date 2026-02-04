@@ -89,10 +89,10 @@ export default function ClientPortalPage() {
       const fetchedProjects = (projectsRes.data || []) as Project[];
       setProjects(fetchedProjects);
       setShots((shotsRes.data || []) as Shot[]);
-      setSequences((seqRes.data || []) as any[]);
+      setSequences((seqRes.data || []) as Array<{ id: string; project_id: string }>);
       setVersions((versionsRes.data || []) as Version[]);
       setNotes((notesRes.data || []) as Note[]);
-      setUsers((usersRes.data || []) as any[]);
+      setUsers((usersRes.data || []) as Array<{ id: string; name: string | null; role: string }>);
       
       if (fetchedProjects.length > 0) {
         setSelectedProject(fetchedProjects[0].id);

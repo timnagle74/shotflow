@@ -112,19 +112,17 @@ export default function SourceMediaPage() {
     async function loadSourceMedia() {
       if (!selectedProjectId || userLoading) return;
       
-      const sb = supabase as any;
-
       if (isArtist && currentUser) {
         // For artists: get source_media_ids from their assigned shots
-        const { data: artistShots } = await sb
+        const { data: artistShots } = await supabase
           .from("shots")
           .select("source_media_id")
           .eq("assigned_to_id", currentUser.id)
           .not("source_media_id", "is", null);
         
         const sourceMediaIds = (artistShots || [])
-          .map((s: any) => s.source_media_id)
-          .filter((id: any) => id != null);
+          .map((s) => s.source_media_id)
+          .filter((id): id is string => id != null);
         
         if (sourceMediaIds.length === 0) {
           setSavedRecords([]);
@@ -133,7 +131,7 @@ export default function SourceMediaPage() {
           return;
         }
 
-        const { data, count } = await sb
+        const { data, count } = await supabase
           .from('source_media')
           .select('*', { count: 'exact' })
           .eq('project_id', selectedProjectId)
@@ -162,7 +160,7 @@ export default function SourceMediaPage() {
         }
         
         // Get real stats using database function (avoids row limits)
-        const { data: stats } = await (supabase as any).rpc('get_source_media_stats', {
+        const { data: stats } = await supabase.rpc('get_source_media_stats', {
           p_project_id: selectedProjectId
         });
         
@@ -335,11 +333,11 @@ export default function SourceMediaPage() {
     setAllRecords(prev => prev.filter(r => r.ale_source !== filename));
   }, []);
 
-  const summary = summarizeSourceMedia(allRecords as any);
+  const summary = summarizeSourceMedia(allRecords as any[]);
   
   // Combined display: pending imports + saved records
   const displayRecords = allRecords.length > 0 ? allRecords : savedRecords;
-  const displaySummary = allRecords.length > 0 ? summary : summarizeSourceMedia(savedRecords as any);
+  const displaySummary = allRecords.length > 0 ? summary : summarizeSourceMedia(savedRecords as any[]);
   
   const filteredRecords = displayRecords.filter((r: any) => {
     if (!searchQuery) return true;

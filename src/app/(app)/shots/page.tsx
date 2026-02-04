@@ -63,8 +63,8 @@ interface Shot {
   frame_end: number | null;
   sequence_id: string;
   notes: string | null;
-  ref_video_id: string | null;
-  ref_filename: string | null;
+  ref_video_id?: string | null;
+  ref_filename?: string | null;
 }
 
 interface EnrichedShot extends Shot {
@@ -72,8 +72,8 @@ interface EnrichedShot extends Shot {
   sequence: Sequence | null;
   versionCount: number;
   notes: string | null;
-  ref_video_id: string | null;
-  ref_filename: string | null;
+  ref_video_id?: string | null;
+  ref_filename?: string | null;
 }
 
 // Droppable column wrapper
@@ -241,7 +241,7 @@ function ShotsPageContent() {
 
         // Fetch shots for these sequences
         // For artists without can_view_all_shots, only show their assigned shots
-        let shotsQuery = (supabase as any)
+        let shotsQuery = supabase
           .from("shots")
           .select("*")
           .in("sequence_id", seqIds);
@@ -250,10 +250,10 @@ function ShotsPageContent() {
           shotsQuery = shotsQuery.eq("assigned_to_id", currentUser.id);
         }
         
-        const { data: shotsData } = shotsQuery as { data: Shot[] | null; error: any };
+        const { data: shotsData } = await shotsQuery;
 
         if (shotsData) {
-          setShots(shotsData);
+          setShots(shotsData as Shot[]);
 
           // Fetch version counts
           const shotIds = shotsData.map(s => s.id);
@@ -261,7 +261,7 @@ function ShotsPageContent() {
             const { data: versionsData } = await supabase
               .from("versions")
               .select("shot_id")
-              .in("shot_id", shotIds) as { data: { shot_id: string }[] | null; error: any };
+              .in("shot_id", shotIds);
 
             if (versionsData) {
               const counts: Record<string, number> = {};
@@ -334,9 +334,9 @@ function ShotsPageContent() {
 
     // Update Supabase
     if (supabase) {
-      const { error } = await (supabase as any)
+      const { error } = await supabase
         .from("shots")
-        .update({ status: newStatus })
+        .update({ status: newStatus as any })
         .eq("id", shotId);
       if (error) console.error("Failed to update shot status:", error);
     }

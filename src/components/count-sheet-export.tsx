@@ -15,8 +15,8 @@ interface Shot {
   frame_start: number | null;
   frame_end: number | null;
   notes: string | null;
-  ref_video_id: string | null;
-  ref_filename: string | null;
+  ref_video_id?: string | null;
+  ref_filename?: string | null;
 }
 
 interface CountSheetExportProps {

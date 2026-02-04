@@ -106,7 +106,7 @@ export default function TurnoverAssignPage() {
           .eq("turnover_id", turnoverId)
           .order("sort_order");
 
-        const typedShots = (shotsData || []) as TurnoverShot[];
+        const typedShots = (shotsData || []) as unknown as TurnoverShot[];
         setShots(typedShots);
 
         // Initialize assignments from existing data

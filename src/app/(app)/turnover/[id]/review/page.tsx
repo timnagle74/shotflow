@@ -130,7 +130,7 @@ export default function TurnoverReviewPage() {
           .order("sort_order");
 
         if (shotsError) throw shotsError;
-        const typedShots = (shotsData || []) as TurnoverShot[];
+        const typedShots = (shotsData || []) as unknown as TurnoverShot[];
         setShots(typedShots);
 
         // Initialize notes from existing data
