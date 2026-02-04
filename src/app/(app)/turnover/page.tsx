@@ -1495,24 +1495,51 @@ export default function TurnoverPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border">
-                        {filmscribeResult.events
-                          .filter(e => e.clipName !== null && e.vfxShotCode !== null)
-                          .map((event, i) => (
-                            <tr key={i} className="hover:bg-muted/30">
-                              <td className="p-2 font-mono font-bold text-green-400">{event.vfxShotCode}</td>
-                              <td className="p-2 font-mono text-blue-400 text-[10px]" title={event.tapeId || undefined}>{event.tapeId || event.tapeName || '—'}</td>
-                              <td className="p-2 font-mono text-center">{event.camera || '—'}</td>
-                              <td className="p-2 font-mono text-muted-foreground">{event.recordIn}</td>
-                              <td className="p-2 text-center font-mono">{event.length}f</td>
-                              <td className="p-2 max-w-[250px]">
-                                {event.vfxDescription ? (
-                                  <span className="text-purple-400">{event.vfxDescription}</span>
-                                ) : (
-                                  <span className="text-muted-foreground/50">—</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
+                        {/* Use events if they have clips, otherwise fall back to locators (same logic as filmScribeToShots) */}
+                        {(filmscribeResult.events.some(e => e.clipName !== null && !e.clipName?.startsWith('Opt'))
+                          ? filmscribeResult.events
+                              .filter(e => e.clipName !== null && e.vfxShotCode !== null)
+                              .map((event, i) => (
+                                <tr key={i} className="hover:bg-muted/30">
+                                  <td className="p-2 font-mono font-bold text-green-400">{event.vfxShotCode}</td>
+                                  <td className="p-2 font-mono text-blue-400 text-[10px]" title={event.tapeId || undefined}>{event.tapeId || event.tapeName || '—'}</td>
+                                  <td className="p-2 font-mono text-center">{event.camera || '—'}</td>
+                                  <td className="p-2 font-mono text-muted-foreground">{event.recordIn}</td>
+                                  <td className="p-2 text-center font-mono">{event.length}f</td>
+                                  <td className="p-2 max-w-[250px]">
+                                    {event.vfxDescription ? (
+                                      <span className="text-purple-400">{event.vfxDescription}</span>
+                                    ) : (
+                                      <span className="text-muted-foreground/50">—</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))
+                          : filmscribeResult.locators
+                              .filter(l => l.vfxShotCode !== null && l.clipName !== null && !l.clipName?.startsWith('Opt'))
+                              .map((loc, i) => {
+                                const locFrame = loc.frame;
+                                const matchingEvent = filmscribeResult.events.find(
+                                  e => locFrame >= e.recordInFrame && locFrame <= e.recordOutFrame
+                                );
+                                return (
+                                  <tr key={i} className="hover:bg-muted/30">
+                                    <td className="p-2 font-mono font-bold text-green-400">{loc.vfxShotCode}</td>
+                                    <td className="p-2 font-mono text-blue-400 text-[10px]" title={loc.clipName || undefined}>{loc.clipName || '—'}</td>
+                                    <td className="p-2 font-mono text-center">{loc.camera || '—'}</td>
+                                    <td className="p-2 font-mono text-muted-foreground">{loc.timecode}</td>
+                                    <td className="p-2 text-center font-mono">{matchingEvent?.length || 0}f</td>
+                                    <td className="p-2 max-w-[250px]">
+                                      {loc.vfxDescription ? (
+                                        <span className="text-purple-400">{loc.vfxDescription}</span>
+                                      ) : (
+                                        <span className="text-muted-foreground/50">—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                        )}
                       </tbody>
                     </table>
                   </div>
