@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { UserRole } from "@/lib/database.types";
-import { authenticateRequest, requireAdmin, getServiceClient } from "@/lib/auth";
+import { authenticateRequest, requireAdmin, requireUploader, getServiceClient } from "@/lib/auth";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    // Auth: only ADMIN/SUPERVISOR/PRODUCER can add artists to vendors
+    // Auth: admin-level roles AND VFX_VENDOR can add artists to vendors
     const auth = await authenticateRequest(req);
     if (auth.error) return auth.error;
-    const roleCheck = requireAdmin(auth.user);
+    const roleCheck = requireUploader(auth.user);
     if (roleCheck) return roleCheck;
 
     const vendorId = params.id;
@@ -28,6 +28,23 @@ export async function POST(
     }
 
     const adminClient = getServiceClient() as any;
+
+    // Security: VFX_VENDOR users can only invite artists to their own vendor
+    if (auth.user.role === "VFX_VENDOR") {
+      const { data: userVendorLink } = await adminClient
+        .from("user_vendors")
+        .select("vendor_id")
+        .eq("user_id", auth.user.userId)
+        .eq("vendor_id", vendorId)
+        .single();
+
+      if (!userVendorLink) {
+        return NextResponse.json(
+          { error: "You can only invite artists to your own vendor" },
+          { status: 403 }
+        );
+      }
+    }
 
     // Verify vendor exists
     const { data: vendor, error: vendorError } = await adminClient
