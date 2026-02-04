@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateSignedUploadUrl } from "@/lib/bunny";
+import { generateSignedUploadUrl, isStorageConfigured } from "@/lib/bunny";
 import { authenticateRequest, requireInternal, getServiceClient } from "@/lib/auth";
 
 const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     const projectCode = project?.code || "PROJ";
 
-    if (!BUNNY_STORAGE_ZONE || !BUNNY_STORAGE_PASSWORD) {
+    if (!isStorageConfigured()) {
       return NextResponse.json({ error: "Storage not configured" }, { status: 500 });
     }
 
