@@ -10,7 +10,7 @@ interface FinalizeUploadPayload {
   shotId: string;
   versionNumber: number;
   description?: string;
-  createdById: string;
+  createdById?: string; // DEPRECATED: ignored, creator is derived from auth session
   storagePath?: string; // Path where ProRes was uploaded
 }
 
@@ -27,11 +27,13 @@ export async function POST(request: NextRequest) {
     if (roleCheck) return roleCheck;
 
     const body: FinalizeUploadPayload = await request.json();
-    const { shotId, versionNumber, description, createdById, storagePath } = body;
+    const { shotId, versionNumber, description, storagePath } = body;
+    // Always use the authenticated user as the creator — never trust client input
+    const createdById = auth.user.userId;
 
-    if (!shotId || !versionNumber || !createdById) {
+    if (!shotId || !versionNumber) {
       return NextResponse.json(
-        { error: 'Missing required fields: shotId, versionNumber, createdById' },
+        { error: 'Missing required fields: shotId, versionNumber' },
         { status: 400 }
       );
     }

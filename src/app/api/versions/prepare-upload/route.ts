@@ -12,7 +12,7 @@ interface PrepareUploadPayload {
   shotId: string;
   versionNumber: number;
   description?: string;
-  createdById: string;
+  createdById?: string; // DEPRECATED: ignored, creator is derived from auth session
   hasProres: boolean;
   hasPreview: boolean;
   proresFilename?: string;
@@ -51,11 +51,13 @@ export async function POST(request: NextRequest) {
     if (roleCheck) return roleCheck;
 
     const body: PrepareUploadPayload = await request.json();
-    const { shotId, versionNumber, description, createdById, hasProres, hasPreview, proresFilename, previewFilename } = body;
+    const { shotId, versionNumber, description, hasProres, hasPreview, proresFilename, previewFilename } = body;
+    // Always use the authenticated user as the creator — never trust client input
+    const createdById = auth.user.userId;
 
-    if (!shotId || !versionNumber || !createdById) {
+    if (!shotId || !versionNumber) {
       return NextResponse.json(
-        { error: 'Missing required fields: shotId, versionNumber, createdById' },
+        { error: 'Missing required fields: shotId, versionNumber' },
         { status: 400 }
       );
     }
