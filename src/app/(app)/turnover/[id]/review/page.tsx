@@ -249,10 +249,10 @@ export default function TurnoverReviewPage() {
           const upload = new tus.Upload(file, {
             endpoint: tusUpload.url,
             headers: {
-              'AuthorizationSignature': tusUpload.authHeader,
+              'AuthorizationSignature': tusUpload.authSignature,
               'AuthorizationExpire': String(tusUpload.expiresAt),
-              'VideoId': ref.video_id || '',
-              'LibraryId': tusUpload.authHeader.split(':')[0],
+              'VideoId': tusUpload.videoId,
+              'LibraryId': tusUpload.libraryId,
             },
             metadata: {
               filename: file.name,
@@ -311,10 +311,10 @@ export default function TurnoverReviewPage() {
           const upload = new tus.Upload(file, {
             endpoint: tusUpload.url,
             headers: {
-              'AuthorizationSignature': tusUpload.authHeader,
+              'AuthorizationSignature': tusUpload.authSignature,
               'AuthorizationExpire': String(tusUpload.expiresAt),
-              'VideoId': videoId || '',
-              'LibraryId': tusUpload.authHeader.split(':')[0],
+              'VideoId': tusUpload.videoId,
+              'LibraryId': tusUpload.libraryId,
             },
             metadata: {
               filename: file.name,

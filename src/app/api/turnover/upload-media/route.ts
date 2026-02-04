@@ -86,7 +86,9 @@ export async function POST(request: NextRequest) {
               const authSignature = await generateTusSignature(BUNNY_STREAM_LIBRARY_ID, BUNNY_STREAM_API_KEY, videoId, expiresAt);
               tusUpload = {
                 url: `https://video.bunnycdn.com/tusupload`,
-                authHeader: `${BUNNY_STREAM_LIBRARY_ID}:${authSignature}:${expiresAt}:${videoId}`,
+                authSignature, // Just the hash
+                libraryId: BUNNY_STREAM_LIBRARY_ID,
+                videoId,
                 expiresAt,
               };
             }
@@ -240,7 +242,9 @@ export async function POST(request: NextRequest) {
               const authSignature = await generateTusSignature(BUNNY_STREAM_LIBRARY_ID, BUNNY_STREAM_API_KEY, videoId, expiresAt);
               tusUpload = {
                 url: `https://video.bunnycdn.com/tusupload`,
-                authHeader: `${BUNNY_STREAM_LIBRARY_ID}:${authSignature}:${expiresAt}:${videoId}`,
+                authSignature, // Just the hash
+                libraryId: BUNNY_STREAM_LIBRARY_ID,
+                videoId,
                 expiresAt,
               };
             }
