@@ -52,14 +52,19 @@ export async function middleware(request: NextRequest) {
 
   // If user is authenticated, check their role for route access
   if (user) {
-    // Get user role from public.users table
-    const { data: userData } = await supabase
-      .from("users")
-      .select("role")
-      .eq("auth_id", user.id)
-      .single();
+    // Try to read role from auth metadata first (avoids DB query per request)
+    let userRole: string | undefined = user.user_metadata?.role;
 
-    const userRole = userData?.role;
+    // Fall back to DB lookup only if metadata is missing
+    if (!userRole) {
+      const { data: userData } = await supabase
+        .from("users")
+        .select("role")
+        .eq("auth_id", user.id)
+        .single();
+
+      userRole = userData?.role;
+    }
     const isClient = userRole === "CLIENT";
     const isVendor = userRole === "VFX_VENDOR";
 
