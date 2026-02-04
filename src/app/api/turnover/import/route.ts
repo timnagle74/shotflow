@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
     const shotCodeToTurnoverShotId: Record<string, string> = {};
     
     // Batch upsert all shots at once (single query instead of N+1)
-    const shotInserts = shots.map(shot => ({
+    const shotInserts = shots.map((shot: any) => ({
       sequence_id: finalSequenceId,
       code: shot.code,
       description: shot.vfxNotes || shot.clipName || null,
@@ -139,6 +139,22 @@ export async function POST(request: NextRequest) {
       complexity: "MEDIUM" as const,
       frame_start: shot.sourceIn ? parseTimecodeToFrames(shot.sourceIn) : null,
       frame_end: shot.sourceOut ? parseTimecodeToFrames(shot.sourceOut) : null,
+      source_clip_name: shot.clipName || null,
+      source_tc_in: shot.sourceIn || null,
+      source_tc_out: shot.sourceOut || null,
+      record_tc_in: shot.recordIn || null,
+      record_tc_out: shot.recordOut || null,
+      has_reposition: shot.hasReposition || false,
+      repo_scale: shot.transform?.scale || null,
+      repo_scale_x: shot.transform?.scaleX || null,
+      repo_scale_y: shot.transform?.scaleY || null,
+      repo_position_x: shot.transform?.positionX || null,
+      repo_position_y: shot.transform?.positionY || null,
+      repo_rotation: shot.transform?.rotation || null,
+      has_speed_change: shot.hasSpeedChange || false,
+      speed_ratio: shot.speed?.speedRatio || null,
+      speed_reverse: shot.speed?.reverse || false,
+      speed_time_remap: shot.speed?.timeRemapping || false,
     }));
 
     // Use upsert with onConflict to handle existing shots gracefully

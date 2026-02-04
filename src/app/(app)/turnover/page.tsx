@@ -655,18 +655,32 @@ export default function TurnoverPage() {
       
       const seqName = xmlResult.sequences[0].name || xmlFileName.replace(/\.xml$/i, "");
       
+      const fps = xmlResult.sequences[0].fps || 24;
+      const framesToTC = (frames: number) => {
+        const h = Math.floor(frames / (fps * 3600));
+        const m = Math.floor((frames % (fps * 3600)) / (fps * 60));
+        const s = Math.floor((frames % (fps * 60)) / fps);
+        const f = Math.floor(frames % fps);
+        return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:${String(f).padStart(2,'0')}`;
+      };
+
       const shots = clips.map((clip) => ({
         code: clip.name,
         clipName: clip.sourceFileName || clip.name,
         cameraRoll: clip.cameraRoll || clip.reelName || null,
-        sourceIn: clip.sourceTimecode || null,
-        sourceOut: null, // Could calculate from sourceTimecode + duration
-        recordIn: null,
-        recordOut: null,
+        sourceIn: clip.sourceTimecode || (clip.inPoint != null ? framesToTC(clip.inPoint) : null),
+        sourceOut: clip.outPoint != null ? framesToTC(clip.outPoint) : null,
+        recordIn: clip.start != null ? framesToTC(clip.start) : null,
+        recordOut: clip.end != null ? framesToTC(clip.end) : null,
         durationFrames: clip.duration,
-        vfxNotes: null,
+        vfxNotes: shotNotes[clip.name] || clip.description || null,
         hasReposition: clip.hasReposition,
         hasSpeedChange: clip.hasSpeedChange,
+        // Additional metadata for shots table
+        scene: clip.scene || null,
+        reelName: clip.reelName || null,
+        transform: clip.transform,
+        speed: clip.speed,
       }));
 
       const response = await fetch("/api/turnover/import", {
