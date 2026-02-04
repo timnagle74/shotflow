@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { Monitor, Check, RotateCcw, MessageSquare, Film, Eye, Folder, Clock, CheckCircle2, Loader2 } from "lucide-react";
 import { VideoPlayer } from "@/components/video-player";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/components/auth-provider";
 
 interface Project {
   id: string;
@@ -54,11 +55,13 @@ interface UserInfo {
 }
 
 export default function ClientPortalPage() {
+  const { user: authUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [selectedShot, setSelectedShot] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
   const [activeVersionId, setActiveVersionId] = useState<string>("");
+  const [actionLoading, setActionLoading] = useState(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [shots, setShots] = useState<Shot[]>([]);
@@ -103,6 +106,79 @@ export default function ClientPortalPage() {
       setLoading(false);
     }
   }
+
+  const handleApprove = async (shotId: string) => {
+    if (!supabase) return;
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from("shots")
+        .update({ status: "APPROVED" as any })
+        .eq("id", shotId);
+      if (!error) {
+        setShots(prev => prev.map(s => s.id === shotId ? { ...s, status: "APPROVED" } : s));
+      } else {
+        console.error("Approve error:", error);
+      }
+    } catch (err) {
+      console.error("Approve error:", err);
+    }
+    setActionLoading(false);
+  };
+
+  const handleRequestRevision = async (shotId: string) => {
+    if (!supabase) return;
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from("shots")
+        .update({ status: "REVISIONS" as any })
+        .eq("id", shotId);
+      if (!error) {
+        setShots(prev => prev.map(s => s.id === shotId ? { ...s, status: "REVISIONS" } : s));
+      } else {
+        console.error("Revision request error:", error);
+      }
+    } catch (err) {
+      console.error("Revision request error:", err);
+    }
+    setActionLoading(false);
+  };
+
+  const handleSendFeedback = async (versionId: string) => {
+    if (!supabase || !feedback.trim() || !authUser || !versionId) return;
+    setActionLoading(true);
+    try {
+      // Look up public user id
+      const { data: pubUser } = await supabase
+        .from("users")
+        .select("id")
+        .eq("auth_id", authUser.id)
+        .single();
+
+      const authorId = pubUser?.id || authUser.id;
+
+      const { data: newNote, error } = await supabase
+        .from("notes")
+        .insert({
+          version_id: versionId,
+          author_id: authorId,
+          content: feedback.trim(),
+        })
+        .select()
+        .single();
+
+      if (!error && newNote) {
+        setNotes(prev => [newNote as Note, ...prev]);
+        setFeedback("");
+      } else {
+        console.error("Send feedback error:", error);
+      }
+    } catch (err) {
+      console.error("Send feedback error:", err);
+    }
+    setActionLoading(false);
+  };
 
   if (loading) {
     return (
@@ -293,10 +369,21 @@ export default function ClientPortalPage() {
                     <div className="flex gap-2">
                       {selected.status === "CLIENT_REVIEW" && (
                         <>
-                          <Button variant="outline" size="sm" className="text-amber-400 border-amber-600/30 hover:bg-amber-600/10">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-amber-400 border-amber-600/30 hover:bg-amber-600/10"
+                            disabled={actionLoading}
+                            onClick={() => handleRequestRevision(selected.id)}
+                          >
                             <RotateCcw className="h-4 w-4 mr-1.5" />Request Revision
                           </Button>
-                          <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                          <Button
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                            disabled={actionLoading}
+                            onClick={() => handleApprove(selected.id)}
+                          >
                             <Check className="h-4 w-4 mr-1.5" />Approve
                           </Button>
                         </>
@@ -387,7 +474,13 @@ export default function ClientPortalPage() {
                       value={feedback}
                       onChange={e => setFeedback(e.target.value)}
                     />
-                    <Button className="self-end bg-purple-600 hover:bg-purple-700" disabled={!feedback.trim()}>Send</Button>
+                    <Button
+                      className="self-end bg-purple-600 hover:bg-purple-700"
+                      disabled={!feedback.trim() || actionLoading}
+                      onClick={() => viewingVersion && handleSendFeedback(viewingVersion.id)}
+                    >
+                      {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
