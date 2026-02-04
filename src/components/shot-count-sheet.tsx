@@ -81,7 +81,8 @@ export function ShotCountSheet({
   // Get thumbnail from Bunny Stream
   useEffect(() => {
     if (shot.ref_video_id) {
-      setThumbnailUrl(`https://vz-3b0f7864-a89.b-cdn.net/${shot.ref_video_id}/thumbnail.jpg`);
+      const cdn = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN || '';
+      setThumbnailUrl(`${cdn}/${shot.ref_video_id}/thumbnail.jpg`);
     }
   }, [shot.ref_video_id]);
 
@@ -118,7 +119,8 @@ export function ShotCountSheet({
       let thumbnailData: string | null = null;
       if (shot.ref_video_id) {
         try {
-          const cdnUrl = `https://vz-3b0f7864-a89.b-cdn.net/${shot.ref_video_id}/thumbnail.jpg`;
+          const cdnBase = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN || '';
+          const cdnUrl = `${cdnBase}/${shot.ref_video_id}/thumbnail.jpg`;
           console.log('Loading thumbnail from:', cdnUrl);
           
           thumbnailData = await new Promise((resolve) => {
