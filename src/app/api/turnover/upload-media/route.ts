@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       // Create ref record in database
       let previewUrl: string | null = null;
       let videoId: string | null = null;
-      let tusUpload: { url: string; authHeader: string; expiresAt: number } | null = null;
+      let tusUpload: { url: string; authSignature: string; libraryId: string; videoId: string; expiresAt: number } | null = null;
 
       // Create Bunny Stream entry for HLS and TUS upload
       if (BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
       // Plate upload
       let previewUrl: string | null = null;
       let videoId: string | null = null;
-      let tusUpload: { url: string; authHeader: string; expiresAt: number } | null = null;
+      let tusUpload: { url: string; authSignature: string; libraryId: string; videoId: string; expiresAt: number } | null = null;
 
       // Create Bunny Stream entry for video plates
       const isVideo = /\.(mov|mp4|mxf|m4v)$/i.test(filename);
