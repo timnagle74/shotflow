@@ -12,6 +12,11 @@ export async function GET(
     return NextResponse.json({ error: 'Missing videoId' }, { status: 400 });
   }
 
+  // Validate videoId is a UUID/GUID format (defense-in-depth)
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(videoId)) {
+    return NextResponse.json({ error: 'Invalid videoId format' }, { status: 400 });
+  }
+
   if (!BUNNY_STREAM_CDN) {
     return NextResponse.json({ error: 'CDN not configured' }, { status: 500 });
   }
