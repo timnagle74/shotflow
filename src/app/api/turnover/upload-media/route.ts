@@ -170,6 +170,18 @@ export async function POST(request: NextRequest) {
               .in("id", matchedTurnoverShots.map((ts: any) => ts.id));
 
             matchedShotIds = matchedTurnoverShots.map((ts: any) => ts.shot_id);
+            
+            // Also update shots table with ref info (for shot detail page display)
+            await supabase
+              .from("shots")
+              .update({
+                ref_filename: filename,
+                ref_storage_path: storagePath,
+                ref_cdn_url: cdnUrl,
+                ref_video_id: videoId,
+                ref_preview_url: previewUrl,
+              })
+              .in("id", matchedShotIds);
           }
         }
       } catch (matchErr) {
