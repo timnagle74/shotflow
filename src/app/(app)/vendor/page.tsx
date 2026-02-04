@@ -132,7 +132,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   DELIVERED: { label: "Delivered", color: "bg-emerald-600" },
 };
 
-const ADMIN_ROLES = ["ADMIN", "SUPERVISOR"];
+const ADMIN_ROLES = ["ADMIN", "SUPERVISOR", "PRODUCER"];
 
 // ─── Component ───────────────────────────────────────────────────────────────
 

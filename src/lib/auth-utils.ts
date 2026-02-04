@@ -9,6 +9,7 @@ export function getDefaultRouteForRole(role: UserRole): string {
       return '/client';
     case 'ADMIN':
     case 'SUPERVISOR':
+    case 'PRODUCER':
     case 'COORDINATOR':
     case 'ARTIST':
     case 'VFX_VENDOR':

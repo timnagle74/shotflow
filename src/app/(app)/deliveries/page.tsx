@@ -403,7 +403,7 @@ export default function DeliveriesPage() {
 const CURRENT_USER_ROLE = "ADMIN"; // Simulated
 
 function DeliverySpecsDialog({ project, specs, onSave }: { project: { id: string; name: string }; specs: DeliverySpec | null; onSave: () => void }) {
-  const canEdit = CURRENT_USER_ROLE === "ADMIN" || CURRENT_USER_ROLE === "SUPERVISOR";
+  const canEdit = CURRENT_USER_ROLE === "ADMIN" || CURRENT_USER_ROLE === "SUPERVISOR" || CURRENT_USER_ROLE === "PRODUCER";
   const [open, setOpen] = useState(false);
 
   const fields = [

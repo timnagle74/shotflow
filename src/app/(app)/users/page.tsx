@@ -58,6 +58,7 @@ interface UserRow {
 const roleIcons: Record<string, typeof Shield> = {
   ADMIN: Crown,
   SUPERVISOR: Shield,
+  PRODUCER: Shield,
   COORDINATOR: Users,
   ARTIST: Paintbrush,
   CLIENT: Eye,
