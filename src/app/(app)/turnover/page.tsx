@@ -770,28 +770,37 @@ export default function TurnoverPage() {
 
           setImportStatus(`Uploading ${i + 1}/${uploads.length}: ${config.originalName}`);
 
-          const uploadRes = await fetch(config.uploadUrl, {
-            method: "PUT",
-            headers: {
-              // Signed URL - no raw key needed
-              "Content-Type": "application/octet-stream",
-            },
-            body: turnoverFile.file,
-          });
-
-          if (uploadRes.ok || uploadRes.status === 201) {
-            uploadedFiles.push({
-              originalName: config.originalName,
-              type: config.type,
-              storagePath: config.storagePath,
-              cdnUrl: config.cdnUrl,
-              fileSize: turnoverFile.file.size,
+          try {
+            const uploadRes = await fetch(config.uploadUrl, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/octet-stream",
+              },
+              body: turnoverFile.file,
             });
+
+            if (uploadRes.ok || uploadRes.status === 201) {
+              uploadedFiles.push({
+                originalName: config.originalName,
+                type: config.type,
+                storagePath: config.storagePath,
+                cdnUrl: config.cdnUrl,
+                fileSize: turnoverFile.file.size,
+              });
+            } else {
+              console.error(`Upload failed for ${config.originalName}: ${uploadRes.status} ${uploadRes.statusText}`);
+            }
+          } catch (uploadErr) {
+            console.error(`Upload error for ${config.originalName}:`, uploadErr);
           }
         }
       }
 
-      setImportStatus("Creating shots...");
+      if (allFiles.length > 0 && uploadedFiles.length === 0) {
+        console.warn("All file uploads failed - refs/plates won't be linked");
+      }
+
+      setImportStatus(`Creating shots...${uploadedFiles.length > 0 ? ` (${uploadedFiles.length} files uploaded)` : ''}`);
       
       const seqName = filmscribeResult.title || xmlFileName.replace(/\.xml$/i, "");
       
@@ -821,13 +830,17 @@ export default function TurnoverPage() {
       const result = await response.json();
       
       const toNum = result.turnoverNumber ? `TO${result.turnoverNumber}: ` : '';
-      setImportStatus(`${toNum}Created ${result.shotsCreated} shot(s) with VFX notes`);
+      const refsInfo = result.refs?.created > 0 ? ` | ${result.refs.matched}/${result.refs.created} refs matched` : '';
+      const platesInfo = result.plates?.created > 0 ? ` | ${result.plates.matched}/${result.plates.created} plates matched` : '';
+      const uploadWarning = (allFiles.length > 0 && uploadedFiles.length === 0) ? ' ⚠️ File uploads failed' : 
+                            (allFiles.length > 0 && uploadedFiles.length < allFiles.length) ? ` ⚠️ ${allFiles.length - uploadedFiles.length} file(s) failed to upload` : '';
+      setImportStatus(`${toNum}Created ${result.shotsCreated} shot(s)${refsInfo}${platesInfo}${uploadWarning}`);
       setFilmscribeImported(true);
       
       if (result.reviewUrl) {
         setTimeout(() => {
           router.push(result.reviewUrl);
-        }, 1500);
+        }, uploadWarning ? 3000 : 1500);
       }
     } catch (err) {
       console.error("Import error:", err);
