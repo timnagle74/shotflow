@@ -58,6 +58,36 @@ export interface SignedUrlOptions {
 }
 
 // ============================================================
+// Signed Upload URL (shared utility used by all upload routes)
+// ============================================================
+
+/**
+ * Generate a SHA256-signed upload URL for direct Bunny Storage upload.
+ * The signature is generated server-side; the raw API key is never exposed.
+ */
+export function generateSignedUploadUrl(storagePath: string, expiresIn = 3600): string {
+  const hostname = bunnyConfig.storage.hostname;
+  const zone = bunnyConfig.storage.zone;
+  const password = bunnyConfig.storage.password;
+
+  if (!zone || !password) {
+    throw new Error('Bunny Storage credentials not configured for upload signing');
+  }
+
+  const expiry = Math.floor(Date.now() / 1000) + expiresIn;
+  const fullUrl = `https://${hostname}/${zone}${storagePath.startsWith('/') ? '' : '/'}${storagePath}`;
+  const signatureBase = password + storagePath + expiry;
+  const token = crypto
+    .createHash('sha256')
+    .update(signatureBase)
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+  return `${fullUrl}?token=${token}&expires=${expiry}`;
+}
+
+// ============================================================
 // Bunny Storage API (for ProRes downloads)
 // ============================================================
 

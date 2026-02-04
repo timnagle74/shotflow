@@ -1,31 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
+import { generateSignedUploadUrl } from "@/lib/bunny";
 import { authenticateRequest, requireInternal, getServiceClient } from "@/lib/auth";
 
-const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
-const BUNNY_STORAGE_HOSTNAME = process.env.BUNNY_STORAGE_HOSTNAME || "storage.bunnycdn.com";
-const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
 const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
 const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN;
-
-/**
- * Generate a signed upload URL for Bunny Storage (no raw key exposed).
- */
-function generateSignedUploadUrl(storagePath: string, expiresIn = 3600): string {
-  const expiry = Math.floor(Date.now() / 1000) + expiresIn;
-  const fullUrl = `https://${BUNNY_STORAGE_HOSTNAME}/${BUNNY_STORAGE_ZONE}${storagePath}`;
-  const signatureBase = BUNNY_STORAGE_PASSWORD + storagePath + expiry;
-  const token = crypto
-    .createHash("sha256")
-    .update(signatureBase)
-    .digest("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
-  return `${fullUrl}?token=${token}&expires=${expiry}`;
-}
 
 export async function POST(request: NextRequest) {
   try {

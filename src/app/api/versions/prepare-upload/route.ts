@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
 import { authenticateRequest, requireUploader, getServiceClient } from '@/lib/auth';
+import { generateSignedUploadUrl } from '@/lib/bunny';
 
 const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
 const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
-const BUNNY_STORAGE_HOSTNAME = process.env.BUNNY_STORAGE_HOSTNAME || 'storage.bunnycdn.com';
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
 
@@ -17,24 +16,6 @@ interface PrepareUploadPayload {
   hasPreview: boolean;
   proresFilename?: string;
   previewFilename?: string;
-}
-
-/**
- * Generate a SHA256 HMAC-based signed URL for direct Bunny Storage upload.
- * The signature is generated server-side; the raw API key is never exposed.
- */
-function generateSignedUploadUrl(storagePath: string, expiresIn = 3600): string {
-  const expiry = Math.floor(Date.now() / 1000) + expiresIn;
-  const fullUrl = `https://${BUNNY_STORAGE_HOSTNAME}/${BUNNY_STORAGE_ZONE}/${storagePath}`;
-  const signatureBase = BUNNY_STORAGE_PASSWORD + storagePath + expiry;
-  const token = crypto
-    .createHash('sha256')
-    .update(signatureBase)
-    .digest('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-  return `${fullUrl}?token=${token}&expires=${expiry}`;
 }
 
 /**
