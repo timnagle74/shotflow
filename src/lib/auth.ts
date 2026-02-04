@@ -157,6 +157,45 @@ export function requireInternal(user: AuthUser): NextResponse | null {
 }
 
 /**
+ * Validate a review session token. Returns the session data if valid,
+ * or a NextResponse error if invalid/expired.
+ * Used by public review routes that don't require user authentication.
+ */
+export async function validateReviewToken(
+  token: string,
+  options?: { requireComments?: boolean; requireApprovals?: boolean },
+): Promise<
+  { session: { id: string; allow_comments: boolean; allow_approvals: boolean; expires_at: string | null }; error?: never }
+  | { session?: never; error: NextResponse }
+> {
+  const supabase = getServiceClient();
+
+  const { data: session, error } = await supabase
+    .from('review_sessions')
+    .select('id, allow_comments, allow_approvals, expires_at')
+    .eq('access_token', token)
+    .single();
+
+  if (error || !session) {
+    return { error: NextResponse.json({ error: 'Session not found' }, { status: 404 }) };
+  }
+
+  if (session.expires_at && new Date(session.expires_at) < new Date()) {
+    return { error: NextResponse.json({ error: 'Session expired' }, { status: 404 }) };
+  }
+
+  if (options?.requireApprovals && !session.allow_approvals) {
+    return { error: NextResponse.json({ error: 'Approvals not allowed' }, { status: 403 }) };
+  }
+
+  if (options?.requireComments && !session.allow_comments) {
+    return { error: NextResponse.json({ error: 'Comments not allowed' }, { status: 403 }) };
+  }
+
+  return { session };
+}
+
+/**
  * Get the service-role admin Supabase client (for use after auth is verified).
  */
 export function getServiceClient() {

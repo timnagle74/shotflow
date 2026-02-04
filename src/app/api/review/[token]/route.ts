@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { getServiceClient, validateReviewToken } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
@@ -10,25 +7,25 @@ export async function GET(
 ) {
   try {
     const { token } = params;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get session by token
+    // Validate token via centralized auth helper
+    const tokenResult = await validateReviewToken(token);
+    if (tokenResult.error) return tokenResult.error;
+
+    const supabase = getServiceClient();
+
+    // Get full session details
     const { data: session, error: sessionError } = await supabase
       .from("review_sessions")
       .select(`
         id, name, description, allow_comments, allow_approvals, watermark_text, expires_at,
         project:projects(id, name)
       `)
-      .eq("access_token", token)
+      .eq("id", tokenResult.session.id)
       .single();
 
     if (sessionError || !session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
-
-    // Check expiration
-    if (session.expires_at && new Date(session.expires_at) < new Date()) {
-      return NextResponse.json({ error: "Session expired" }, { status: 404 });
     }
 
     // Get versions in this session

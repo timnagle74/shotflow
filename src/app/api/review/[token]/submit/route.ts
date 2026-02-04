@@ -1,8 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { getServiceClient, validateReviewToken } from "@/lib/auth";
 
 export async function POST(
   request: NextRequest,
@@ -17,32 +14,17 @@ export async function POST(
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // Validate token via centralized auth helper (requires approvals)
+    const tokenResult = await validateReviewToken(token, { requireApprovals: true });
+    if (tokenResult.error) return tokenResult.error;
 
-    // Verify session
-    const { data: session } = await supabase
-      .from("review_sessions")
-      .select("id, allow_approvals, expires_at")
-      .eq("access_token", token)
-      .single();
-
-    if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
-    }
-
-    if (session.expires_at && new Date(session.expires_at) < new Date()) {
-      return NextResponse.json({ error: "Session expired" }, { status: 404 });
-    }
-
-    if (!session.allow_approvals) {
-      return NextResponse.json({ error: "Approvals not allowed" }, { status: 403 });
-    }
+    const supabase = getServiceClient();
 
     // SECURITY: Verify that the versionId belongs to this review session
     const { data: sessionVersion, error: svError } = await supabase
       .from("review_session_versions")
       .select("id")
-      .eq("session_id", session.id)
+      .eq("session_id", tokenResult.session.id)
       .eq("version_id", versionId)
       .single();
 
@@ -60,7 +42,7 @@ export async function POST(
         client_status: status,
         reviewed_at: new Date().toISOString(),
       })
-      .eq("session_id", session.id)
+      .eq("session_id", tokenResult.session.id)
       .eq("version_id", versionId);
 
     if (updateError) {
