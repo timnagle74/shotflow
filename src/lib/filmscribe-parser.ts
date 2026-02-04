@@ -81,6 +81,19 @@ function tcToFrames(tc: string, fps: number = 24): number {
 }
 
 /**
+ * Convert frame number to timecode string
+ */
+function framesToTc(frames: number, fps: number = 24): string {
+  const ff = frames % fps;
+  const totalSeconds = Math.floor(frames / fps);
+  const ss = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const mm = totalMinutes % 60;
+  const hh = Math.floor(totalMinutes / 60);
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}:${String(ff).padStart(2, '0')}`;
+}
+
+/**
  * Check if this is a FilmScribe XML file
  */
 export function isFilmScribeXML(content: string): boolean {
@@ -324,15 +337,23 @@ export function filmScribeToShots(result: FilmScribeParseResult): Array<{
         e => locFrame >= e.recordInFrame && locFrame <= e.recordOutFrame
       );
       
+      // Calculate source TC out from sourceIn + duration
+      const duration = matchingEvent?.length || 0;
+      let sourceOut: string | null = null;
+      if (locator.sourceTimecode && duration > 0) {
+        const srcInFrames = tcToFrames(locator.sourceTimecode, result.editRate);
+        sourceOut = framesToTc(srcInFrames + duration, result.editRate);
+      }
+      
       return {
         code: locator.vfxShotCode!,
         clipName: locator.clipName,
         cameraRoll: null,
         sourceIn: locator.sourceTimecode || null,
-        sourceOut: null,
+        sourceOut,
         recordIn: locator.timecode,
         recordOut: matchingEvent?.recordOut || null,
-        durationFrames: matchingEvent?.length || 0,
+        durationFrames: duration,
         vfxNotes: locator.vfxDescription,
         scene: locator.vfxScene,
         take: null,
