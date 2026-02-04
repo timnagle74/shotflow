@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import * as tus from "tus-js-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -839,22 +840,37 @@ export default function TurnoverPage() {
 
           const mediaData = await mediaRes.json();
           
-          // Upload file via server proxy (Bunny Storage requires AccessKey)
-          // Pass videoId to trigger Bunny Stream transcoding after upload
-          try {
-            const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(mediaData.storagePath || '')}${mediaData.videoId ? `&videoId=${mediaData.videoId}` : ''}`;
-            const uploadRes = await fetch(proxyUrl, {
-              method: "PUT",
-              headers: { "Content-Type": "application/octet-stream" },
-              body: tf.file,
-            });
-            
-            if (!uploadRes.ok) {
-              console.error(`File upload failed for ${tf.file.name}: ${uploadRes.status}`);
+          // Upload file using TUS (direct to Bunny Stream, bypasses Vercel size limits)
+          if (mediaData.tusUpload) {
+            try {
+              await new Promise<void>((resolve, reject) => {
+                const upload = new tus.Upload(tf.file, {
+                  endpoint: mediaData.tusUpload.url,
+                  headers: {
+                    'AuthorizationSignature': mediaData.tusUpload.authSignature,
+                    'AuthorizationExpire': String(mediaData.tusUpload.expiresAt),
+                    'VideoId': mediaData.tusUpload.videoId,
+                    'LibraryId': mediaData.tusUpload.libraryId,
+                  },
+                  metadata: {
+                    filename: tf.file.name,
+                    filetype: tf.file.type,
+                  },
+                  onError: (error) => {
+                    console.error(`TUS upload error for ${tf.file.name}:`, error);
+                    reject(error);
+                  },
+                  onSuccess: () => {
+                    console.log(`TUS upload complete for ${tf.file.name}`);
+                    resolve();
+                  },
+                });
+                upload.start();
+              });
+            } catch (uploadErr) {
+              console.error(`File upload error for ${tf.file.name}:`, uploadErr);
+              // DB record still exists — file can be re-uploaded later
             }
-          } catch (uploadErr) {
-            console.error(`File upload error for ${tf.file.name}:`, uploadErr);
-            // DB record still exists — file can be re-uploaded later
           }
 
           uploadedCount++;
