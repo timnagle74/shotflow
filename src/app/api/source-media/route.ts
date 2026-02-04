@@ -149,7 +149,17 @@ export async function GET(request: NextRequest) {
     }
     
     if (search) {
-      query = query.or(`clip_name.ilike.%${search}%,scene.ilike.%${search}%,camera.ilike.%${search}%`);
+      // Sanitize search input: escape special PostgREST filter characters
+      // to prevent filter-string injection via the .or() method
+      const sanitized = search
+        .replace(/\\/g, '\\\\')
+        .replace(/%/g, '\\%')
+        .replace(/_/g, '\\_')
+        .replace(/,/g, '')
+        .replace(/\(/g, '')
+        .replace(/\)/g, '')
+        .replace(/\./g, '');
+      query = query.or(`clip_name.ilike.%${sanitized}%,scene.ilike.%${sanitized}%,camera.ilike.%${sanitized}%`);
     }
     
     query = query.order('clip_name', { ascending: true });
