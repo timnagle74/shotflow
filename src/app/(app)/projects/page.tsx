@@ -39,19 +39,19 @@ export default function ProjectsPage() {
       return;
     }
     try {
-      const { data, error } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
+      const { data, error } = await supabase.from("projects").select("id, name, code, status, created_at").order("created_at", { ascending: false }).limit(100);
       if (error) throw error;
 
       // Fetch shot counts per project
       if (data && data.length > 0) {
         const stats: Record<string, { total: number; active: number; done: number }> = {};
         // For artists, only fetch their assigned shots
-        let shotsQuery = supabase.from("shots").select("id, status, sequence_id, assigned_to_id");
+        let shotsQuery = supabase.from("shots").select("id, status, sequence_id, assigned_to_id").limit(5000);
         if (isArtist && currentUser) {
           shotsQuery = shotsQuery.eq("assigned_to_id", currentUser.id);
         }
         const { data: allShots } = await shotsQuery;
-        const { data: allSeqs } = await supabase.from("sequences").select("id, project_id");
+        const { data: allSeqs } = await supabase.from("sequences").select("id, project_id").limit(1000);
         const seqMap = new Map<string, string>();
         (allSeqs || []).forEach((s) => seqMap.set(s.id, s.project_id));
 

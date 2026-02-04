@@ -48,19 +48,19 @@ export default function DashboardPage() {
       return;
     }
     try {
-      const { data: projects } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
+      const { data: projects } = await supabase.from("projects").select("id, name, code, status").order("created_at", { ascending: false }).limit(100);
       const projectsList = projects || [];
       const activeProjects = projectsList.filter(p => p.status === "ACTIVE");
 
-      // Fetch shots — for artists, only their assigned shots
-      let shotsQuery = supabase.from("shots").select("id, status, sequence_id, assigned_to_id");
+      // Fetch shots — for artists, only their assigned shots. Limit to essential columns.
+      let shotsQuery = supabase.from("shots").select("id, status, sequence_id, assigned_to_id").limit(5000);
       if (isArtist && currentUser) {
         shotsQuery = shotsQuery.eq("assigned_to_id", currentUser.id);
       }
       const { data: shots } = await shotsQuery;
       const allShots = shots || [];
 
-      const { data: sequences } = await supabase.from("sequences").select("id, project_id");
+      const { data: sequences } = await supabase.from("sequences").select("id, project_id").limit(1000);
       const seqMap = new Map<string, string>();
       (sequences || []).forEach(s => seqMap.set(s.id, s.project_id));
 

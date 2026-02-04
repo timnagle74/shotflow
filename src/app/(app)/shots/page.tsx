@@ -193,8 +193,9 @@ function ShotsPageContent() {
         // Fetch projects
         const { data: projectsData } = await supabase
           .from("projects")
-          .select("*")
-          .order("name") as { data: Project[] | null; error: any };
+          .select("id, name")
+          .order("name")
+          .limit(100);
         
         if (projectsData) {
           setProjects(projectsData);
@@ -206,14 +207,16 @@ function ShotsPageContent() {
         // Fetch all sequences
         const { data: seqData } = await supabase
           .from("sequences")
-          .select("*") as { data: Sequence[] | null; error: any };
-        if (seqData) setSequences(seqData);
+          .select("id, name, code, project_id")
+          .limit(1000);
+        if (seqData) setSequences(seqData as Sequence[]);
 
         // Fetch all users
         const { data: usersData } = await supabase
           .from("users")
-          .select("*") as { data: UserProfile[] | null; error: any };
-        if (usersData) setUsers(usersData);
+          .select("id, name, email, role")
+          .limit(500);
+        if (usersData) setUsers(usersData as UserProfile[]);
 
       } catch (err) {
         console.error("Error loading data:", err);

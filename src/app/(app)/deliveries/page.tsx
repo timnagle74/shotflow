@@ -100,12 +100,12 @@ export default function DeliveriesPage() {
     }
     try {
       const [deliveriesRes, shotsRes, versionsRes, usersRes, projectsRes, specsRes] = await Promise.all([
-        supabase.from("deliveries").select("*"),
-        supabase.from("shots").select("id, code, status, assigned_to_id, due_date"),
-        supabase.from("shot_versions").select("id, shot_id, version_number"),
-        supabase.from("users").select("id, name"),
-        supabase.from("projects").select("id, name, code").order("name"),
-        supabase.from("delivery_specs").select("*"),
+        supabase.from("deliveries").select("*").limit(500),
+        supabase.from("shots").select("id, code, status, assigned_to_id, due_date").limit(2000),
+        supabase.from("shot_versions").select("id, shot_id, version_number").limit(5000),
+        supabase.from("users").select("id, name").limit(500),
+        supabase.from("projects").select("id, name, code").order("name").limit(100),
+        supabase.from("delivery_specs").select("*").limit(100),
       ]);
       setDeliveries(deliveriesRes.data || []);
       setShots(shotsRes.data || []);

@@ -78,12 +78,12 @@ export default function ClientPortalPage() {
     }
     try {
       const [projectsRes, shotsRes, seqRes, versionsRes, notesRes, usersRes] = await Promise.all([
-        supabase.from("projects").select("id, name, code, status").eq("status", "ACTIVE").order("name"),
-        supabase.from("shots").select("id, code, description, status, frame_start, frame_end, sequence_id"),
-        supabase.from("sequences").select("id, project_id"),
-        supabase.from("shot_versions").select("id, shot_id, version_number, status, created_at").order("version_number", { ascending: false }),
-        supabase.from("notes").select("id, version_id, author_id, content, frame_reference, created_at"),
-        supabase.from("users").select("id, name, role"),
+        supabase.from("projects").select("id, name, code, status").eq("status", "ACTIVE").order("name").limit(100),
+        supabase.from("shots").select("id, code, description, status, frame_start, frame_end, sequence_id").limit(2000),
+        supabase.from("sequences").select("id, project_id").limit(1000),
+        supabase.from("shot_versions").select("id, shot_id, version_number, status, created_at").order("version_number", { ascending: false }).limit(5000),
+        supabase.from("notes").select("id, version_id, author_id, content, frame_reference, created_at").limit(5000),
+        supabase.from("users").select("id, name, role").limit(500),
       ]);
       
       const fetchedProjects = (projectsRes.data || []) as Project[];

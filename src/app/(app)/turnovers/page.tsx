@@ -84,7 +84,8 @@ export default function TurnoversPage() {
           project:projects(name, code),
           sequence:sequences(name, code)
         `)
-        .order("created_at", { ascending: false }) as { data: Turnover[] | null; error: any };
+        .order("created_at", { ascending: false })
+        .limit(100) as unknown as { data: Turnover[] | null; error: any };
 
       if (error) {
         console.error("Error loading turnovers:", error);
