@@ -41,6 +41,7 @@ interface ReviewSession {
 
 interface Comment {
   id: string;
+  version_id: string;
   comment_text: string;
   timecode_frame: number | null;
   author_name: string;
@@ -244,7 +245,7 @@ export default function ClientReviewPage() {
 
   const currentVersion = session.versions[currentIndex];
   const versionComments = comments.filter(c => 
-    session.versions[currentIndex]?.id === currentVersion?.id
+    c.version_id === currentVersion?.id
   );
 
   return (

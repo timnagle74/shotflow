@@ -156,17 +156,7 @@ export function RefUpload({
         throw new Error(`Upload failed: ${response.status}`);
       }
 
-      // Upload to Bunny Stream for HLS playback (if video ID was created)
-      if (streamVideoId) {
-        setUploadStatus("transcoding");
-        setStatusMessage("Starting transcode for web playback...");
-
-        // Upload to stream for transcoding
-        const streamUploadUrl = `https://video.bunnycdn.com/library/${process.env.NEXT_PUBLIC_BUNNY_STREAM_LIBRARY_ID}/videos/${streamVideoId}`;
-        
-        // Note: For large files, this should be done server-side
-        // For now, we'll just save the storage URL and trigger transcoding later
-      }
+      // TODO: Stream upload for HLS playback will be handled server-side in a future iteration
 
       // Save to database
       setStatusMessage("Saving reference...");
