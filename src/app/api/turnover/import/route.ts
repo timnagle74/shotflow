@@ -104,90 +104,91 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get next turnover number for this project
-    const { data: maxTo } = await supabase
-      .from("turnovers")
-      .select("turnover_number")
-      .eq("project_id", projectId)
-      .order("turnover_number", { ascending: false })
-      .limit(1)
-      .single();
-    
-    const nextToNumber = (maxTo?.turnover_number || 0) + 1;
+    // Create turnover atomically using RPC (prevents race conditions on turnover_number)
+    const { data: turnoverResult, error: turnoverRpcError } = await supabase
+      .rpc("create_turnover_atomic", {
+        p_project_id: projectId,
+        p_sequence_id: finalSequenceId || null,
+        p_title: sequenceName || sequenceCode || null,
+        p_general_notes: generalVfxNotes || null,
+        p_source_edl_filename: sourceEdlFilename || null,
+        p_status: 'draft',
+      });
 
-    // Create turnover record with draft status
-    const { data: turnover, error: turnoverError } = await supabase
-      .from("turnovers")
-      .insert({
-        project_id: projectId,
-        sequence_id: finalSequenceId,
-        turnover_number: nextToNumber,
-        title: sequenceName || sequenceCode || `Turnover ${nextToNumber}`,
-        general_notes: generalVfxNotes || null,
-        source_edl_filename: sourceEdlFilename || null,
-        status: 'draft',
-      })
-      .select()
-      .single();
-
-    if (turnoverError) {
-      console.error("Turnover create error:", turnoverError);
+    if (turnoverRpcError || !turnoverResult || turnoverResult.length === 0) {
+      console.error("Turnover create error:", turnoverRpcError);
       return NextResponse.json({ error: "Failed to create turnover" }, { status: 500 });
     }
 
-    // Create shots (or find existing ones)
+    const turnover = turnoverResult[0];
+    const nextToNumber = turnover.turnover_number;
+
+    // Create shots using upsert (ON CONFLICT on sequence_id + code)
+    // This handles concurrent imports without failing on duplicates
     const createdShots: any[] = [];
     const turnoverShotLinks: any[] = [];
     const shotCodeToId: Record<string, string> = {};
     const shotCodeToTurnoverShotId: Record<string, string> = {};
     
+    // Batch upsert all shots at once (single query instead of N+1)
+    const shotInserts = shots.map(shot => ({
+      sequence_id: finalSequenceId,
+      code: shot.code,
+      description: shot.vfxNotes || shot.clipName || null,
+      status: "NOT_STARTED" as const,
+      complexity: "MEDIUM" as const,
+      frame_start: shot.sourceIn ? parseTimecodeToFrames(shot.sourceIn) : null,
+      frame_end: shot.sourceOut ? parseTimecodeToFrames(shot.sourceOut) : null,
+    }));
+
+    // Use upsert with onConflict to handle existing shots gracefully
+    const { data: upsertedShots, error: upsertError } = await supabase
+      .from("shots")
+      .upsert(shotInserts, {
+        onConflict: "sequence_id,code",
+        ignoreDuplicates: true, // Don't overwrite existing shots
+      })
+      .select("id, code");
+
+    if (upsertError) {
+      console.error("Shot upsert error:", upsertError);
+      // Fall back: fetch existing shots by code
+    }
+
+    // Build shot code map — first from upsert results
+    if (upsertedShots) {
+      for (const s of upsertedShots) {
+        shotCodeToId[s.code] = s.id;
+        createdShots.push(s);
+      }
+    }
+
+    // For any shots not returned by upsert (already existed with ignoreDuplicates),
+    // fetch them in a single query
+    const missingShotCodes = shots
+      .map(s => s.code)
+      .filter(code => !shotCodeToId[code]);
+
+    if (missingShotCodes.length > 0) {
+      const { data: existingShots } = await supabase
+        .from("shots")
+        .select("id, code")
+        .eq("sequence_id", finalSequenceId)
+        .in("code", missingShotCodes);
+
+      if (existingShots) {
+        for (const s of existingShots) {
+          shotCodeToId[s.code] = s.id;
+          createdShots.push({ id: s.id, code: s.code, existing: true });
+        }
+      }
+    }
+
+    // Build turnover_shot links for all shots we have IDs for
     for (let i = 0; i < shots.length; i++) {
       const shot = shots[i];
-      
-      // Check if shot already exists in this sequence
-      const { data: existingShot } = await supabase
-        .from("shots")
-        .select("id")
-        .eq("sequence_id", finalSequenceId)
-        .eq("code", shot.code)
-        .single();
-
-      let shotId: string;
-      
-      if (existingShot) {
-        shotId = existingShot.id;
-        // Update existing shot with VFX notes if provided
-        if (shot.vfxNotes) {
-          await supabase
-            .from("shots")
-            .update({ description: shot.vfxNotes })
-            .eq("id", shotId);
-        }
-        createdShots.push({ id: shotId, code: shot.code, existing: true });
-      } else {
-        const { data: newShot, error: shotError } = await supabase
-          .from("shots")
-          .insert({
-            sequence_id: finalSequenceId,
-            code: shot.code,
-            description: shot.vfxNotes || shot.clipName || null,
-            status: "NOT_STARTED",
-            complexity: "MEDIUM",
-            frame_start: shot.sourceIn ? parseTimecodeToFrames(shot.sourceIn) : null,
-            frame_end: shot.sourceOut ? parseTimecodeToFrames(shot.sourceOut) : null,
-          })
-          .select()
-          .single();
-
-        if (shotError) {
-          console.error("Shot create error:", shotError);
-          continue;
-        }
-        shotId = newShot.id;
-        createdShots.push(newShot);
-      }
-
-      shotCodeToId[shot.code] = shotId;
+      const shotId = shotCodeToId[shot.code];
+      if (!shotId) continue; // Skip if shot wasn't created/found
 
       turnoverShotLinks.push({
         turnover_id: turnover.id,
@@ -207,12 +208,15 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Insert all turnover_shot links and get their IDs
+    // Insert all turnover_shot links with conflict handling (UNIQUE on turnover_id, shot_id)
     let turnoverShotIds: string[] = [];
     if (turnoverShotLinks.length > 0) {
       const { data: insertedLinks, error: linkError } = await supabase
         .from("turnover_shots")
-        .insert(turnoverShotLinks)
+        .upsert(turnoverShotLinks, {
+          onConflict: "turnover_id,shot_id",
+          ignoreDuplicates: true,
+        })
         .select("id, shot_id");
       
       if (linkError) {
