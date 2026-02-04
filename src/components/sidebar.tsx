@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import {
   LayoutDashboard,
   FolderKanban,
@@ -24,11 +25,13 @@ interface NavItem {
   name: string;
   href: string;
   icon: typeof LayoutDashboard;
+  adminOnly?: boolean;
 }
 
 interface NavSection {
   label: string;
   items: NavItem[];
+  adminOnly?: boolean;
 }
 
 const sections: NavSection[] = [
@@ -52,10 +55,11 @@ const sections: NavSection[] = [
   },
   {
     label: "ADMIN",
+    adminOnly: true,
     items: [
-      { name: "Team & Users", href: "/users", icon: Users },
-      { name: "Vendor Portal", href: "/vendor", icon: Building2 },
-      { name: "Client Portal", href: "/client", icon: Monitor },
+      { name: "Team & Users", href: "/users", icon: Users, adminOnly: true },
+      { name: "Vendor Portal", href: "/vendor", icon: Building2, adminOnly: true },
+      { name: "Client Portal", href: "/client", icon: Monitor, adminOnly: true },
     ],
   },
 ];
@@ -66,6 +70,7 @@ const bottomNav: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { isArtist, loading } = useCurrentUser();
 
   const isActive = (href: string) => {
     if (href === "/turnovers") {
@@ -73,6 +78,15 @@ export function Sidebar() {
     }
     return pathname?.startsWith(href);
   };
+
+  // Filter sections based on role
+  const visibleSections = sections
+    .filter(section => !section.adminOnly || !isArtist)
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => !item.adminOnly || !isArtist),
+    }))
+    .filter(section => section.items.length > 0);
 
   return (
     <aside className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-border bg-card flex flex-col">
@@ -84,7 +98,7 @@ export function Sidebar() {
 
       {/* Navigation sections */}
       <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6">
-        {sections.map((section) => (
+        {visibleSections.map((section) => (
           <div key={section.label}>
             <p className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/60">
               {section.label}

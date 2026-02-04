@@ -12,9 +12,11 @@ import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const { currentUser, loading: userLoading, isArtist } = useCurrentUser();
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [editingProject, setEditingProject] = useState<any>(null);
@@ -26,8 +28,10 @@ export default function ProjectsPage() {
   const [newProject, setNewProject] = useState({ name: "", code: "", status: "ACTIVE" });
 
   useEffect(() => {
-    fetchProjects();
-  }, []);
+    if (!userLoading) {
+      fetchProjects();
+    }
+  }, [userLoading, currentUser]);
 
   async function fetchProjects() {
     if (!supabase) {
@@ -38,12 +42,16 @@ export default function ProjectsPage() {
       const sb = supabase as any;
       const { data, error } = await sb.from("projects").select("*").order("created_at", { ascending: false });
       if (error) throw error;
-      setProjects(data || []);
 
       // Fetch shot counts per project
       if (data && data.length > 0) {
         const stats: Record<string, { total: number; active: number; done: number }> = {};
-        const { data: allShots } = await sb.from("shots").select("id, status, sequence_id");
+        // For artists, only fetch their assigned shots
+        let shotsQuery = sb.from("shots").select("id, status, sequence_id, assigned_to_id");
+        if (isArtist && currentUser) {
+          shotsQuery = shotsQuery.eq("assigned_to_id", currentUser.id);
+        }
+        const { data: allShots } = await shotsQuery;
         const { data: allSeqs } = await sb.from("sequences").select("id, project_id");
         const seqMap = new Map<string, string>();
         (allSeqs || []).forEach((s: any) => seqMap.set(s.id, s.project_id));
@@ -60,6 +68,14 @@ export default function ProjectsPage() {
         }
         setProjectStats(stats);
 
+        // For artists, only show projects that have their assigned shots
+        if (isArtist && currentUser) {
+          const projectsWithShots = data.filter((p: any) => stats[p.id] && stats[p.id].total > 0);
+          setProjects(projectsWithShots);
+        } else {
+          setProjects(data || []);
+        }
+
         // Fetch delivery specs per project
         const { data: specs } = await sb.from("delivery_specs").select("*");
         if (specs) {
@@ -69,6 +85,8 @@ export default function ProjectsPage() {
           }
           setProjectSpecs(specsMap);
         }
+      } else {
+        setProjects(data || []);
       }
     } catch (err) {
       console.error("Failed to fetch projects:", err);
@@ -131,7 +149,7 @@ export default function ProjectsPage() {
     }
   };
 
-  if (initialLoading) {
+  if (initialLoading || userLoading) {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -144,8 +162,11 @@ export default function ProjectsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Projects</h1>
-          <p className="text-muted-foreground mt-1">Manage VFX projects and their settings</p>
+          <p className="text-muted-foreground mt-1">
+            {isArtist ? "Projects with shots assigned to you" : "Manage VFX projects and their settings"}
+          </p>
         </div>
+        {!isArtist && (
         <Dialog open={showCreate} onOpenChange={setShowCreate}>
           <DialogTrigger asChild>
             <Button><Plus className="h-4 w-4 mr-2" />New Project</Button>
@@ -191,17 +212,24 @@ export default function ProjectsPage() {
             </div>
           </DialogContent>
         </Dialog>
+        )}
       </div>
 
       {projects.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <FolderKanban className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <h3 className="text-lg font-semibold mb-1">No projects yet</h3>
-            <p className="text-sm text-muted-foreground mb-4">Create your first project to get started.</p>
-            <Button onClick={() => setShowCreate(true)}>
-              <Plus className="h-4 w-4 mr-2" />New Project
-            </Button>
+            <h3 className="text-lg font-semibold mb-1">
+              {isArtist ? "No projects with your shots" : "No projects yet"}
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              {isArtist ? "Projects will appear here once shots are assigned to you." : "Create your first project to get started."}
+            </p>
+            {!isArtist && (
+              <Button onClick={() => setShowCreate(true)}>
+                <Plus className="h-4 w-4 mr-2" />New Project
+              </Button>
+            )}
           </CardContent>
         </Card>
       ) : (
@@ -267,9 +295,11 @@ export default function ProjectsPage() {
                       <Link href={`/shots?project=${project.id}`} className="flex-1">
                         <Button variant="outline" size="sm" className="w-full">View Shots</Button>
                       </Link>
-                      <Button variant="ghost" size="icon" className="shrink-0" onClick={() => handleOpenSettings(project)}>
-                        <Settings className="h-4 w-4" />
-                      </Button>
+                      {!isArtist && (
+                        <Button variant="ghost" size="icon" className="shrink-0" onClick={() => handleOpenSettings(project)}>
+                          <Settings className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </CardContent>

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { shotStatusColors, shotStatusLabels, cn } from "@/lib/utils";
 import { Film, Clapperboard, CheckCircle, Clock, AlertTriangle, Users, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 interface DashboardStats {
   activeProjects: number;
@@ -33,10 +34,13 @@ export default function DashboardPage() {
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [activeProjectName, setActiveProjectName] = useState<string>("");
   const [projectSummaries, setProjectSummaries] = useState<ProjectSummary[]>([]);
+  const { currentUser, loading: userLoading, isArtist } = useCurrentUser();
 
   useEffect(() => {
-    fetchDashboard();
-  }, []);
+    if (!userLoading) {
+      fetchDashboard();
+    }
+  }, [userLoading, currentUser]);
 
   async function fetchDashboard() {
     if (!supabase) {
@@ -44,25 +48,51 @@ export default function DashboardPage() {
       return;
     }
     try {
-      const { data: projects } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
+      const sb = supabase as any;
+      const { data: projects } = await sb.from("projects").select("*").order("created_at", { ascending: false });
       const activeProjects = (projects as any[])?.filter(p => p.status === "ACTIVE") || [];
-      const { data: shots } = await supabase.from("shots").select("id, status, sequence_id");
+
+      // Fetch shots — for artists, only their assigned shots
+      let shotsQuery = sb.from("shots").select("id, status, sequence_id, assigned_to_id");
+      if (isArtist && currentUser) {
+        shotsQuery = shotsQuery.eq("assigned_to_id", currentUser.id);
+      }
+      const { data: shots } = await shotsQuery;
       const allShots = (shots || []) as any[];
-      const { data: sequences } = await supabase.from("sequences").select("id, project_id");
+
+      const { data: sequences } = await sb.from("sequences").select("id, project_id");
       const seqMap = new Map<string, string>();
       ((sequences || []) as any[]).forEach(s => seqMap.set(s.id, s.project_id));
-      const { count: userCount } = await supabase.from("users").select("id", { count: "exact", head: true });
+
+      // For artists, don't show team member count
+      let teamMembers = 0;
+      if (!isArtist) {
+        const { count: userCount } = await sb.from("users").select("id", { count: "exact", head: true });
+        teamMembers = userCount || 0;
+      }
+
+      // For artists, only count projects that contain their assigned shots
+      let relevantProjects = projects as any[] || [];
+      if (isArtist && currentUser) {
+        const projectIdsWithShots = new Set<string>();
+        allShots.forEach((shot: any) => {
+          const projectId = seqMap.get(shot.sequence_id);
+          if (projectId) projectIdsWithShots.add(projectId);
+        });
+        relevantProjects = relevantProjects.filter(p => projectIdsWithShots.has(p.id));
+      }
+      const relevantActiveProjects = relevantProjects.filter(p => p.status === "ACTIVE");
 
       setStats({
-        activeProjects: activeProjects.length,
+        activeProjects: relevantActiveProjects.length,
         totalShots: allShots.length,
         inProgress: allShots.filter(s => s.status === "IN_PROGRESS").length,
         approved: allShots.filter(s => s.status === "APPROVED" || s.status === "FINAL").length,
         needsReview: allShots.filter(s => s.status === "INTERNAL_REVIEW" || s.status === "CLIENT_REVIEW").length,
-        teamMembers: userCount || 0,
+        teamMembers,
       });
 
-      const mainProject = activeProjects[0] || projects?.[0];
+      const mainProject = relevantActiveProjects[0] || relevantProjects[0];
       if (mainProject) {
         setActiveProjectName(mainProject.name);
         const projectSeqIds = ((sequences || []) as any[]).filter(s => s.project_id === mainProject.id).map(s => s.id);
@@ -74,7 +104,7 @@ export default function DashboardPage() {
         setStatusCounts(counts);
       }
 
-      const summaries: ProjectSummary[] = ((projects || []) as any[]).map(project => {
+      const summaries: ProjectSummary[] = relevantProjects.map(project => {
         const projectSeqIds = ((sequences || []) as any[]).filter(s => s.project_id === project.id).map(s => s.id);
         const projectShots = allShots.filter(s => projectSeqIds.includes(s.sequence_id));
         const done = projectShots.filter(s => s.status === "APPROVED" || s.status === "FINAL").length;
@@ -95,7 +125,7 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) {
+  if (loading || userLoading) {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -103,13 +133,14 @@ export default function DashboardPage() {
     );
   }
 
+  // Build stat cards — hide "Team Members" for artists
   const statCards = [
     { label: "Active Projects", value: stats.activeProjects, icon: Film, color: "text-blue-400" },
-    { label: "Total Shots", value: stats.totalShots, icon: Clapperboard, color: "text-purple-400" },
+    { label: isArtist ? "My Shots" : "Total Shots", value: stats.totalShots, icon: Clapperboard, color: "text-purple-400" },
     { label: "In Progress", value: stats.inProgress, icon: Clock, color: "text-amber-400" },
     { label: "Approved", value: stats.approved, icon: CheckCircle, color: "text-green-400" },
     { label: "Needs Review", value: stats.needsReview, icon: AlertTriangle, color: "text-orange-400" },
-    { label: "Team Members", value: stats.teamMembers, icon: Users, color: "text-cyan-400" },
+    ...(!isArtist ? [{ label: "Team Members", value: stats.teamMembers, icon: Users, color: "text-cyan-400" }] : []),
   ];
 
   const totalStatusShots = Object.values(statusCounts).reduce((a, b) => a + b, 0);
@@ -119,20 +150,28 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground mt-1">Pipeline overview across all active projects</p>
+        <p className="text-muted-foreground mt-1">
+          {isArtist ? "Your assigned shots overview" : "Pipeline overview across all active projects"}
+        </p>
       </div>
 
       {isEmpty ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Film className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <h3 className="text-lg font-semibold mb-1">Welcome to ShotFlow</h3>
-            <p className="text-sm text-muted-foreground">Create a project and start adding shots to see your pipeline dashboard.</p>
+            <h3 className="text-lg font-semibold mb-1">
+              {isArtist ? "No shots assigned yet" : "Welcome to ShotFlow"}
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              {isArtist
+                ? "Once shots are assigned to you, they\u2019ll appear here."
+                : "Create a project and start adding shots to see your pipeline dashboard."}
+            </p>
           </CardContent>
         </Card>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className={cn("grid gap-4 md:grid-cols-2 lg:grid-cols-3", isArtist ? "xl:grid-cols-5" : "xl:grid-cols-6")}>
             {statCards.map((stat) => (
               <Card key={stat.label}>
                 <CardContent className="p-4">

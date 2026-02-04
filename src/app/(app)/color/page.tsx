@@ -9,6 +9,7 @@ import { exportCDL, exportCC, exportProjectCDL, downloadFile, type CDLData } fro
 import { parseCdlFile, getCdlIdentifier, formatCdlForDisplay, type CdlValues } from "@/lib/cdl-parser";
 import { Palette, Download, Upload, FileText, Star, Package, AlertCircle, CheckCircle2, X, Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 function fmtVal(n: number) { return n.toFixed(4); }
 
@@ -73,6 +74,7 @@ interface ParsedCdlFile {
 }
 
 export default function ColorManagementPage() {
+  const { currentUser, loading: userLoading, isArtist } = useCurrentUser();
   const [selectedProject, setSelectedProject] = useState<string>("all");
   const [parsedFiles, setParsedFiles] = useState<ParsedCdlFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -86,8 +88,10 @@ export default function ColorManagementPage() {
   const [luts, setLuts] = useState<LutFile[]>([]);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (!userLoading) {
+      fetchData();
+    }
+  }, [userLoading, currentUser]);
 
   async function fetchData() {
     if (!supabase) {
@@ -96,18 +100,35 @@ export default function ColorManagementPage() {
     }
     try {
       const sb = supabase as any;
+      
+      // For artists, only fetch their assigned shots
+      let shotsQuery = sb.from("shots").select("id, code, sequence_id, assigned_to_id");
+      if (isArtist && currentUser) {
+        shotsQuery = shotsQuery.eq("assigned_to_id", currentUser.id);
+      }
+      
       const [projectsRes, shotsRes, seqRes, cdlsRes, lutsRes] = await Promise.all([
         sb.from("projects").select("id, name, code").order("name"),
-        sb.from("shots").select("id, code, sequence_id"),
+        shotsQuery,
         sb.from("sequences").select("id, project_id"),
         sb.from("shot_cdls").select("*"),
         sb.from("lut_files").select("*"),
       ]);
+      
+      const allShots = shotsRes.data || [];
       setProjects(projectsRes.data || []);
-      setShots(shotsRes.data || []);
+      setShots(allShots);
       setSequences(seqRes.data || []);
-      setCdls(cdlsRes.data || []);
-      setLuts(lutsRes.data || []);
+      
+      // For artists, filter CDLs/LUTs to only their shots
+      if (isArtist && currentUser) {
+        const shotIds = new Set(allShots.map((s: any) => s.id));
+        setCdls((cdlsRes.data || []).filter((c: any) => shotIds.has(c.shot_id)));
+        setLuts((lutsRes.data || []).filter((l: any) => !l.shot_id || shotIds.has(l.shot_id)));
+      } else {
+        setCdls(cdlsRes.data || []);
+        setLuts(lutsRes.data || []);
+      }
     } catch (err) {
       console.error("Failed to fetch color data:", err);
     } finally {
@@ -239,7 +260,7 @@ export default function ColorManagementPage() {
   const totalParsedCdls = parsedFiles.reduce((sum, f) => sum + f.cdls.length, 0);
   const totalWarnings = parsedFiles.reduce((sum, f) => sum + f.warnings.length, 0);
 
-  if (loading) {
+  if (loading || userLoading) {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

@@ -14,6 +14,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useSearchParams } from "next/navigation";
 import { CountSheetExport } from "@/components/count-sheet-export";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import type { ShotStatus } from "@/lib/database.types";
 import {
   DndContext,
@@ -160,6 +161,7 @@ function ShotCardOverlay({ shot }: { shot: EnrichedShot }) {
 function ShotsPageContent() {
   const searchParams = useSearchParams();
   const projectFromUrl = searchParams.get("project");
+  const { currentUser, loading: userLoading, isArtist, canSeeAllShots } = useCurrentUser();
   
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -225,7 +227,7 @@ function ShotsPageContent() {
   // Load shots when project changes
   useEffect(() => {
     async function fetchShots() {
-      if (!supabase || !selectedProject) return;
+      if (!supabase || !selectedProject || userLoading) return;
 
       try {
         // Get sequence IDs for this project
@@ -238,10 +240,17 @@ function ShotsPageContent() {
         }
 
         // Fetch shots for these sequences
-        const { data: shotsData } = await supabase
+        // For artists without can_view_all_shots, only show their assigned shots
+        let shotsQuery = (supabase as any)
           .from("shots")
           .select("*")
-          .in("sequence_id", seqIds) as { data: Shot[] | null; error: any };
+          .in("sequence_id", seqIds);
+        
+        if (isArtist && !canSeeAllShots && currentUser) {
+          shotsQuery = shotsQuery.eq("assigned_to_id", currentUser.id);
+        }
+        
+        const { data: shotsData } = shotsQuery as { data: Shot[] | null; error: any };
 
         if (shotsData) {
           setShots(shotsData);
@@ -269,7 +278,7 @@ function ShotsPageContent() {
     }
 
     fetchShots();
-  }, [selectedProject, sequences]);
+  }, [selectedProject, sequences, userLoading, currentUser, isArtist, canSeeAllShots]);
 
   // Update selected project when URL changes
   useEffect(() => {
@@ -333,7 +342,7 @@ function ShotsPageContent() {
     }
   }, [enrichedShots]);
 
-  if (loading) {
+  if (loading || userLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -346,7 +355,9 @@ function ShotsPageContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Shots Board</h1>
-          <p className="text-muted-foreground mt-1">Track and manage shots across sequences</p>
+          <p className="text-muted-foreground mt-1">
+            {isArtist && !canSeeAllShots ? "Your assigned shots" : "Track and manage shots across sequences"}
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <CountSheetExport 

@@ -48,6 +48,7 @@ import {
 import { aleToSourceMedia, summarizeSourceMedia } from "@/lib/source-media-importer";
 import type { SourceMediaInsert } from "@/lib/source-media.types";
 import { createBrowserClient } from "@supabase/ssr";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 interface ImportedALE {
   filename: string;
@@ -62,6 +63,7 @@ interface Project {
 }
 
 export default function SourceMediaPage() {
+  const { currentUser, loading: userLoading, isArtist } = useCurrentUser();
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const [importedALEs, setImportedALEs] = useState<ImportedALE[]>([]);
@@ -108,37 +110,74 @@ export default function SourceMediaPage() {
   // Load existing source media when project changes
   useEffect(() => {
     async function loadSourceMedia() {
-      if (!selectedProjectId) return;
+      if (!selectedProjectId || userLoading) return;
       
-      // Get records for table display (limited)
-      const { data, count } = await supabase
-        .from('source_media')
-        .select('*', { count: 'exact' })
-        .eq('project_id', selectedProjectId)
-        .order('clip_name')
-        .limit(1000);
-      
-      if (data) {
-        setSavedRecords(data);
-        setSavedRecordsTotal(count || data.length);
-      }
-      
-      // Get real stats using database function (avoids row limits)
-      const { data: stats } = await supabase.rpc('get_source_media_stats', {
-        p_project_id: selectedProjectId
-      });
-      
-      if (stats) {
-        setSavedStats({
-          shootDates: stats.shootDates || 0,
-          cameras: stats.cameras || 0,
-          scenes: stats.scenes || 0,
-          withCDL: stats.withCDL || 0,
+      const sb = supabase as any;
+
+      if (isArtist && currentUser) {
+        // For artists: get source_media_ids from their assigned shots
+        const { data: artistShots } = await sb
+          .from("shots")
+          .select("source_media_id")
+          .eq("assigned_to_id", currentUser.id)
+          .not("source_media_id", "is", null);
+        
+        const sourceMediaIds = (artistShots || [])
+          .map((s: any) => s.source_media_id)
+          .filter((id: any) => id != null);
+        
+        if (sourceMediaIds.length === 0) {
+          setSavedRecords([]);
+          setSavedRecordsTotal(0);
+          setSavedStats(null);
+          return;
+        }
+
+        const { data, count } = await sb
+          .from('source_media')
+          .select('*', { count: 'exact' })
+          .eq('project_id', selectedProjectId)
+          .in('id', sourceMediaIds)
+          .order('clip_name')
+          .limit(1000);
+        
+        if (data) {
+          setSavedRecords(data);
+          setSavedRecordsTotal(count || data.length);
+        }
+        // Compute stats from the filtered records
+        setSavedStats(null);
+      } else {
+        // Non-artist: show everything
+        const { data, count } = await supabase
+          .from('source_media')
+          .select('*', { count: 'exact' })
+          .eq('project_id', selectedProjectId)
+          .order('clip_name')
+          .limit(1000);
+        
+        if (data) {
+          setSavedRecords(data);
+          setSavedRecordsTotal(count || data.length);
+        }
+        
+        // Get real stats using database function (avoids row limits)
+        const { data: stats } = await (supabase as any).rpc('get_source_media_stats', {
+          p_project_id: selectedProjectId
         });
+        
+        if (stats) {
+          setSavedStats({
+            shootDates: stats.shootDates || 0,
+            cameras: stats.cameras || 0,
+            scenes: stats.scenes || 0,
+            withCDL: stats.withCDL || 0,
+          });
+        }
       }
     }
     loadSourceMedia();
-  }, [selectedProjectId]);
+  }, [selectedProjectId, userLoading, currentUser]);
 
   // Save to database (batched to avoid payload size limits)
   const CLIENT_BATCH_SIZE = 200; // Send 200 records per request to stay under Vercel limits
@@ -313,7 +352,7 @@ export default function SourceMediaPage() {
     );
   });
 
-  if (isLoading) {
+  if (isLoading || userLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -327,7 +366,9 @@ export default function SourceMediaPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Source Media</h1>
           <p className="text-muted-foreground">
-            Import dailies metadata from ALE files. Shots will auto-link to this master database.
+            {isArtist
+              ? "Source media linked to your assigned shots."
+              : "Import dailies metadata from ALE files. Shots will auto-link to this master database."}
           </p>
         </div>
         <div className="flex items-center gap-3">
