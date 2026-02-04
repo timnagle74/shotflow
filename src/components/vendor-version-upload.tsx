@@ -127,7 +127,6 @@ export function VendorVersionUpload({
               const uploadRes = await fetch(prepareData.storageUpload.url, {
                 method: "PUT",
                 headers: {
-                  AccessKey: prepareData.storageUpload.accessKey,
                   "Content-Type": "application/octet-stream",
                 },
                 body: selectedFile,

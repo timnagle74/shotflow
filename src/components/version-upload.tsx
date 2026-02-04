@@ -155,7 +155,6 @@ export function VersionUpload({
           prepareData.storageUpload.url,
           videoFile.file,
           {
-            "AccessKey": prepareData.storageUpload.accessKey,
             "Content-Type": "application/octet-stream",
           },
           (progress) => setUploadProgress(progress)

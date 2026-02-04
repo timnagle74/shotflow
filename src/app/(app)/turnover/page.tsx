@@ -500,7 +500,7 @@ export default function TurnoverPage() {
           const uploadRes = await fetch(config.uploadUrl, {
             method: "PUT",
             headers: {
-              "AccessKey": config.accessKey,
+              // Signed URL - no raw key needed
               "Content-Type": "application/octet-stream",
             },
             body: turnoverFile.file,
@@ -633,7 +633,7 @@ export default function TurnoverPage() {
           const uploadRes = await fetch(config.uploadUrl, {
             method: "PUT",
             headers: {
-              "AccessKey": config.accessKey,
+              // Signed URL - no raw key needed
               "Content-Type": "application/octet-stream",
             },
             body: turnoverFile.file,
@@ -759,7 +759,7 @@ export default function TurnoverPage() {
           const uploadRes = await fetch(config.uploadUrl, {
             method: "PUT",
             headers: {
-              "AccessKey": config.accessKey,
+              // Signed URL - no raw key needed
               "Content-Type": "application/octet-stream",
             },
             body: turnoverFile.file,

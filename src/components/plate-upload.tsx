@@ -158,14 +158,13 @@ export function PlateUpload({
           throw new Error(errorData.error || "Failed to prepare upload");
         }
 
-        const { uploadUrl, accessKey, storagePath, cdnUrl } = await prepareResponse.json();
+        const { uploadUrl, storagePath, cdnUrl } = await prepareResponse.json();
 
-        // Upload to Bunny Storage
+        // Upload to Bunny Storage using signed URL (no raw key needed)
         const response = await uploadWithProgress(
           uploadUrl,
           plate.file,
           {
-            AccessKey: accessKey,
             "Content-Type": "application/octet-stream",
           },
           (progress) => {

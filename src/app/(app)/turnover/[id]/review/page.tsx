@@ -237,12 +237,12 @@ export default function TurnoverReviewPage() {
       });
       
       if (!res.ok) throw new Error("Failed to prepare upload");
-      const { uploadUrl, accessKey, ref } = await res.json();
+      const { uploadUrl, ref } = await res.json();
       
-      // Upload to Bunny
+      // Upload to Bunny using signed URL (no raw key needed)
       const uploadRes = await fetch(uploadUrl, {
         method: "PUT",
-        headers: { "AccessKey": accessKey, "Content-Type": "application/octet-stream" },
+        headers: { "Content-Type": "application/octet-stream" },
         body: file,
       });
       
@@ -280,12 +280,12 @@ export default function TurnoverReviewPage() {
       });
       
       if (!res.ok) throw new Error("Failed to prepare upload");
-      const { uploadUrl, accessKey, plate } = await res.json();
+      const { uploadUrl, plate } = await res.json();
       
-      // Upload to Bunny
+      // Upload to Bunny using signed URL (no raw key needed)
       const uploadRes = await fetch(uploadUrl, {
         method: "PUT",
-        headers: { "AccessKey": accessKey, "Content-Type": "application/octet-stream" },
+        headers: { "Content-Type": "application/octet-stream" },
         body: file,
       });
       
