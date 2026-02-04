@@ -40,6 +40,8 @@ export interface FilmScribeLocator {
   text: string;
   clipName: string | null;
   color: string | null;
+  sourceTimecode: string | null;  // Source TC from <Source><Timecode Type="Start TC">
+  camera: string | null;          // Derived from clip name prefix (A, B, C, D, etc.)
   // Parsed from VFX ID in marker text (e.g., VFX_44_0010)
   vfxScene: string | null;      // "44"
   vfxSequence: string | null;   // "0010"
@@ -171,6 +173,11 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
     const textMatch = locContent.match(/<Text>([^<]*)<\/Text>/);
     const clipMatch = locContent.match(/<ClipName>([^<]*)<\/ClipName>/);
     const colorMatch = locContent.match(/<Color>([^<]*)<\/Color>/);
+    const srcTcMatch = locContent.match(/<Source>[\s\S]*?<Timecode Type="Start TC">([^<]*)<\/Timecode>/);
+    
+    // Derive camera from clip name prefix (e.g., A_0111C003 → "A", B_0111C013 → "B", D011C0002 → "D")
+    const clipName = clipMatch?.[1] || null;
+    const cameraFromClip = clipName?.match(/^([A-Z])[\s_]/)?.[1] || clipName?.match(/^([A-Z])\d/)?.[1] || null;
     
     if (textMatch) {
       const markerText = textMatch[1];
@@ -195,8 +202,10 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
         timecode: tcMatch?.[1] || '',
         frame: parseInt(frameMatch?.[1] || '0', 10),
         text: markerText,
-        clipName: clipMatch?.[1] || null,
+        clipName: clipName,
         color: colorMatch?.[1] || null,
+        sourceTimecode: srcTcMatch?.[1] || null,
+        camera: cameraFromClip,
         vfxScene,
         vfxSequence,
         vfxShotCode,
@@ -305,20 +314,29 @@ export function filmScribeToShots(result: FilmScribeParseResult): Array<{
   
   // Case 2: Events don't have clips — build shots from locators directly (REEL01 style)
   // Each locator with a VFX code becomes a shot
+  // Find the matching event to get duration
   return result.locators
     .filter(loc => loc.vfxShotCode !== null && loc.clipName !== null && !loc.clipName.startsWith('Opt'))
-    .map(locator => ({
-      code: locator.vfxShotCode!,
-      clipName: locator.clipName,
-      cameraRoll: null, // Not available in locator-only mode
-      sourceIn: null,
-      sourceOut: null,
-      recordIn: locator.timecode,
-      recordOut: null,
-      durationFrames: 0, // Not available in locator-only mode
-      vfxNotes: locator.vfxDescription,
-      scene: null,
-      take: null,
-      camera: null,
-    }));
+    .map(locator => {
+      // Find the enclosing event to get duration
+      const locFrame = locator.frame || tcToFrames(locator.timecode, result.editRate);
+      const matchingEvent = result.events.find(
+        e => locFrame >= e.recordInFrame && locFrame <= e.recordOutFrame
+      );
+      
+      return {
+        code: locator.vfxShotCode!,
+        clipName: locator.clipName,
+        cameraRoll: null,
+        sourceIn: locator.sourceTimecode || null,
+        sourceOut: null,
+        recordIn: locator.timecode,
+        recordOut: matchingEvent?.recordOut || null,
+        durationFrames: matchingEvent?.length || 0,
+        vfxNotes: locator.vfxDescription,
+        scene: locator.vfxScene,
+        take: null,
+        camera: locator.camera,
+      };
+    });
 }
