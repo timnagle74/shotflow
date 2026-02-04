@@ -733,80 +733,14 @@ export default function TurnoverPage() {
       const projectId = selectedProject;
       
       // Build file list for upload preparation
-      const allFiles = [
-        ...refFiles.map(f => ({ name: f.file.name, type: 'ref' as const })),
-        ...plateFiles.map(f => ({ name: f.file.name, type: 'plate' as const })),
-      ];
-
-      let uploadedFiles: Array<{
-        originalName: string;
-        type: 'ref' | 'plate';
-        storagePath: string;
-        cdnUrl: string;
-        fileSize: number;
-      }> = [];
-
-      // Upload files directly to Bunny if we have any
-      if (allFiles.length > 0) {
-        setImportStatus("Getting upload URLs...");
-        
-        const prepareRes = await fetch("/api/turnover/prepare-uploads", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, files: allFiles }),
-        });
-
-        if (!prepareRes.ok) {
-          throw new Error("Failed to prepare uploads");
-        }
-
-        const { uploads } = await prepareRes.json();
-
-        const allTurnoverFiles = [...refFiles, ...plateFiles];
-        for (let i = 0; i < uploads.length; i++) {
-          const config = uploads[i];
-          const turnoverFile = allTurnoverFiles.find(f => f.file.name === config.originalName);
-          if (!turnoverFile) continue;
-
-          setImportStatus(`Uploading ${i + 1}/${uploads.length}: ${config.originalName}`);
-
-          try {
-            const uploadRes = await fetch(config.uploadUrl, {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/octet-stream",
-              },
-              body: turnoverFile.file,
-            });
-
-            if (uploadRes.ok || uploadRes.status === 201) {
-              uploadedFiles.push({
-                originalName: config.originalName,
-                type: config.type,
-                storagePath: config.storagePath,
-                cdnUrl: config.cdnUrl,
-                fileSize: turnoverFile.file.size,
-              });
-            } else {
-              console.error(`Upload failed for ${config.originalName}: ${uploadRes.status} ${uploadRes.statusText}`);
-            }
-          } catch (uploadErr) {
-            console.error(`Upload error for ${config.originalName}:`, uploadErr);
-          }
-        }
-      }
-
-      if (allFiles.length > 0 && uploadedFiles.length === 0) {
-        console.warn("All file uploads failed - refs/plates won't be linked");
-      }
-
-      setImportStatus(`Creating shots...${uploadedFiles.length > 0 ? ` (${uploadedFiles.length} files uploaded)` : ''}`);
+      setImportStatus("Creating shots...");
       
       const seqName = filmscribeResult.title || xmlFileName.replace(/\.xml$/i, "");
       
       // Convert FilmScribe events to shots format
       const shots = filmScribeToShots(filmscribeResult);
 
+      // Step 1: Create turnover + shots (no files yet)
       const response = await fetch("/api/turnover/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -816,7 +750,7 @@ export default function TurnoverPage() {
           sequenceName: seqName,
           sequenceCode: seqName.replace(/[^a-zA-Z0-9]/g, "_").toUpperCase().slice(0, 20),
           shots,
-          uploadedFiles,
+          uploadedFiles: [],
           generalVfxNotes: generalVfxNotes.trim() || null,
           sourceEdlFilename: xmlFileName || null,
         }),
@@ -828,19 +762,96 @@ export default function TurnoverPage() {
       }
 
       const result = await response.json();
+      const turnoverId = result.turnoverId;
       
+      // Step 2: Upload refs and plates via upload-media (creates DB records server-side)
+      // Build shot code → ID map for plate matching
+      const shotCodeMap: Record<string, string> = {};
+      if (result.shots) {
+        for (const s of result.shots) {
+          shotCodeMap[s.code] = s.id;
+        }
+      }
+      const shotCodes = Object.keys(shotCodeMap);
+
+      const allTurnoverFiles = [...refFiles, ...plateFiles];
+      let uploadedCount = 0;
+      let failedCount = 0;
+
+      for (let i = 0; i < allTurnoverFiles.length; i++) {
+        const tf = allTurnoverFiles[i];
+        const fileType = tf.type;
+        setImportStatus(`Uploading ${i + 1}/${allTurnoverFiles.length}: ${tf.file.name}`);
+
+        // For plates, match to a shot by filename
+        let shotId: string | undefined;
+        if (fileType === 'plate') {
+          const lowerName = tf.file.name.toLowerCase();
+          const matchedCode = shotCodes.find(code => lowerName.includes(code.toLowerCase()));
+          shotId = matchedCode ? shotCodeMap[matchedCode] : undefined;
+          if (!shotId) {
+            console.warn(`Plate ${tf.file.name} didn't match any shot codes, skipping`);
+            failedCount++;
+            continue;
+          }
+        }
+
+        try {
+          // Create DB record + get signed upload URL via server
+          const mediaRes = await fetch("/api/turnover/upload-media", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              turnoverId,
+              projectId,
+              type: fileType,
+              ...(shotId ? { shotId } : {}),
+              filename: tf.file.name,
+              fileSize: tf.file.size,
+            }),
+          });
+
+          if (!mediaRes.ok) {
+            console.error(`upload-media failed for ${tf.file.name}:`, await mediaRes.text());
+            failedCount++;
+            continue;
+          }
+
+          const mediaData = await mediaRes.json();
+          
+          // Upload file to Bunny using signed URL
+          try {
+            const uploadRes = await fetch(mediaData.uploadUrl, {
+              method: "PUT",
+              headers: { "Content-Type": "application/octet-stream" },
+              body: tf.file,
+            });
+            
+            if (!uploadRes.ok && uploadRes.status !== 201) {
+              console.error(`Bunny upload failed for ${tf.file.name}: ${uploadRes.status}`);
+            }
+          } catch (bunnyErr) {
+            console.error(`Bunny upload error for ${tf.file.name}:`, bunnyErr);
+            // DB record still exists — file can be re-uploaded later
+          }
+
+          uploadedCount++;
+        } catch (err) {
+          console.error(`Upload error for ${tf.file.name}:`, err);
+          failedCount++;
+        }
+      }
+
       const toNum = result.turnoverNumber ? `TO${result.turnoverNumber}: ` : '';
-      const refsInfo = result.refs?.created > 0 ? ` | ${result.refs.matched}/${result.refs.created} refs matched` : '';
-      const platesInfo = result.plates?.created > 0 ? ` | ${result.plates.matched}/${result.plates.created} plates matched` : '';
-      const uploadWarning = (allFiles.length > 0 && uploadedFiles.length === 0) ? ' ⚠️ File uploads failed' : 
-                            (allFiles.length > 0 && uploadedFiles.length < allFiles.length) ? ` ⚠️ ${allFiles.length - uploadedFiles.length} file(s) failed to upload` : '';
-      setImportStatus(`${toNum}Created ${result.shotsCreated} shot(s)${refsInfo}${platesInfo}${uploadWarning}`);
+      const fileInfo = allTurnoverFiles.length > 0 ? ` | ${uploadedCount} file(s) uploaded` : '';
+      const failInfo = failedCount > 0 ? ` ⚠️ ${failedCount} failed` : '';
+      setImportStatus(`${toNum}Created ${result.shotsCreated} shot(s)${fileInfo}${failInfo}`);
       setFilmscribeImported(true);
       
       if (result.reviewUrl) {
         setTimeout(() => {
           router.push(result.reviewUrl);
-        }, uploadWarning ? 3000 : 1500);
+        }, failedCount > 0 ? 3000 : 1500);
       }
     } catch (err) {
       console.error("Import error:", err);
