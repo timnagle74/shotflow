@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN || 'https://vz-3b0f7864-a89.b-cdn.net';
+const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN;
 
 export async function GET(
   request: NextRequest,
@@ -10,6 +10,10 @@ export async function GET(
   
   if (!videoId) {
     return NextResponse.json({ error: 'Missing videoId' }, { status: 400 });
+  }
+
+  if (!BUNNY_STREAM_CDN) {
+    return NextResponse.json({ error: 'CDN not configured' }, { status: 500 });
   }
 
   try {
