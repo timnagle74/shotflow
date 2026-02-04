@@ -194,7 +194,7 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
         vfxScene = vfxMatch[1];
         vfxSequence = vfxMatch[2];
         // Pad scene to 3 digits, keep sequence as-is (already 4 digits)
-        vfxShotCode = `${vfxScene.padStart(3, '0')}_${vfxSequence}`;
+        vfxShotCode = `${vfxScene}_${vfxSequence}`;
         vfxDescription = vfxMatch[3]?.trim() || null;
       }
       
