@@ -56,7 +56,7 @@ function formatTime(seconds: number): string {
 
 // Helper to get Bunny Stream CDN URL
 const BUNNY_STREAM_CDN = typeof window !== 'undefined' 
-  ? (process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN || 'https://vz-3b0f7864-a89.b-cdn.net')
+  ? (process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN || '')
   : '';
 
 export function VideoPlayer({

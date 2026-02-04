@@ -1071,10 +1071,6 @@ export interface Database {
           title: string;
         }[];
       };
-      get_next_turnover_number: {
-        Args: { p_project_id: string };
-        Returns: number;
-      };
     };
     Enums: {
       user_role: UserRole;
