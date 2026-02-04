@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
       sequence_id: finalSequenceId,
       code: shot.code,
       description: shot.vfxNotes || shot.clipName || null,
+      notes: shot.vfxNotes || null,
       status: "NOT_STARTED" as const,
       complexity: "MEDIUM" as const,
       frame_start: shot.sourceIn ? parseTimecodeToFrames(shot.sourceIn) : null,
