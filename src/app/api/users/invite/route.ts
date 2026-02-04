@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import type { UserRole } from "@/lib/database.types";
+import { authenticateRequest, requireAdmin, getServiceClient } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
+    // Auth: only ADMIN/SUPERVISOR/PRODUCER can invite users
+    const auth = await authenticateRequest(req);
+    if (auth.error) return auth.error;
+    const roleCheck = requireAdmin(auth.user);
+    if (roleCheck) return roleCheck;
+
     const { email, name, role } = (await req.json()) as {
       email: string;
       name: string;
@@ -17,19 +23,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return NextResponse.json(
-        { error: "Server not configured for user management" },
-        { status: 500 }
-      );
-    }
-
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    }) as any;
+    const adminClient = getServiceClient() as any;
 
     // Check if auth user already exists
     const { data: existingUsers } = await adminClient.auth.admin.listUsers();

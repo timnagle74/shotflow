@@ -1,18 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
+import { authenticateRequest, requireInternal, getServiceClient } from "@/lib/auth";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
-const BUNNY_STORAGE_HOSTNAME = process.env.BUNNY_STORAGE_HOSTNAME;
+const BUNNY_STORAGE_HOSTNAME = process.env.BUNNY_STORAGE_HOSTNAME || "storage.bunnycdn.com";
 const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
 const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
 const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN;
 
+/**
+ * Generate a signed upload URL for Bunny Storage (no raw key exposed).
+ */
+function generateSignedUploadUrl(storagePath: string, expiresIn = 3600): string {
+  const expiry = Math.floor(Date.now() / 1000) + expiresIn;
+  const fullUrl = `https://${BUNNY_STORAGE_HOSTNAME}/${BUNNY_STORAGE_ZONE}${storagePath}`;
+  const signatureBase = BUNNY_STORAGE_PASSWORD + storagePath + expiry;
+  const token = crypto
+    .createHash("sha256")
+    .update(signatureBase)
+    .digest("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+  return `${fullUrl}?token=${token}&expires=${expiry}`;
+}
+
 export async function POST(request: NextRequest) {
   try {
+    // Auth: internal team only
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+    const roleCheck = requireInternal(auth.user);
+    if (roleCheck) return roleCheck;
+
     const body = await request.json();
     const { turnoverId, projectId, type, shotId, filename, fileSize } = body as {
       turnoverId: string;
@@ -31,15 +53,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Shot ID required for plates" }, { status: 400 });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = getServiceClient();
 
     // Generate storage path
     const timestamp = Date.now();
     const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
     const storagePath = `/${projectId}/turnovers/${turnoverId}/${type}s/${timestamp}_${safeName}`;
     
-    // Prepare Bunny upload URL
-    const uploadUrl = `https://${BUNNY_STORAGE_HOSTNAME}/${BUNNY_STORAGE_ZONE}${storagePath}`;
+    // Prepare signed Bunny upload URL (no raw key exposed)
+    const uploadUrl = generateSignedUploadUrl(storagePath);
     const cdnUrl = `${BUNNY_STORAGE_CDN_URL}${storagePath}`;
 
     if (type === 'ref') {
@@ -69,9 +91,6 @@ export async function POST(request: NextRequest) {
             if (BUNNY_STREAM_CDN) {
               previewUrl = `${BUNNY_STREAM_CDN}/${videoData.guid}/playlist.m3u8`;
             }
-
-            // Trigger fetch after upload completes (will be done client-side or via webhook)
-            // For now, we'll trigger it after the upload URL is used
           }
         } catch (err) {
           console.error("Failed to create stream entry:", err);
@@ -99,15 +118,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Failed to create ref record" }, { status: 500 });
       }
 
-      // Trigger Bunny Stream fetch
-      if (videoId && BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
-        // Note: This runs before the upload completes, so we need to trigger it differently
-        // For now, we'll return the video ID and let the client trigger the fetch after upload
-      }
-
       return NextResponse.json({
         uploadUrl,
-        accessKey: BUNNY_STORAGE_PASSWORD,
         ref: {
           id: refData.id,
           filename: refData.filename,
@@ -174,7 +186,6 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         uploadUrl,
-        accessKey: BUNNY_STORAGE_PASSWORD,
         plate: {
           id: plateData.id,
           shot_id: plateData.shot_id,

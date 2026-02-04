@@ -1,19 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
-import { bunnyConfig } from "@/lib/bunny";
-import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
+import { authenticateRequest, requireInternal, getServiceClient } from "@/lib/auth";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
+const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
+const BUNNY_STORAGE_HOSTNAME = process.env.BUNNY_STORAGE_HOSTNAME || "storage.bunnycdn.com";
+const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
+
+/**
+ * Generate a signed upload URL for Bunny Storage (no raw key exposed).
+ */
+function generateSignedUploadUrl(storagePath: string, expiresIn = 3600): string {
+  const expiry = Math.floor(Date.now() / 1000) + expiresIn;
+  const fullUrl = `https://${BUNNY_STORAGE_HOSTNAME}/${BUNNY_STORAGE_ZONE}${storagePath}`;
+  const signatureBase = BUNNY_STORAGE_PASSWORD + storagePath + expiry;
+  const token = crypto
+    .createHash("sha256")
+    .update(signatureBase)
+    .digest("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+  return `${fullUrl}?token=${token}&expires=${expiry}`;
+}
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth: internal team only
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+    const roleCheck = requireInternal(auth.user);
+    if (roleCheck) return roleCheck;
+
     const { projectId, files } = await request.json();
 
     if (!projectId || !files || !Array.isArray(files)) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = getServiceClient();
 
     // Get project code
     const { data: project } = await supabase
@@ -23,9 +48,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     const projectCode = project?.code || "PROJ";
-    const { zone, hostname, password, cdnUrl } = bunnyConfig.storage;
 
-    if (!zone || !password) {
+    if (!BUNNY_STORAGE_ZONE || !BUNNY_STORAGE_PASSWORD) {
       return NextResponse.json({ error: "Storage not configured" }, { status: 500 });
     }
 
@@ -39,10 +63,9 @@ export async function POST(request: NextRequest) {
       return {
         originalName: file.name,
         type: file.type,
-        uploadUrl: `https://${hostname}/${zone}${storagePath}`,
-        accessKey: password,
+        uploadUrl: generateSignedUploadUrl(storagePath),
         storagePath,
-        cdnUrl: `${cdnUrl}${storagePath}`,
+        cdnUrl: `${BUNNY_STORAGE_CDN_URL}${storagePath}`,
       };
     });
 

@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import type { UserRole } from "@/lib/database.types";
+import { authenticateRequest, requireAdmin, getServiceClient } from "@/lib/auth";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    // Auth: only ADMIN/SUPERVISOR/PRODUCER can add artists to vendors
+    const auth = await authenticateRequest(req);
+    if (auth.error) return auth.error;
+    const roleCheck = requireAdmin(auth.user);
+    if (roleCheck) return roleCheck;
+
     const vendorId = params.id;
     const { name, email, specialty } = (await req.json()) as {
       name: string;
@@ -21,19 +27,7 @@ export async function POST(
       );
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return NextResponse.json(
-        { error: "Server not configured" },
-        { status: 500 }
-      );
-    }
-
-    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    }) as any;
+    const adminClient = getServiceClient() as any;
 
     // Verify vendor exists
     const { data: vendor, error: vendorError } = await adminClient

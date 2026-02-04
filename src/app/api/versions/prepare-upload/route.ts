@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Create admin Supabase client for server-side operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import crypto from 'crypto';
+import { authenticateRequest, requireInternal, getServiceClient } from '@/lib/auth';
 
 const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
 const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
@@ -25,12 +20,36 @@ interface PrepareUploadPayload {
 }
 
 /**
+ * Generate a SHA256 HMAC-based signed URL for direct Bunny Storage upload.
+ * The signature is generated server-side; the raw API key is never exposed.
+ */
+function generateSignedUploadUrl(storagePath: string, expiresIn = 3600): string {
+  const expiry = Math.floor(Date.now() / 1000) + expiresIn;
+  const fullUrl = `https://${BUNNY_STORAGE_HOSTNAME}/${BUNNY_STORAGE_ZONE}/${storagePath}`;
+  const signatureBase = BUNNY_STORAGE_PASSWORD + storagePath + expiry;
+  const token = crypto
+    .createHash('sha256')
+    .update(signatureBase)
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+  return `${fullUrl}?token=${token}&expires=${expiry}`;
+}
+
+/**
  * POST /api/versions/prepare-upload
- * Prepares upload URLs for direct browser upload to Bunny.net
- * Returns storage URLs and creates Stream video entry
+ * Prepares signed upload URLs for direct browser upload to Bunny.net.
+ * No raw credentials are returned to the client.
  */
 export async function POST(request: NextRequest) {
   try {
+    // Auth: any internal team member can upload versions
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+    const roleCheck = requireInternal(auth.user);
+    if (roleCheck) return roleCheck;
+
     const body: PrepareUploadPayload = await request.json();
     const { shotId, versionNumber, description, createdById, hasProres, hasPreview, proresFilename, previewFilename } = body;
 
@@ -40,6 +59,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const supabaseAdmin = getServiceClient();
 
     // Get shot info for path construction
     const { data: shot, error: shotError } = await supabaseAdmin
@@ -74,13 +95,11 @@ export async function POST(request: NextRequest) {
       storageUpload?: {
         url: string;
         path: string;
-        accessKey: string;
       };
       streamUpload?: {
         libraryId: string;
         videoId: string;
         uploadUrl: string;
-        accessKey: string;
       };
       metadata: {
         shotId: string;
@@ -103,20 +122,18 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    // Prepare Storage upload URL for ProRes
+    // Prepare signed Storage upload URL for ProRes (no raw key exposed)
     if (hasProres && BUNNY_STORAGE_ZONE && BUNNY_STORAGE_PASSWORD) {
       const ext = proresFilename?.split('.').pop() || 'mov';
       const storagePath = `${basePath}/${shotCode}_${versionStr}.${ext}`;
-      const uploadUrl = `https://${BUNNY_STORAGE_HOSTNAME}/${BUNNY_STORAGE_ZONE}/${storagePath}`;
 
       result.storageUpload = {
-        url: uploadUrl,
+        url: generateSignedUploadUrl(storagePath),
         path: storagePath,
-        accessKey: BUNNY_STORAGE_PASSWORD, // Passed securely for direct browser upload
       };
     }
 
-    // Create Stream video entry for preview
+    // Create Stream video entry for preview and return a TUS upload URL
     if (hasPreview && BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
       const title = `${projectName}_${shotCode}_${versionStr}`;
       
@@ -144,11 +161,11 @@ export async function POST(request: NextRequest) {
 
       const videoData = await createResponse.json();
       
+      // Return the TUS upload URL (no raw API key needed by client)
       result.streamUpload = {
         libraryId: BUNNY_STREAM_LIBRARY_ID,
         videoId: videoData.guid,
-        uploadUrl: `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos/${videoData.guid}`,
-        accessKey: BUNNY_STREAM_API_KEY, // Passed securely for direct browser upload
+        uploadUrl: `https://video.bunnycdn.com/tusupload`,
       };
     }
 

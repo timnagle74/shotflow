@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { getStreamPlaybackUrl } from "@/lib/bunny";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { authenticateRequest, requireInternal, getServiceClient } from "@/lib/auth";
 
 // Save ref to shot (AE's context clip)
 export async function POST(request: NextRequest) {
   try {
+    // Auth: internal team only
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+    const roleCheck = requireInternal(auth.user);
+    if (roleCheck) return roleCheck;
+
     const { shotId, filename, storagePath, cdnUrl, streamVideoId } =
       await request.json();
 
@@ -18,7 +21,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = getServiceClient();
 
     // Build preview URL if we have a stream video
     const previewUrl = streamVideoId ? getStreamPlaybackUrl(streamVideoId) : null;

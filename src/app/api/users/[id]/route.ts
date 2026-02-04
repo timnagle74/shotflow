@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import type { Database, UserRole } from "@/lib/database.types";
-
-function getAdminClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) return null;
-  return createClient<Database>(supabaseUrl, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-}
+import type { Database } from "@/lib/database.types";
+import { authenticateRequest, requireAdmin, getServiceClient } from "@/lib/auth";
 
 // PATCH /api/users/[id] — update user role / name
 export async function PATCH(
@@ -17,15 +8,15 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Auth: only ADMIN/SUPERVISOR/PRODUCER can update users
+    const auth = await authenticateRequest(req);
+    if (auth.error) return auth.error;
+    const roleCheck = requireAdmin(auth.user);
+    if (roleCheck) return roleCheck;
+
     const { id } = await params;
     const body = await req.json();
-    const adminClient = getAdminClient();
-    if (!adminClient) {
-      return NextResponse.json(
-        { error: "Server not configured" },
-        { status: 500 }
-      );
-    }
+    const adminClient = getServiceClient();
 
     const update: Record<string, unknown> = {};
     if (body.role) update.role = body.role;
@@ -67,14 +58,14 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Auth: only ADMIN/SUPERVISOR/PRODUCER can delete users
+    const auth = await authenticateRequest(req);
+    if (auth.error) return auth.error;
+    const roleCheck = requireAdmin(auth.user);
+    if (roleCheck) return roleCheck;
+
     const { id } = await params;
-    const adminClient = getAdminClient();
-    if (!adminClient) {
-      return NextResponse.json(
-        { error: "Server not configured" },
-        { status: 500 }
-      );
-    }
+    const adminClient = getServiceClient();
 
     // Ban user in auth (soft-delete)
     const { error: banError } = await adminClient.auth.admin.updateUserById(

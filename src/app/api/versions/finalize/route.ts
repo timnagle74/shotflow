@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-// Create admin Supabase client for server-side operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { authenticateRequest, requireInternal, getServiceClient } from '@/lib/auth';
 
 const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
@@ -23,14 +17,15 @@ interface FinalizeUploadPayload {
 /**
  * POST /api/versions/finalize
  * Finalizes version creation and triggers transcoding via Bunny Stream
- * 
- * Flow:
- * 1. Create Bunny Stream video entry
- * 2. Trigger Bunny Stream fetch (downloads from Storage and transcodes)
- * 3. Create version record in database
  */
 export async function POST(request: NextRequest) {
   try {
+    // Auth: any internal team member can finalize uploads
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+    const roleCheck = requireInternal(auth.user);
+    if (roleCheck) return roleCheck;
+
     const body: FinalizeUploadPayload = await request.json();
     const { shotId, versionNumber, description, createdById, storagePath } = body;
 
@@ -40,6 +35,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const supabaseAdmin = getServiceClient();
 
     let previewUrl: string | null = null;
     let thumbnailPath: string | null = null;

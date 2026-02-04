@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { authenticateRequest, requireInternal, getServiceClient } from '@/lib/auth';
 
 const BATCH_SIZE = 500;
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth: internal team only
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+    const roleCheck = requireInternal(auth.user);
+    if (roleCheck) return roleCheck;
+
+    const supabase = getServiceClient();
     const { records, projectId } = await request.json();
     
     if (!records || !Array.isArray(records)) {
@@ -92,12 +94,11 @@ export async function POST(request: NextRequest) {
         .from('source_media')
         .upsert(dbRecords, {
           onConflict: 'project_id,clip_name,tc_in_frames',
-          ignoreDuplicates: false, // Update existing records
+          ignoreDuplicates: false,
         })
         .select('id');
       
       if (error) {
-        // Log full error for debugging
         console.error('Source media upsert error:', {
           batch: Math.floor(i / BATCH_SIZE) + 1,
           error: error.message,
@@ -128,6 +129,11 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    // Auth: any authenticated user can view source media
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+
+    const supabase = getServiceClient();
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
     const search = searchParams.get('search');

@@ -1,11 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { generateSignedStorageUrl } from '@/lib/bunny';
-
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { authenticateRequest, getServiceClient } from '@/lib/auth';
 
 /**
  * GET /api/versions/[id]/download
@@ -16,7 +11,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Auth: any authenticated user can download (clients may need downloads too)
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+
     const { id } = await params;
+    const supabaseAdmin = getServiceClient();
     
     // Get version with download path
     const { data: version, error } = await supabaseAdmin

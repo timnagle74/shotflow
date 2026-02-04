@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { authenticateRequest, requireInternal, getServiceClient } from "@/lib/auth";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
@@ -24,6 +22,12 @@ function findMatchingShotCodes(filename: string, shotCodes: string[]): string[] 
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth: internal team only (ADMIN, SUPERVISOR, PRODUCER, COORDINATOR, VFX_EDITOR, ARTIST)
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+    const roleCheck = requireInternal(auth.user);
+    if (roleCheck) return roleCheck;
+
     const body = await request.json();
     
     const {
@@ -60,7 +64,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = getServiceClient();
 
     // Create or get sequence
     let finalSequenceId = sequenceId;
@@ -121,7 +125,7 @@ export async function POST(request: NextRequest) {
         title: sequenceName || sequenceCode || `Turnover ${nextToNumber}`,
         general_notes: generalVfxNotes || null,
         source_edl_filename: sourceEdlFilename || null,
-        status: 'draft', // New: starts as draft, moves to 'reviewed' after AE review
+        status: 'draft',
       })
       .select()
       .single();
@@ -166,7 +170,6 @@ export async function POST(request: NextRequest) {
           .insert({
             sequence_id: finalSequenceId,
             code: shot.code,
-            // Use VFX notes as description if available, otherwise clip name
             description: shot.vfxNotes || shot.clipName || null,
             status: "NOT_STARTED",
             complexity: "MEDIUM",
@@ -216,7 +219,6 @@ export async function POST(request: NextRequest) {
         console.error("Turnover shots link error:", linkError);
       } else if (insertedLinks) {
         turnoverShotIds = insertedLinks.map(l => l.id);
-        // Map shot_id to turnover_shot_id for ref matching
         for (const link of insertedLinks) {
           const shotCode = Object.keys(shotCodeToId).find(code => shotCodeToId[code] === link.shot_id);
           if (shotCode) {
@@ -235,14 +237,13 @@ export async function POST(request: NextRequest) {
     let platesCreated = 0;
     let platesMatched = 0;
 
-    // Process refs - store in turnover_refs table, auto-match to shots
+    // Process refs
     for (let i = 0; i < refFiles.length; i++) {
       const ref = refFiles[i];
       
       let refPreviewUrl: string | null = null;
       let refVideoId: string | null = null;
 
-      // Create Bunny Stream video entry for HLS playback
       if (BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
         try {
           const title = `TO${nextToNumber}_ref_${ref.originalName.replace(/\.[^/.]+$/, "")}`;
@@ -286,11 +287,9 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Find matching shot codes in filename
       const matchedCodes = findMatchingShotCodes(ref.originalName, allShotCodes);
       const hasMatches = matchedCodes.length > 0;
 
-      // Insert ref into turnover_refs
       const { data: newRef, error: refError } = await supabase
         .from("turnover_refs")
         .insert({
@@ -314,7 +313,6 @@ export async function POST(request: NextRequest) {
 
       refsCreated++;
 
-      // Create junction entries for matched shots
       if (hasMatches && newRef) {
         const refShotLinks = matchedCodes
           .filter(code => shotCodeToTurnoverShotId[code])
@@ -332,13 +330,11 @@ export async function POST(request: NextRequest) {
           if (!junctionError) {
             refsMatched += refShotLinks.length;
             
-            // Update refs_assigned status on matched turnover_shots
             await supabase
               .from("turnover_shots")
               .update({ refs_assigned: true })
               .in("id", refShotLinks.map(l => l.turnover_shot_id));
             
-            // Also update the shots table with ref data so it shows in shot board/detail
             for (const code of matchedCodes) {
               const shotId = shotCodeToId[code];
               if (shotId) {
@@ -359,28 +355,24 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Build shot code to VFX notes map for plate descriptions
     const shotCodeToVfxNotes: Record<string, string | null> = {};
     for (const shot of shots) {
       shotCodeToVfxNotes[shot.code] = shot.vfxNotes || null;
     }
 
-    // Process plates - match to specific shots by filename
+    // Process plates
     for (let i = 0; i < plateFiles.length; i++) {
       const plate = plateFiles[i];
       
-      // Find matching shot by filename
       const matchedCodes = findMatchingShotCodes(plate.originalName, allShotCodes);
-      const matchedCode = matchedCodes[0]; // Plates go to first match (many-to-one)
+      const matchedCode = matchedCodes[0];
       const matchedShotId = matchedCode ? shotCodeToId[matchedCode] : null;
 
       if (!matchedShotId) {
-        // No match found - still create plate but unassigned
         console.log(`Plate ${plate.originalName} didn't match any shot codes`);
         continue;
       }
       
-      // Get VFX description from matched shot
       const plateDescription = matchedCode ? shotCodeToVfxNotes[matchedCode] : null;
 
       let platePreviewUrl: string | null = null;
@@ -441,14 +433,13 @@ export async function POST(request: NextRequest) {
           sort_order: i,
           video_id: plateVideoId,
           preview_url: platePreviewUrl,
-          description: plateDescription, // Auto-fill from VFX notes
+          description: plateDescription,
         });
 
       if (!plateError) {
         platesCreated++;
         platesMatched++;
         
-        // Update plates_assigned status
         const turnoverShotId = shotCodeToTurnoverShotId[matchedCode];
         if (turnoverShotId) {
           await supabase
@@ -470,7 +461,6 @@ export async function POST(request: NextRequest) {
       shots: createdShots,
       refs: { created: refsCreated, matched: refsMatched },
       plates: { created: platesCreated, matched: platesMatched },
-      // Redirect to review page
       reviewUrl: `/turnover/${turnover.id}/review`,
     });
   } catch (error) {

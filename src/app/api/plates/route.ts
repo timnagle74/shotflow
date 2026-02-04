@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+import { authenticateRequest, requireInternal, getServiceClient } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
   try {
+    // Auth: internal team only
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+    const roleCheck = requireInternal(auth.user);
+    if (roleCheck) return roleCheck;
+
     const { shotId, filename, description, storagePath, cdnUrl, fileSize, sortOrder } =
       await request.json();
 
@@ -16,7 +19,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = getServiceClient();
 
     const { data, error } = await supabase
       .from("shot_plates")
@@ -52,6 +55,10 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
+    // Auth: any authenticated user can view plates
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+
     const { searchParams } = new URL(request.url);
     const shotId = searchParams.get("shotId");
 
@@ -62,7 +69,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = getServiceClient();
 
     const { data, error } = await supabase
       .from("shot_plates")
@@ -90,6 +97,12 @@ export async function GET(request: NextRequest) {
 
 export async function DELETE(request: NextRequest) {
   try {
+    // Auth: internal team only
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+    const roleCheck = requireInternal(auth.user);
+    if (roleCheck) return roleCheck;
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
@@ -100,7 +113,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = getServiceClient();
 
     const { error } = await supabase
       .from("shot_plates")

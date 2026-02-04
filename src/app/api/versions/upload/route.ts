@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import {
   uploadToStorage,
   createStreamVideo,
@@ -9,12 +8,7 @@ import {
   isStreamConfigured,
   generateSignedStorageUrl,
 } from '@/lib/bunny';
-
-// Create admin Supabase client for server-side operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { authenticateRequest, requireInternal, getServiceClient } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minutes for large file uploads
@@ -29,14 +23,15 @@ interface UploadPayload {
 /**
  * POST /api/versions/upload
  * Upload a new version with video files to Bunny.net
- * 
- * Form data:
- * - metadata: JSON string with UploadPayload
- * - prores: ProRes file for download (optional)
- * - preview: H.265/H.264 file for web playback (optional)
  */
 export async function POST(request: NextRequest) {
   try {
+    // Auth: any internal team member can upload versions
+    const auth = await authenticateRequest(request);
+    if (auth.error) return auth.error;
+    const roleCheck = requireInternal(auth.user);
+    if (roleCheck) return roleCheck;
+
     const formData = await request.formData();
     
     // Parse metadata
@@ -57,6 +52,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    const supabaseAdmin = getServiceClient();
 
     // Get shot info for path construction
     const { data: shot, error: shotError } = await supabaseAdmin
