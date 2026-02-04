@@ -108,11 +108,11 @@ export default function ColorManagementPage() {
       }
       
       const [projectsRes, shotsRes, seqRes, cdlsRes, lutsRes] = await Promise.all([
-        sb.from("projects").select("id, name, code").order("name"),
-        shotsQuery,
-        sb.from("sequences").select("id, project_id"),
-        sb.from("shot_cdls").select("*"),
-        sb.from("lut_files").select("*"),
+        sb.from("projects").select("id, name, code").order("name").limit(100),
+        shotsQuery.limit(5000),
+        sb.from("sequences").select("id, project_id").limit(1000),
+        sb.from("shot_cdls").select("*").limit(5000),
+        sb.from("lut_files").select("*").limit(1000),
       ]);
       
       const allShots = shotsRes.data || [];

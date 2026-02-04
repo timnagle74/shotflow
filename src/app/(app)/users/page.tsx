@@ -122,7 +122,7 @@ export default function UsersPage() {
         .from("shots")
         .select("assigned_to_id")
         .not("assigned_to_id", "is", null)
-        .limit(10000);
+        .limit(5000);
 
       const shotCountMap = new Map<string, number>();
       for (const s of shotAssignments || []) {
