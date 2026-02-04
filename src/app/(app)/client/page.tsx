@@ -1,44 +1,158 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { ShotStatusBadge } from "@/components/status-badge";
-import { mockShots, mockVersions, mockNotes, mockUsers, mockProjects, getShotsForProject } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
-import { Monitor, Check, RotateCcw, MessageSquare, Film, Eye, Folder, Clock, CheckCircle2 } from "lucide-react";
-import { useState } from "react";
+import { Monitor, Check, RotateCcw, MessageSquare, Film, Eye, Folder, Clock, CheckCircle2, Loader2 } from "lucide-react";
 import { VideoPlayer } from "@/components/video-player";
+import { supabase } from "@/lib/supabase";
+
+interface Project {
+  id: string;
+  name: string;
+  code: string;
+  status: string;
+}
+
+interface Shot {
+  id: string;
+  code: string;
+  description: string | null;
+  status: string;
+  frame_start: number | null;
+  frame_end: number | null;
+  sequence_id: string;
+}
+
+interface Version {
+  id: string;
+  shot_id: string;
+  version_number: number;
+  status: string;
+  description: string | null;
+  created_at: string;
+}
+
+interface Note {
+  id: string;
+  version_id: string;
+  author_id: string;
+  content: string;
+  frame_reference: number | null;
+  created_at: string;
+}
+
+interface UserInfo {
+  id: string;
+  name: string | null;
+  role: string;
+}
 
 export default function ClientPortalPage() {
-  const [selectedProject, setSelectedProject] = useState<string>("p1");
+  const [loading, setLoading] = useState(true);
+  const [selectedProject, setSelectedProject] = useState<string>("");
   const [selectedShot, setSelectedShot] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
+  const [activeVersionId, setActiveVersionId] = useState<string>("");
 
-  // Get projects (in real app, filter by client access)
-  const clientProjects = mockProjects.filter(p => p.status === "ACTIVE");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [shots, setShots] = useState<Shot[]>([]);
+  const [sequences, setSequences] = useState<{ id: string; project_id: string }[]>([]);
+  const [versions, setVersions] = useState<Version[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [users, setUsers] = useState<UserInfo[]>([]);
 
-  // Client can only see CLIENT_REVIEW and APPROVED shots
-  const allShots = getShotsForProject(selectedProject);
-  const clientShots = allShots.filter(s => s.status === "CLIENT_REVIEW" || s.status === "APPROVED");
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  async function fetchData() {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const [projectsRes, shotsRes, seqRes, versionsRes, notesRes, usersRes] = await Promise.all([
+        supabase.from("projects").select("id, name, code, status").eq("status", "ACTIVE").order("name"),
+        supabase.from("shots").select("id, code, description, status, frame_start, frame_end, sequence_id"),
+        supabase.from("sequences").select("id, project_id"),
+        supabase.from("versions").select("id, shot_id, version_number, status, description, created_at").order("version_number", { ascending: false }),
+        supabase.from("notes").select("id, version_id, author_id, content, frame_reference, created_at"),
+        supabase.from("users").select("id, name, role"),
+      ]);
+      
+      const fetchedProjects = projectsRes.data || [];
+      setProjects(fetchedProjects);
+      setShots(shotsRes.data || []);
+      setSequences(seqRes.data || []);
+      setVersions(versionsRes.data || []);
+      setNotes(notesRes.data || []);
+      setUsers(usersRes.data || []);
+      
+      if (fetchedProjects.length > 0) {
+        setSelectedProject(fetchedProjects[0].id);
+      }
+    } catch (err) {
+      console.error("Failed to fetch client portal data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  const clientProjects = projects;
+  const projectSeqIds = sequences.filter(s => s.project_id === selectedProject).map(s => s.id);
+  const allProjectShots = shots.filter(s => projectSeqIds.includes(s.sequence_id));
+  const clientShots = allProjectShots.filter(s => s.status === "CLIENT_REVIEW" || s.status === "APPROVED");
 
   const reviewCount = clientShots.filter(s => s.status === "CLIENT_REVIEW").length;
   const approvedCount = clientShots.filter(s => s.status === "APPROVED").length;
 
-  const selected = selectedShot ? allShots.find(s => s.id === selectedShot) : null;
-  const selectedVersions = selected ? mockVersions.filter(v => v.shotId === selected.id).sort((a, b) => b.versionNumber - a.versionNumber) : [];
-  const [activeVersionId, setActiveVersionId] = useState<string>("");
+  const selected = selectedShot ? allProjectShots.find(s => s.id === selectedShot) : null;
+  const selectedVersions = selected ? versions.filter(v => v.shot_id === selected.id) : [];
   const latestVersion = selectedVersions[0];
   const viewingVersion = selectedVersions.find(v => v.id === activeVersionId) || latestVersion;
-  const versionNotes = viewingVersion ? mockNotes.filter(n => n.versionId === viewingVersion.id) : [];
+  const versionNotes = viewingVersion ? notes.filter(n => n.version_id === viewingVersion.id) : [];
 
-  const currentProject = mockProjects.find(p => p.id === selectedProject);
+  const currentProject = projects.find(p => p.id === selectedProject);
+
+  if (clientProjects.length === 0) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="h-10 w-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
+            <Monitor className="h-5 w-5 text-purple-500" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Client Review Portal</h1>
+            <p className="text-muted-foreground mt-0.5">Review and approve VFX shots</p>
+          </div>
+        </div>
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Film className="h-12 w-12 text-muted-foreground/30 mb-4" />
+            <h3 className="text-lg font-semibold mb-1">No active projects</h3>
+            <p className="text-sm text-muted-foreground">There are no active projects with shots ready for review.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Client Portal Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
@@ -51,7 +165,6 @@ export default function ClientPortalPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -85,7 +198,6 @@ export default function ClientPortalPage() {
         </Card>
       </div>
 
-      {/* Project Selector */}
       {clientProjects.length > 1 && (
         <div className="flex gap-2">
           {clientProjects.map(project => (
@@ -104,7 +216,6 @@ export default function ClientPortalPage() {
         </div>
       )}
 
-      {/* Project Title */}
       {currentProject && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">{currentProject.code}</span>
@@ -113,7 +224,6 @@ export default function ClientPortalPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Shot List */}
         <div className="space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground px-1 mb-3">
             {clientShots.length} Shot{clientShots.length !== 1 ? 's' : ''} Ready for Review
@@ -121,6 +231,7 @@ export default function ClientPortalPage() {
           {clientShots.map(shot => {
             const isSelected = selectedShot === shot.id;
             const isReview = shot.status === "CLIENT_REVIEW";
+            const shotVersions = versions.filter(v => v.shot_id === shot.id);
             return (
               <Card
                 key={shot.id}
@@ -138,7 +249,7 @@ export default function ClientPortalPage() {
                   <p className="text-xs text-muted-foreground mt-1.5 line-clamp-1">{shot.description}</p>
                   <div className="flex items-center justify-between mt-2">
                     <Badge variant="outline" className="text-[10px]">
-                      {shot.versions.length} version{shot.versions.length !== 1 ? 's' : ''}
+                      {shotVersions.length} version{shotVersions.length !== 1 ? 's' : ''}
                     </Badge>
                     {isReview && (
                       <span className="flex items-center gap-1 text-[10px] text-purple-400">
@@ -159,7 +270,6 @@ export default function ClientPortalPage() {
           )}
         </div>
 
-        {/* Shot Review Panel */}
         <div className="lg:col-span-2">
           {!selected ? (
             <Card>
@@ -173,7 +283,6 @@ export default function ClientPortalPage() {
             </Card>
           ) : (
             <div className="space-y-4">
-              {/* Shot Header + Actions */}
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -201,20 +310,18 @@ export default function ClientPortalPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {/* Video Player */}
                   <VideoPlayer
                     shotCode={selected.code}
                     projectName={currentProject?.name || "Project"}
                     clientName="Client Review"
                     watermarkText="CONFIDENTIAL - FOR REVIEW ONLY"
                     frameRate={24}
-                    frameStart={selected.frameStart || 1001}
+                    frameStart={selected.frame_start || 1001}
                     clientMode={true}
                     showBurnInControls={false}
                     showAspectRatioControls={true}
                   />
 
-                  {/* Version Selector */}
                   {selectedVersions.length > 1 && (
                     <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
                       {selectedVersions.map(v => (
@@ -225,7 +332,7 @@ export default function ClientPortalPage() {
                           className="shrink-0 font-mono text-xs"
                           onClick={() => setActiveVersionId(v.id)}
                         >
-                          v{String(v.versionNumber).padStart(3, "0")}
+                          v{String(v.version_number).padStart(3, "0")}
                         </Button>
                       ))}
                     </div>
@@ -233,7 +340,6 @@ export default function ClientPortalPage() {
                 </CardContent>
               </Card>
 
-              {/* Notes */}
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
@@ -241,7 +347,7 @@ export default function ClientPortalPage() {
                     Notes
                     {viewingVersion && (
                       <span className="text-muted-foreground font-normal">
-                        — v{String(viewingVersion.versionNumber).padStart(3, "0")}
+                        \u2014 v{String(viewingVersion.version_number).padStart(3, "0")}
                       </span>
                     )}
                   </CardTitle>
@@ -251,19 +357,21 @@ export default function ClientPortalPage() {
                     <p className="text-sm text-muted-foreground text-center py-4">No notes on this version yet</p>
                   )}
                   {versionNotes.map(note => {
-                    const author = mockUsers.find(u => u.id === note.authorId);
+                    const author = users.find(u => u.id === note.author_id);
                     return (
                       <div key={note.id} className="flex gap-3">
                         <div className="h-8 w-8 rounded-full bg-purple-500/20 flex items-center justify-center shrink-0">
-                          <span className="text-xs font-bold text-purple-400">{author?.name.split(" ").map(n => n[0]).join("")}</span>
+                          <span className="text-xs font-bold text-purple-400">
+                            {author?.name?.split(" ").map(n => n[0]).join("") || "?"}
+                          </span>
                         </div>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{author?.name}</span>
-                            <Badge variant="outline" className="text-[10px]">{author?.role}</Badge>
-                            <span className="text-xs text-muted-foreground">{note.createdAt.toLocaleDateString()}</span>
-                            {note.frameReference && (
-                              <Badge variant="secondary" className="text-[10px]">Frame {note.frameReference}</Badge>
+                            <span className="text-sm font-medium">{author?.name || "Unknown"}</span>
+                            <Badge variant="outline" className="text-[10px]">{author?.role || "\u2014"}</Badge>
+                            <span className="text-xs text-muted-foreground">{new Date(note.created_at).toLocaleDateString()}</span>
+                            {note.frame_reference && (
+                              <Badge variant="secondary" className="text-[10px]">Frame {note.frame_reference}</Badge>
                             )}
                           </div>
                           <p className="text-sm mt-1">{note.content}</p>

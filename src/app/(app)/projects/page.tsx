@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { mockProjects, getStatusCounts, getDeliverySpecsForProject } from "@/lib/mock-data";
 import { Plus, Settings, FolderKanban, Monitor, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
@@ -20,19 +19,62 @@ export default function ProjectsPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [editingProject, setEditingProject] = useState<any>(null);
   const [loading, setLoading] = useState(false);
-  const [projects, setProjects] = useState<any[]>(mockProjects);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [projectStats, setProjectStats] = useState<Record<string, { total: number; active: number; done: number }>>({});
+  const [projectSpecs, setProjectSpecs] = useState<Record<string, any>>({});
   const [newProject, setNewProject] = useState({ name: "", code: "", status: "ACTIVE" });
 
   useEffect(() => {
-    async function fetchProjects() {
-      if (!supabase) return;
-      const { data, error } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
-      if (!error && data && data.length > 0) {
-        setProjects(data);
-      }
-    }
     fetchProjects();
   }, []);
+
+  async function fetchProjects() {
+    if (!supabase) {
+      setInitialLoading(false);
+      return;
+    }
+    try {
+      const { data, error } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      setProjects(data || []);
+
+      // Fetch shot counts per project
+      if (data && data.length > 0) {
+        const stats: Record<string, { total: number; active: number; done: number }> = {};
+        const { data: allShots } = await supabase.from("shots").select("id, status, sequence_id");
+        const { data: allSeqs } = await supabase.from("sequences").select("id, project_id");
+        const seqMap = new Map<string, string>();
+        (allSeqs || []).forEach(s => seqMap.set(s.id, s.project_id));
+
+        for (const project of data) {
+          const projectShots = (allShots || []).filter(sh => {
+            const projId = seqMap.get(sh.sequence_id);
+            return projId === project.id;
+          });
+          const total = projectShots.length;
+          const active = projectShots.filter(s => ["IN_PROGRESS", "INTERNAL_REVIEW", "CLIENT_REVIEW"].includes(s.status)).length;
+          const done = projectShots.filter(s => ["APPROVED", "FINAL"].includes(s.status)).length;
+          stats[project.id] = { total, active, done };
+        }
+        setProjectStats(stats);
+
+        // Fetch delivery specs per project
+        const { data: specs } = await supabase.from("delivery_specs").select("*");
+        if (specs) {
+          const specsMap: Record<string, any> = {};
+          for (const spec of specs) {
+            specsMap[spec.project_id] = spec;
+          }
+          setProjectSpecs(specsMap);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch projects:", err);
+    } finally {
+      setInitialLoading(false);
+    }
+  }
 
   const handleCreateProject = async () => {
     if (!newProject.name || !newProject.code || !supabase) return;
@@ -47,9 +89,7 @@ export default function ProjectsPage() {
         }] as any);
       
       if (error) throw error;
-      // Refresh projects list
-      const { data: newProjects } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
-      if (newProjects) setProjects(newProjects);
+      await fetchProjects();
       setShowCreate(false);
       setNewProject({ name: "", code: "", status: "ACTIVE" });
     } catch (err) {
@@ -79,9 +119,7 @@ export default function ProjectsPage() {
         .eq("id", editingProject.id);
       
       if (error) throw error;
-      // Refresh projects list
-      const { data: newProjects } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
-      if (newProjects) setProjects(newProjects);
+      await fetchProjects();
       setShowSettings(false);
       setEditingProject(null);
     } catch (err) {
@@ -91,6 +129,14 @@ export default function ProjectsPage() {
       setLoading(false);
     }
   };
+
+  if (initialLoading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -146,80 +192,91 @@ export default function ProjectsPage() {
         </Dialog>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {projects.map((project) => {
-          const counts = getStatusCounts(project.id);
-          const total = Object.values(counts).reduce((a, b) => a + b, 0);
-          const done = (counts.APPROVED || 0) + (counts.FINAL || 0);
-          const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-          const specs = getDeliverySpecsForProject(project.id);
+      {projects.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <FolderKanban className="h-12 w-12 text-muted-foreground/30 mb-4" />
+            <h3 className="text-lg font-semibold mb-1">No projects yet</h3>
+            <p className="text-sm text-muted-foreground mb-4">Create your first project to get started.</p>
+            <Button onClick={() => setShowCreate(true)}>
+              <Plus className="h-4 w-4 mr-2" />New Project
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {projects.map((project) => {
+            const stats = projectStats[project.id] || { total: 0, active: 0, done: 0 };
+            const pct = stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0;
+            const specs = projectSpecs[project.id];
 
-          return (
-            <Card key={project.id} className="hover:border-primary/50 transition-colors">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <FolderKanban className="h-5 w-5 text-primary" />
+            return (
+              <Card key={project.id} className="hover:border-primary/50 transition-colors">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <FolderKanban className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">{project.name}</CardTitle>
+                        <p className="text-xs text-muted-foreground font-mono">{project.code}</p>
+                      </div>
+                    </div>
+                    <Badge variant={project.status === "ACTIVE" ? "default" : "secondary"}>
+                      {project.status.replace("_", " ")}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-md bg-muted/50 p-2">
+                        <p className="text-lg font-bold">{stats.total}</p>
+                        <p className="text-[10px] text-muted-foreground">SHOTS</p>
+                      </div>
+                      <div className="rounded-md bg-muted/50 p-2">
+                        <p className="text-lg font-bold text-amber-400">{stats.active}</p>
+                        <p className="text-[10px] text-muted-foreground">ACTIVE</p>
+                      </div>
+                      <div className="rounded-md bg-muted/50 p-2">
+                        <p className="text-lg font-bold text-green-400">{stats.done}</p>
+                        <p className="text-[10px] text-muted-foreground">DONE</p>
+                      </div>
                     </div>
                     <div>
-                      <CardTitle className="text-base">{project.name}</CardTitle>
-                      <p className="text-xs text-muted-foreground font-mono">{project.code}</p>
-                    </div>
-                  </div>
-                  <Badge variant={project.status === "ACTIVE" ? "default" : "secondary"}>
-                    {project.status.replace("_", " ")}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="rounded-md bg-muted/50 p-2">
-                      <p className="text-lg font-bold">{total}</p>
-                      <p className="text-[10px] text-muted-foreground">SHOTS</p>
-                    </div>
-                    <div className="rounded-md bg-muted/50 p-2">
-                      <p className="text-lg font-bold text-amber-400">{counts.IN_PROGRESS + counts.INTERNAL_REVIEW + counts.CLIENT_REVIEW}</p>
-                      <p className="text-[10px] text-muted-foreground">ACTIVE</p>
-                    </div>
-                    <div className="rounded-md bg-muted/50 p-2">
-                      <p className="text-lg font-bold text-green-400">{done}</p>
-                      <p className="text-[10px] text-muted-foreground">DONE</p>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-muted-foreground">Progress</span>
-                      <span>{pct}%</span>
-                    </div>
-                    <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                      <div className="h-full rounded-full bg-green-600" style={{ width: `${pct}%` }} />
-                    </div>
-                  </div>
-                  {specs && (
-                    <>
-                      <Separator />
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Monitor className="h-3 w-3" />
-                        <span>{specs.resolution} • {specs.format} • {specs.frameRate}fps • {specs.colorSpace}</span>
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-muted-foreground">Progress</span>
+                        <span>{pct}%</span>
                       </div>
-                    </>
-                  )}
-                  <div className="flex gap-2 pt-1">
-                    <Link href={`/shots?project=${project.id}`} className="flex-1">
-                      <Button variant="outline" size="sm" className="w-full">View Shots</Button>
-                    </Link>
-                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => handleOpenSettings(project)}>
-                      <Settings className="h-4 w-4" />
-                    </Button>
+                      <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                        <div className="h-full rounded-full bg-green-600" style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                    {specs && (
+                      <>
+                        <Separator />
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Monitor className="h-3 w-3" />
+                          <span>{specs.resolution} • {specs.format} • {specs.frame_rate}fps • {specs.color_space}</span>
+                        </div>
+                      </>
+                    )}
+                    <div className="flex gap-2 pt-1">
+                      <Link href={`/shots?project=${project.id}`} className="flex-1">
+                        <Button variant="outline" size="sm" className="w-full">View Shots</Button>
+                      </Link>
+                      <Button variant="ghost" size="icon" className="shrink-0" onClick={() => handleOpenSettings(project)}>
+                        <Settings className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
 
       {/* Project Settings Dialog */}
       <Dialog open={showSettings} onOpenChange={setShowSettings}>
