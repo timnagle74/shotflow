@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Truck, Clock, CheckCircle, AlertTriangle, Package, Monitor, Edit2, Eye, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { useCurrentUser } from "@/hooks/use-current-user";
 
 type DeliveryStatusType = "PENDING" | "DELIVERED" | "ACCEPTED";
 
@@ -399,24 +400,106 @@ export default function DeliveriesPage() {
   );
 }
 
-// Role check — in a real app this comes from auth context
-const CURRENT_USER_ROLE = "ADMIN"; // Simulated
-
 function DeliverySpecsDialog({ project, specs, onSave }: { project: { id: string; name: string }; specs: DeliverySpec | null; onSave: () => void }) {
-  const canEdit = CURRENT_USER_ROLE === "ADMIN" || CURRENT_USER_ROLE === "SUPERVISOR" || CURRENT_USER_ROLE === "PRODUCER";
+  const { currentUser } = useCurrentUser();
+  const canEdit = currentUser && ["ADMIN", "SUPERVISOR", "PRODUCER"].includes(currentUser.role);
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Controlled form state — initialized from specs when dialog opens
+  const [formData, setFormData] = useState({
+    resolution: specs?.resolution || "",
+    format: specs?.format || "",
+    frame_rate: specs?.frame_rate || "",
+    color_space: specs?.color_space || "",
+    bit_depth: specs?.bit_depth || "",
+    handles_head: String(specs?.handles_head ?? 8),
+    handles_tail: String(specs?.handles_tail ?? 8),
+    naming_convention: specs?.naming_convention || "",
+    audio_requirements: specs?.audio_requirements || "",
+    additional_notes: specs?.additional_notes || "",
+  });
+
+  // Reset form when dialog opens or specs change
+  useEffect(() => {
+    if (open) {
+      setFormData({
+        resolution: specs?.resolution || "",
+        format: specs?.format || "",
+        frame_rate: specs?.frame_rate || "",
+        color_space: specs?.color_space || "",
+        bit_depth: specs?.bit_depth || "",
+        handles_head: String(specs?.handles_head ?? 8),
+        handles_tail: String(specs?.handles_tail ?? 8),
+        naming_convention: specs?.naming_convention || "",
+        audio_requirements: specs?.audio_requirements || "",
+        additional_notes: specs?.additional_notes || "",
+      });
+      setError(null);
+    }
+  }, [open, specs]);
+
+  const updateField = (key: string, value: string) => {
+    setFormData(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSave = async () => {
+    if (!supabase || !canEdit) return;
+    setSaving(true);
+    setError(null);
+
+    try {
+      const payload = {
+        project_id: project.id,
+        resolution: formData.resolution || null,
+        format: formData.format || null,
+        frame_rate: formData.frame_rate || null,
+        color_space: formData.color_space || null,
+        bit_depth: formData.bit_depth || null,
+        handles_head: parseInt(formData.handles_head) || 8,
+        handles_tail: parseInt(formData.handles_tail) || 8,
+        naming_convention: formData.naming_convention || null,
+        audio_requirements: formData.audio_requirements || null,
+        additional_notes: formData.additional_notes || null,
+      };
+
+      if (specs?.id) {
+        // Update existing spec
+        const { error: updateError } = await supabase
+          .from("delivery_specs")
+          .update(payload)
+          .eq("id", specs.id);
+        if (updateError) throw updateError;
+      } else {
+        // Insert new spec
+        const { error: insertError } = await supabase
+          .from("delivery_specs")
+          .insert(payload);
+        if (insertError) throw insertError;
+      }
+
+      setOpen(false);
+      onSave(); // Refresh parent data
+    } catch (err: any) {
+      console.error("Failed to save delivery specs:", err);
+      setError(err.message || "Failed to save specs");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const fields = [
-    { key: "resolution", label: "Resolution", value: specs?.resolution || "" },
-    { key: "format", label: "Format", value: specs?.format || "" },
-    { key: "frame_rate", label: "Frame Rate", value: specs?.frame_rate || "" },
-    { key: "color_space", label: "Color Space", value: specs?.color_space || "" },
-    { key: "bit_depth", label: "Bit Depth", value: specs?.bit_depth || "" },
-    { key: "handles_head", label: "Handles (Head)", value: String(specs?.handles_head ?? 8) },
-    { key: "handles_tail", label: "Handles (Tail)", value: String(specs?.handles_tail ?? 8) },
-    { key: "naming_convention", label: "Naming Convention", value: specs?.naming_convention || "" },
-    { key: "audio_requirements", label: "Audio Requirements", value: specs?.audio_requirements || "" },
-    { key: "additional_notes", label: "Additional Notes", value: specs?.additional_notes || "" },
+    { key: "resolution", label: "Resolution" },
+    { key: "format", label: "Format" },
+    { key: "frame_rate", label: "Frame Rate" },
+    { key: "color_space", label: "Color Space" },
+    { key: "bit_depth", label: "Bit Depth" },
+    { key: "handles_head", label: "Handles (Head)" },
+    { key: "handles_tail", label: "Handles (Tail)" },
+    { key: "naming_convention", label: "Naming Convention" },
+    { key: "audio_requirements", label: "Audio Requirements" },
+    { key: "additional_notes", label: "Additional Notes" },
   ];
 
   return (
@@ -436,23 +519,32 @@ function DeliverySpecsDialog({ project, specs, onSave }: { project: { id: string
               <label className="text-xs font-medium text-muted-foreground">{f.label}</label>
               {f.key === "additional_notes" ? (
                 <Textarea
-                  defaultValue={f.value}
+                  value={formData[f.key as keyof typeof formData]}
+                  onChange={(e) => updateField(f.key, e.target.value)}
                   disabled={!canEdit}
                   className="mt-1 text-sm"
                   rows={3}
                 />
               ) : (
                 <Input
-                  defaultValue={f.value}
+                  value={formData[f.key as keyof typeof formData]}
+                  onChange={(e) => updateField(f.key, e.target.value)}
                   disabled={!canEdit}
                   className="mt-1 text-sm"
                 />
               )}
             </div>
           ))}
+          {error && (
+            <p className="text-sm text-red-500">{error}</p>
+          )}
           {canEdit && (
-            <Button className="w-full" onClick={() => setOpen(false)}>
-              Save Specs
+            <Button className="w-full" onClick={handleSave} disabled={saving}>
+              {saving ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</>
+              ) : (
+                "Save Specs"
+              )}
             </Button>
           )}
         </div>
