@@ -21,6 +21,9 @@ const ADMIN_ROLES: UserRole[] = ['ADMIN', 'SUPERVISOR', 'PRODUCER'];
 /** Roles that count as internal team members */
 const INTERNAL_ROLES: UserRole[] = ['ADMIN', 'SUPERVISOR', 'PRODUCER', 'COORDINATOR', 'VFX_EDITOR', 'ARTIST'];
 
+/** Roles allowed to upload versions (internal + vendors) */
+const UPLOAD_ROLES: UserRole[] = [...INTERNAL_ROLES, 'VFX_VENDOR'];
+
 // ── helpers ──────────────────────────────────────────────────────────
 
 export function isAdmin(role: UserRole): boolean {
@@ -125,6 +128,19 @@ export function requireRole(user: AuthUser, allowedRoles: UserRole[]): NextRespo
  */
 export function requireAdmin(user: AuthUser): NextResponse | null {
   return requireRole(user, ADMIN_ROLES);
+}
+
+/**
+ * Convenience: require a role that can upload (internal + VFX_VENDOR).
+ */
+export function requireUploader(user: AuthUser): NextResponse | null {
+  if (!UPLOAD_ROLES.includes(user.role)) {
+    return NextResponse.json(
+      { error: 'Forbidden: upload access required' },
+      { status: 403 },
+    );
+  }
+  return null;
 }
 
 /**

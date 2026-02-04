@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { authenticateRequest, requireInternal, getServiceClient } from '@/lib/auth';
+import { authenticateRequest, requireUploader, getServiceClient } from '@/lib/auth';
 
 const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
 const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
@@ -44,10 +44,10 @@ function generateSignedUploadUrl(storagePath: string, expiresIn = 3600): string 
  */
 export async function POST(request: NextRequest) {
   try {
-    // Auth: any internal team member can upload versions
+    // Auth: internal team members and VFX vendors can upload versions
     const auth = await authenticateRequest(request);
     if (auth.error) return auth.error;
-    const roleCheck = requireInternal(auth.user);
+    const roleCheck = requireUploader(auth.user);
     if (roleCheck) return roleCheck;
 
     const body: PrepareUploadPayload = await request.json();

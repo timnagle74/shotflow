@@ -112,7 +112,7 @@ export function VendorVersionUpload({
               shotId,
               versionNumber: nextVersionNumber,
               description: description.trim() || undefined,
-              createdById: "vendor", // Will be replaced by actual auth
+              // createdById is ignored by the API — creator is derived from auth session
               hasProres: true,
               hasPreview: false,
               proresFilename: selectedFile.name,
@@ -166,7 +166,6 @@ export function VendorVersionUpload({
           .insert({
             shot_id: shotId,
             version_number: nextVersionNumber,
-            created_by_id: "vendor",
             status: "PENDING_REVIEW",
             description: description.trim() || null,
             preview_url: previewUrl,
