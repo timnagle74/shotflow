@@ -65,13 +65,23 @@ const sections: NavSection[] = [
   },
 ];
 
+const vendorSections: NavSection[] = [
+  {
+    label: "VENDOR",
+    items: [
+      { name: "My Projects", href: "/vendor", icon: FolderKanban },
+      { name: "Deliveries", href: "/deliveries", icon: Truck },
+    ],
+  },
+];
+
 const bottomNav: NavItem[] = [
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { isArtist, loading } = useCurrentUser();
+  const { isArtist, isVendor, loading } = useCurrentUser();
 
   const isActive = (href: string) => {
     if (href === "/turnovers") {
@@ -81,11 +91,12 @@ export function Sidebar() {
   };
 
   // Filter sections based on role
-  const visibleSections = sections
-    .filter(section => !section.adminOnly || !isArtist)
+  const baseSections = isVendor ? vendorSections : sections;
+  const visibleSections = baseSections
+    .filter(section => !section.adminOnly || (!isArtist && !isVendor))
     .map(section => ({
       ...section,
-      items: section.items.filter(item => (!item.adminOnly && !item.hideForArtist) || !isArtist),
+      items: section.items.filter(item => (!item.adminOnly && !item.hideForArtist) || (!isArtist && !isVendor)),
     }))
     .filter(section => section.items.length > 0);
 

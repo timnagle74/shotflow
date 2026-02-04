@@ -61,8 +61,12 @@ export async function middleware(request: NextRequest) {
 
     const userRole = userData?.role;
     const isClient = userRole === "CLIENT";
+    const isVendor = userRole === "VFX_VENDOR";
 
-    // Internal-only routes (not for clients)
+    // Determine home route based on role
+    const homeRoute = isClient ? "/client" : isVendor ? "/vendor" : "/dashboard";
+
+    // Internal-only routes (not for clients or vendors)
     const internalOnlyRoutes = [
       "/dashboard",
       "/projects",
@@ -83,6 +87,13 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
+    // If vendor tries to access internal routes, redirect to vendor portal
+    if (isVendor && isInternalOnlyRoute) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/vendor";
+      return NextResponse.redirect(url);
+    }
+
     // If client hits root, redirect to client portal
     if (isClient && pathname === "/") {
       const url = request.nextUrl.clone();
@@ -90,8 +101,15 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // If non-client hits root, redirect to dashboard
-    if (!isClient && pathname === "/") {
+    // If vendor hits root, redirect to vendor portal
+    if (isVendor && pathname === "/") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/vendor";
+      return NextResponse.redirect(url);
+    }
+
+    // If non-client/non-vendor hits root, redirect to dashboard
+    if (!isClient && !isVendor && pathname === "/") {
       const url = request.nextUrl.clone();
       url.pathname = "/dashboard";
       return NextResponse.redirect(url);
@@ -100,13 +118,13 @@ export async function middleware(request: NextRequest) {
     // If user is authenticated and trying to access login pages, redirect appropriately
     if (pathname === "/login" || pathname === "/signup") {
       const url = request.nextUrl.clone();
-      url.pathname = isClient ? "/client" : "/dashboard";
+      url.pathname = homeRoute;
       return NextResponse.redirect(url);
     }
 
     if (pathname === "/client-login") {
       const url = request.nextUrl.clone();
-      url.pathname = isClient ? "/client" : "/dashboard";
+      url.pathname = homeRoute;
       return NextResponse.redirect(url);
     }
   }

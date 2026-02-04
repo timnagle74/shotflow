@@ -7,13 +7,14 @@ export function getDefaultRouteForRole(role: UserRole): string {
   switch (role) {
     case 'CLIENT':
       return '/client';
+    case 'VFX_VENDOR':
+      return '/vendor';
     case 'ADMIN':
     case 'SUPERVISOR':
     case 'PRODUCER':
     case 'COORDINATOR':
     case 'ARTIST':
     case 'VFX_EDITOR':
-    case 'VFX_VENDOR':
     default:
       return '/dashboard';
   }

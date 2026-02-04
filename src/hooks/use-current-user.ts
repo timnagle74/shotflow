@@ -21,6 +21,7 @@ interface UseCurrentUserResult {
   isSupervisor: boolean;
   isProducer: boolean;
   isCoordinator: boolean;
+  isVendor: boolean;
   /** Returns true if the user should see all shots (non-artist, or artist with can_view_all_shots) */
   canSeeAllShots: boolean;
 }
@@ -78,6 +79,7 @@ export function useCurrentUser(): UseCurrentUserResult {
   const isProducer = role === "PRODUCER";
   const isCoordinator = role === "COORDINATOR";
   const isVfxEditor = role === "VFX_EDITOR";
+  const isVendor = role === "VFX_VENDOR";
   const canSeeAllShots = !isArtist || (currentUser?.canViewAllShots ?? false);
 
   return {
@@ -88,6 +90,7 @@ export function useCurrentUser(): UseCurrentUserResult {
     isSupervisor,
     isProducer,
     isCoordinator,
+    isVendor,
     canSeeAllShots,
   };
 }
