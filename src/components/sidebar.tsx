@@ -26,6 +26,7 @@ interface NavItem {
   href: string;
   icon: typeof LayoutDashboard;
   adminOnly?: boolean;
+  hideForArtist?: boolean;
 }
 
 interface NavSection {
@@ -39,7 +40,7 @@ const sections: NavSection[] = [
     label: "PIPELINE",
     items: [
       { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-      { name: "Turnovers", href: "/turnovers", icon: FolderOpen },
+      { name: "Turnovers", href: "/turnovers", icon: FolderOpen, hideForArtist: true },
       { name: "Shots Board", href: "/shots", icon: Clapperboard },
       { name: "Reviews", href: "/reviews", icon: Eye },
       { name: "Deliveries", href: "/deliveries", icon: Truck },
@@ -84,7 +85,7 @@ export function Sidebar() {
     .filter(section => !section.adminOnly || !isArtist)
     .map(section => ({
       ...section,
-      items: section.items.filter(item => !item.adminOnly || !isArtist),
+      items: section.items.filter(item => (!item.adminOnly && !item.hideForArtist) || !isArtist),
     }))
     .filter(section => section.items.length > 0);
 
