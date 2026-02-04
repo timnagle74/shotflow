@@ -72,11 +72,12 @@ export function useCurrentUser(): UseCurrentUserResult {
   }, [user, authLoading]);
 
   const role = currentUser?.role || "";
-  const isArtist = role === "ARTIST";
+  const isArtist = role === "ARTIST" || role === "VFX_EDITOR";
   const isAdmin = role === "ADMIN";
   const isSupervisor = role === "SUPERVISOR";
   const isProducer = role === "PRODUCER";
   const isCoordinator = role === "COORDINATOR";
+  const isVfxEditor = role === "VFX_EDITOR";
   const canSeeAllShots = !isArtist || (currentUser?.canViewAllShots ?? false);
 
   return {

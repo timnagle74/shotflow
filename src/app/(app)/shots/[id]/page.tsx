@@ -457,7 +457,7 @@ export default function ShotDetailPage() {
                 <SelectTrigger><SelectValue placeholder="Assign artist" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {users.filter(u => u.role === "ARTIST" || u.role === "SUPERVISOR" || u.role === "PRODUCER").map(u => (
+                  {users.filter(u => u.role === "ARTIST" || u.role === "VFX_EDITOR" || u.role === "SUPERVISOR" || u.role === "PRODUCER").map(u => (
                     <SelectItem key={u.id} value={u.id}>{u.name} ({u.role})</SelectItem>
                   ))}
                 </SelectContent>

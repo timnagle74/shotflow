@@ -29,6 +29,7 @@ import {
   Crown,
   Users,
   Briefcase,
+  Film,
   ToggleLeft,
   ToggleRight,
   Loader2,
@@ -61,6 +62,7 @@ const roleIcons: Record<string, typeof Shield> = {
   PRODUCER: Shield,
   COORDINATOR: Users,
   ARTIST: Paintbrush,
+  VFX_EDITOR: Film,
   CLIENT: Eye,
   VFX_VENDOR: Briefcase,
 };

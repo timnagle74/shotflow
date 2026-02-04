@@ -1,7 +1,7 @@
 // Generated types for Supabase — matches the migration schema.
 // In production, generate with: npx supabase gen types typescript
 
-export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'PRODUCER' | 'COORDINATOR' | 'ARTIST' | 'CLIENT' | 'VFX_VENDOR';
+export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'PRODUCER' | 'COORDINATOR' | 'ARTIST' | 'VFX_EDITOR' | 'CLIENT' | 'VFX_VENDOR';
 export type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'ARCHIVED';
 export type ShotStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'INTERNAL_REVIEW' | 'CLIENT_REVIEW' | 'REVISIONS' | 'APPROVED' | 'FINAL';
 export type ShotComplexity = 'SIMPLE' | 'MEDIUM' | 'COMPLEX' | 'HERO';

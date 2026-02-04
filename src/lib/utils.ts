@@ -31,6 +31,7 @@ export const roleLabels: Record<string, string> = {
   PRODUCER: "Producer",
   COORDINATOR: "Coordinator",
   ARTIST: "Artist",
+  VFX_EDITOR: "VFX Editor",
   CLIENT: "Client",
   VFX_VENDOR: "VFX Vendor",
 };
@@ -41,6 +42,7 @@ export const roleColors: Record<string, { color: string; bg: string }> = {
   PRODUCER: { color: "text-indigo-400", bg: "bg-indigo-400/10" },
   COORDINATOR: { color: "text-cyan-400", bg: "bg-cyan-400/10" },
   ARTIST: { color: "text-purple-400", bg: "bg-purple-400/10" },
+  VFX_EDITOR: { color: "text-pink-400", bg: "bg-pink-400/10" },
   CLIENT: { color: "text-green-400", bg: "bg-green-400/10" },
   VFX_VENDOR: { color: "text-orange-400", bg: "bg-orange-400/10" },
 };
