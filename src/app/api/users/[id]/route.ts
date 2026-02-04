@@ -3,6 +3,7 @@ import type { Database } from "@/lib/database.types";
 import { authenticateRequest, requireAdmin, getServiceClient } from "@/lib/auth";
 
 // PATCH /api/users/[id] — update user role / name
+// NOTE: [id] is public.users.id, NOT auth.users.id
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -24,20 +25,21 @@ export async function PATCH(
     if (body.can_view_all_shots !== undefined)
       update.can_view_all_shots = body.can_view_all_shots;
 
+    // Update public.users row using public.users.id
     const { data, error } = await (adminClient as any)
       .from("users")
       .update(update)
       .eq("id", id)
-      .select()
+      .select("*, auth_id")
       .single();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Also update auth metadata if role changed
-    if (body.role) {
-      await adminClient.auth.admin.updateUserById(id, {
+    // Also update auth metadata if role changed — use auth_id (NOT public.users.id)
+    if (body.role && data?.auth_id) {
+      await adminClient.auth.admin.updateUserById(data.auth_id, {
         user_metadata: { role: body.role },
       });
     }
@@ -53,6 +55,7 @@ export async function PATCH(
 }
 
 // DELETE /api/users/[id] — deactivate user (ban in auth, mark inactive)
+// NOTE: [id] is public.users.id, NOT auth.users.id
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -67,18 +70,33 @@ export async function DELETE(
     const { id } = await params;
     const adminClient = getServiceClient();
 
-    // Ban user in auth (soft-delete)
-    const { error: banError } = await adminClient.auth.admin.updateUserById(
-      id,
-      { ban_duration: "876000h" } // ~100 years
-    );
+    // Look up the auth_id from the public.users row first
+    const { data: userData, error: lookupError } = await adminClient
+      .from("users")
+      .select("auth_id")
+      .eq("id", id)
+      .single();
 
-    if (banError) {
-      console.error("Failed to ban user:", banError);
+    if (lookupError || !userData) {
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404 }
+      );
     }
 
-    // We don't delete the users row — just mark it. If there's no active column,
-    // we update role to indicate deactivated, or delete the row.
+    // Ban user in auth using auth_id (NOT public.users.id)
+    if (userData.auth_id) {
+      const { error: banError } = await adminClient.auth.admin.updateUserById(
+        userData.auth_id,
+        { ban_duration: "876000h" } // ~100 years
+      );
+
+      if (banError) {
+        console.error("Failed to ban user:", banError);
+      }
+    }
+
+    // Delete the public.users row using public.users.id
     const { error: deleteError } = await adminClient
       .from("users")
       .delete()

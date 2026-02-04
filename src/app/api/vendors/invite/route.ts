@@ -120,17 +120,18 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Upsert user record in users table with vendor_id
+    // userId here is auth.users.id — upsert by auth_id (NOT by public.users.id)
     const { data: user, error: userError } = await adminClient
       .from("users")
       .upsert(
         {
-          id: userId,
+          auth_id: userId,
           email: contactEmail,
           name: contactName,
           role: userRole,
           vendor_id: vendor.id,
         },
-        { onConflict: "id" }
+        { onConflict: "auth_id" }
       )
       .select()
       .single();
@@ -140,23 +141,27 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Link user to vendor via user_vendors junction table
-    const { error: junctionError } = await adminClient
-      .from("user_vendors")
-      .upsert(
-        {
-          user_id: userId,
-          vendor_id: vendor.id,
-        },
-        { onConflict: "user_id,vendor_id", ignoreDuplicates: true }
-      );
+    // Use the public.users.id (from upsert result), NOT auth.users.id
+    const publicUserId = user?.id;
+    if (publicUserId) {
+      const { error: junctionError } = await adminClient
+        .from("user_vendors")
+        .upsert(
+          {
+            user_id: publicUserId,
+            vendor_id: vendor.id,
+          },
+          { onConflict: "user_id,vendor_id", ignoreDuplicates: true }
+        );
 
-    if (junctionError) {
-      console.error("Failed to create user_vendors link:", junctionError);
+      if (junctionError) {
+        console.error("Failed to create user_vendors link:", junctionError);
+      }
     }
 
     return NextResponse.json({
       vendor,
-      user: user || { id: userId, email: contactEmail, name: contactName, role: userRole },
+      user: user || { email: contactEmail, name: contactName, role: userRole },
       message: isFreelancer
         ? `Freelancer "${contactName}" invited with auto-vendor "${vendorName}"`
         : `Vendor "${vendorName}" created and ${contactName} invited`,

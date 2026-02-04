@@ -99,37 +99,43 @@ export async function POST(
 
     if (userId) {
       // 3. Upsert user record with vendor_id
-      await adminClient
+      // userId here is auth.users.id — upsert by auth_id, NOT public.users.id
+      const { data: upsertedUser } = await adminClient
         .from("users")
         .upsert(
           {
-            id: userId,
+            auth_id: userId,
             email,
             name,
             role: userRole,
             vendor_id: vendorId,
           },
-          { onConflict: "id" }
-        );
+          { onConflict: "auth_id" }
+        )
+        .select("id")
+        .single();
 
-      // 4. Link user to vendor via junction table
-      await adminClient
-        .from("user_vendors")
-        .upsert(
-          { user_id: userId, vendor_id: vendorId },
-          { onConflict: "user_id,vendor_id", ignoreDuplicates: true }
-        );
+      // 4. Link user to vendor via junction table (using public.users.id)
+      const publicUserId = upsertedUser?.id;
+      if (publicUserId) {
+        await adminClient
+          .from("user_vendors")
+          .upsert(
+            { user_id: publicUserId, vendor_id: vendorId },
+            { onConflict: "user_id,vendor_id", ignoreDuplicates: true }
+          );
 
-      // 5. Update artist record with user_id if column exists
-      await adminClient
-        .from("artists")
-        .update({ user_id: userId })
-        .eq("id", artist.id);
+        // 5. Link artist record to user via email
+        await adminClient
+          .from("artists")
+          .update({ email })
+          .eq("id", artist.id);
+      }
     }
 
     return NextResponse.json({
       artist,
-      user: userId ? { id: userId, email, name, role: userRole } : null,
+      user: userId ? { email, name, role: userRole } : null,
       message: `Artist "${name}" invited and linked to ${vendor.name}`,
     });
   } catch (err) {

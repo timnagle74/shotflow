@@ -82,6 +82,7 @@ export interface Database {
       users: {
         Row: {
           id: string;
+          auth_id: string | null;
           name: string | null;
           email: string;
           role: UserRole;
@@ -93,6 +94,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
+          auth_id?: string | null;
           name?: string | null;
           email: string;
           role: UserRole;
@@ -104,6 +106,7 @@ export interface Database {
         };
         Update: {
           id?: string;
+          auth_id?: string | null;
           name?: string | null;
           email?: string;
           role?: UserRole;
