@@ -38,6 +38,21 @@ export async function POST(
       return NextResponse.json({ error: "Approvals not allowed" }, { status: 403 });
     }
 
+    // SECURITY: Verify that the versionId belongs to this review session
+    const { data: sessionVersion, error: svError } = await supabase
+      .from("review_session_versions")
+      .select("id")
+      .eq("session_id", session.id)
+      .eq("version_id", versionId)
+      .single();
+
+    if (svError || !sessionVersion) {
+      return NextResponse.json(
+        { error: "Version not found in this review session" },
+        { status: 403 }
+      );
+    }
+
     // Update review_session_versions
     const { error: updateError } = await supabase
       .from("review_session_versions")
