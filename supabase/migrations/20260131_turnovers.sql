@@ -1,4 +1,6 @@
 -- Turnovers: A batch of shots sent from editorial to VFX
+-- Drop the minimal version from initial schema and recreate with full columns
+DROP TABLE IF EXISTS turnovers CASCADE;
 CREATE TABLE turnovers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,

@@ -96,13 +96,14 @@ CREATE TABLE deliveries (
   status delivery_status NOT NULL DEFAULT 'PENDING'
 );
 
--- Turnovers
-CREATE TABLE turnovers (
+-- Turnovers (full definition in 20260131_turnovers.sql migration)
+-- Using CREATE TABLE IF NOT EXISTS to avoid conflicts with dedicated migration
+CREATE TABLE IF NOT EXISTS turnovers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  source_file TEXT NOT NULL,
+  source_file TEXT,
   imported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  imported_by_id UUID NOT NULL REFERENCES users(id),
+  imported_by_id UUID REFERENCES users(id),
   shot_count INT NOT NULL DEFAULT 0
 );
 
