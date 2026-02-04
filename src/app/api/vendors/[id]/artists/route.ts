@@ -77,13 +77,14 @@ export async function POST(
         authError.message?.includes("already been registered") ||
         authError.message?.includes("already exists")
       ) {
-        const { data: existingUsers } =
-          await adminClient.auth.admin.listUsers();
-        const existingAuth = existingUsers?.users?.find(
-          (u: any) => u.email === email
-        );
-        if (existingAuth) {
-          userId = existingAuth.id;
+        // Find existing user via public.users table (avoids fetching all auth users)
+        const { data: existingUserRow } = await adminClient
+          .from('users')
+          .select('auth_id')
+          .eq('email', email)
+          .single();
+        if (existingUserRow?.auth_id) {
+          userId = existingUserRow.auth_id;
         }
       }
       if (!userId) {

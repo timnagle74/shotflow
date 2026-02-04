@@ -25,11 +25,21 @@ export async function POST(req: NextRequest) {
 
     const adminClient = getServiceClient() as any;
 
-    // Check if auth user already exists
-    const { data: existingUsers } = await adminClient.auth.admin.listUsers();
-    const existingAuth = existingUsers?.users?.find(
-      (u: any) => u.email === email
-    );
+    // Check if auth user already exists (filtered lookup, not full table scan)
+    const { data: existingUsers } = await adminClient.auth.admin.listUsers({
+      perPage: 1,
+      page: 1,
+    });
+    // Use a targeted query: look up the user row by email instead of scanning all auth users
+    const { data: existingUserRow } = await adminClient
+      .from('users')
+      .select('auth_id')
+      .eq('email', email)
+      .single();
+
+    const existingAuth = existingUserRow
+      ? { id: existingUserRow.auth_id, email }
+      : null;
 
     if (existingAuth) {
       // User exists in auth — upsert public.users and update role
