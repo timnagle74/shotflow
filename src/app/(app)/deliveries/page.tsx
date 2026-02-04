@@ -154,11 +154,11 @@ export default function DeliveriesPage() {
 
   const bulkUpdate = async (newStatus: DeliveryStatusType) => {
     if (!supabase) return;
-    for (const id of selectedIds) {
-      await supabase.from("deliveries").update({
+    for (const id of Array.from(selectedIds)) {
+      await (supabase as any).from("deliveries").update({
         status: newStatus,
         delivered_at: newStatus !== "PENDING" ? new Date().toISOString() : null,
-      } as any).eq("id", id);
+      }).eq("id", id);
     }
     setSelectedIds(new Set());
     fetchData();
@@ -166,10 +166,10 @@ export default function DeliveriesPage() {
 
   const updateDeliveryStatus = async (id: string, newStatus: DeliveryStatusType) => {
     if (!supabase) return;
-    await supabase.from("deliveries").update({
+    await (supabase as any).from("deliveries").update({
       status: newStatus,
       delivered_at: newStatus !== "PENDING" ? new Date().toISOString() : null,
-    } as any).eq("id", id);
+    }).eq("id", id);
     fetchData();
   };
 

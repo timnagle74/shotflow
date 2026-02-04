@@ -86,13 +86,13 @@ export default function ClientPortalPage() {
         supabase.from("users").select("id, name, role"),
       ]);
       
-      const fetchedProjects = projectsRes.data || [];
+      const fetchedProjects = (projectsRes.data || []) as Project[];
       setProjects(fetchedProjects);
-      setShots(shotsRes.data || []);
-      setSequences(seqRes.data || []);
-      setVersions(versionsRes.data || []);
-      setNotes(notesRes.data || []);
-      setUsers(usersRes.data || []);
+      setShots((shotsRes.data || []) as Shot[]);
+      setSequences((seqRes.data || []) as any[]);
+      setVersions((versionsRes.data || []) as Version[]);
+      setNotes((notesRes.data || []) as Note[]);
+      setUsers((usersRes.data || []) as any[]);
       
       if (fetchedProjects.length > 0) {
         setSelectedProject(fetchedProjects[0].id);

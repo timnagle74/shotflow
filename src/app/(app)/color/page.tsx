@@ -95,12 +95,13 @@ export default function ColorManagementPage() {
       return;
     }
     try {
+      const sb = supabase as any;
       const [projectsRes, shotsRes, seqRes, cdlsRes, lutsRes] = await Promise.all([
-        supabase.from("projects").select("id, name, code").order("name"),
-        supabase.from("shots").select("id, code, sequence_id"),
-        supabase.from("sequences").select("id, project_id"),
-        supabase.from("shot_cdls").select("*"),
-        supabase.from("lut_files").select("*"),
+        sb.from("projects").select("id, name, code").order("name"),
+        sb.from("shots").select("id, code, sequence_id"),
+        sb.from("sequences").select("id, project_id"),
+        sb.from("shot_cdls").select("*"),
+        sb.from("lut_files").select("*"),
       ]);
       setProjects(projectsRes.data || []);
       setShots(shotsRes.data || []);

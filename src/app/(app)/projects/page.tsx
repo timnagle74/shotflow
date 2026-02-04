@@ -35,32 +35,33 @@ export default function ProjectsPage() {
       return;
     }
     try {
-      const { data, error } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
+      const sb = supabase as any;
+      const { data, error } = await sb.from("projects").select("*").order("created_at", { ascending: false });
       if (error) throw error;
       setProjects(data || []);
 
       // Fetch shot counts per project
       if (data && data.length > 0) {
         const stats: Record<string, { total: number; active: number; done: number }> = {};
-        const { data: allShots } = await supabase.from("shots").select("id, status, sequence_id");
-        const { data: allSeqs } = await supabase.from("sequences").select("id, project_id");
+        const { data: allShots } = await sb.from("shots").select("id, status, sequence_id");
+        const { data: allSeqs } = await sb.from("sequences").select("id, project_id");
         const seqMap = new Map<string, string>();
-        (allSeqs || []).forEach(s => seqMap.set(s.id, s.project_id));
+        (allSeqs || []).forEach((s: any) => seqMap.set(s.id, s.project_id));
 
         for (const project of data) {
-          const projectShots = (allShots || []).filter(sh => {
+          const projectShots = (allShots || []).filter((sh: any) => {
             const projId = seqMap.get(sh.sequence_id);
             return projId === project.id;
           });
           const total = projectShots.length;
-          const active = projectShots.filter(s => ["IN_PROGRESS", "INTERNAL_REVIEW", "CLIENT_REVIEW"].includes(s.status)).length;
-          const done = projectShots.filter(s => ["APPROVED", "FINAL"].includes(s.status)).length;
+          const active = projectShots.filter((s: any) => ["IN_PROGRESS", "INTERNAL_REVIEW", "CLIENT_REVIEW"].includes(s.status)).length;
+          const done = projectShots.filter((s: any) => ["APPROVED", "FINAL"].includes(s.status)).length;
           stats[project.id] = { total, active, done };
         }
         setProjectStats(stats);
 
         // Fetch delivery specs per project
-        const { data: specs } = await supabase.from("delivery_specs").select("*");
+        const { data: specs } = await sb.from("delivery_specs").select("*");
         if (specs) {
           const specsMap: Record<string, any> = {};
           for (const spec of specs) {
@@ -80,13 +81,13 @@ export default function ProjectsPage() {
     if (!newProject.name || !newProject.code || !supabase) return;
     setLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("projects")
         .insert([{ 
           name: newProject.name, 
           code: newProject.code.toUpperCase(), 
           status: newProject.status
-        }] as any);
+        }]);
       
       if (error) throw error;
       await fetchProjects();

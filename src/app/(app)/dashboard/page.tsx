@@ -45,12 +45,12 @@ export default function DashboardPage() {
     }
     try {
       const { data: projects } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
-      const activeProjects = projects?.filter(p => p.status === "ACTIVE") || [];
+      const activeProjects = (projects as any[])?.filter(p => p.status === "ACTIVE") || [];
       const { data: shots } = await supabase.from("shots").select("id, status, sequence_id");
-      const allShots = shots || [];
+      const allShots = (shots || []) as any[];
       const { data: sequences } = await supabase.from("sequences").select("id, project_id");
       const seqMap = new Map<string, string>();
-      (sequences || []).forEach(s => seqMap.set(s.id, s.project_id));
+      ((sequences || []) as any[]).forEach(s => seqMap.set(s.id, s.project_id));
       const { count: userCount } = await supabase.from("users").select("id", { count: "exact", head: true });
 
       setStats({
@@ -65,7 +65,7 @@ export default function DashboardPage() {
       const mainProject = activeProjects[0] || projects?.[0];
       if (mainProject) {
         setActiveProjectName(mainProject.name);
-        const projectSeqIds = (sequences || []).filter(s => s.project_id === mainProject.id).map(s => s.id);
+        const projectSeqIds = ((sequences || []) as any[]).filter(s => s.project_id === mainProject.id).map(s => s.id);
         const projectShots = allShots.filter(s => projectSeqIds.includes(s.sequence_id));
         const counts: Record<string, number> = {
           NOT_STARTED: 0, IN_PROGRESS: 0, INTERNAL_REVIEW: 0, CLIENT_REVIEW: 0, REVISIONS: 0, APPROVED: 0, FINAL: 0,
@@ -74,8 +74,8 @@ export default function DashboardPage() {
         setStatusCounts(counts);
       }
 
-      const summaries: ProjectSummary[] = (projects || []).map(project => {
-        const projectSeqIds = (sequences || []).filter(s => s.project_id === project.id).map(s => s.id);
+      const summaries: ProjectSummary[] = ((projects || []) as any[]).map(project => {
+        const projectSeqIds = ((sequences || []) as any[]).filter(s => s.project_id === project.id).map(s => s.id);
         const projectShots = allShots.filter(s => projectSeqIds.includes(s.sequence_id));
         const done = projectShots.filter(s => s.status === "APPROVED" || s.status === "FINAL").length;
         return {
