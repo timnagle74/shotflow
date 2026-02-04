@@ -819,19 +819,20 @@ export default function TurnoverPage() {
 
           const mediaData = await mediaRes.json();
           
-          // Upload file to Bunny using signed URL
+          // Upload file via server proxy (Bunny Storage requires AccessKey, not signed URLs)
           try {
-            const uploadRes = await fetch(mediaData.uploadUrl, {
+            const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(mediaData.storagePath || '')}`;
+            const uploadRes = await fetch(proxyUrl, {
               method: "PUT",
               headers: { "Content-Type": "application/octet-stream" },
               body: tf.file,
             });
             
-            if (!uploadRes.ok && uploadRes.status !== 201) {
-              console.error(`Bunny upload failed for ${tf.file.name}: ${uploadRes.status}`);
+            if (!uploadRes.ok) {
+              console.error(`File upload failed for ${tf.file.name}: ${uploadRes.status}`);
             }
-          } catch (bunnyErr) {
-            console.error(`Bunny upload error for ${tf.file.name}:`, bunnyErr);
+          } catch (uploadErr) {
+            console.error(`File upload error for ${tf.file.name}:`, uploadErr);
             // DB record still exists — file can be re-uploaded later
           }
 

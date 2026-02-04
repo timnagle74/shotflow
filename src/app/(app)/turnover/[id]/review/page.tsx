@@ -237,18 +237,21 @@ export default function TurnoverReviewPage() {
       });
       
       if (!res.ok) throw new Error("Failed to prepare upload");
-      const { uploadUrl, ref } = await res.json();
+      const { uploadUrl, ref, storagePath } = await res.json();
       
-      // Upload to Bunny using signed URL (no raw key needed)
-      const uploadRes = await fetch(uploadUrl, {
+      // Upload via server proxy (Bunny Storage requires AccessKey, can't use signed URLs for PUT)
+      const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(storagePath || '')}`;
+      const uploadRes = await fetch(proxyUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/octet-stream" },
         body: file,
       });
       
-      if (uploadRes.ok || uploadRes.status === 201) {
-        // Add to local refs list
-        setRefs(prev => [...prev, { ...ref, assigned_shots: [] }]);
+      // Add to local refs list regardless (DB record already created)
+      setRefs(prev => [...prev, { ...ref, assigned_shots: [] }]);
+      
+      if (!uploadRes.ok) {
+        console.error("File upload failed, but ref record exists:", await uploadRes.text());
       }
     } catch (err) {
       console.error("Ref upload error:", err);
@@ -280,18 +283,21 @@ export default function TurnoverReviewPage() {
       });
       
       if (!res.ok) throw new Error("Failed to prepare upload");
-      const { uploadUrl, plate } = await res.json();
+      const { storagePath, plate } = await res.json();
       
-      // Upload to Bunny using signed URL (no raw key needed)
-      const uploadRes = await fetch(uploadUrl, {
+      // Upload via server proxy (Bunny Storage requires AccessKey)
+      const proxyUrl = `/api/turnover/upload-file?path=${encodeURIComponent(storagePath || '')}`;
+      const uploadRes = await fetch(proxyUrl, {
         method: "PUT",
         headers: { "Content-Type": "application/octet-stream" },
         body: file,
       });
       
-      if (uploadRes.ok || uploadRes.status === 201) {
-        // Add to local plates list
-        setPlates(prev => [...prev, plate]);
+      // Add to local plates list regardless (DB record already created)
+      setPlates(prev => [...prev, plate]);
+      
+      if (!uploadRes.ok) {
+        console.error("Plate file upload failed:", await uploadRes.text());
       }
     } catch (err) {
       console.error("Plate upload error:", err);

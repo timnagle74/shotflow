@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         uploadUrl,
+        storagePath,
         ref: {
           id: refData.id,
           filename: refData.filename,
@@ -166,6 +167,7 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({
         uploadUrl,
+        storagePath,
         plate: {
           id: plateData.id,
           shot_id: plateData.shot_id,
