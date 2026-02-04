@@ -14,10 +14,25 @@ interface UploadedFile {
   fileSize?: number;
 }
 
-// Find all shot codes that appear in a filename
+// Find all shot codes that appear in a filename (flexible matching for leading zeros)
 function findMatchingShotCodes(filename: string, shotCodes: string[]): string[] {
   const lowerFilename = filename.toLowerCase();
-  return shotCodes.filter(code => lowerFilename.includes(code.toLowerCase()));
+  return shotCodes.filter(code => {
+    const lowerCode = code.toLowerCase();
+    // Strategy 1: direct include
+    if (lowerFilename.includes(lowerCode)) return true;
+    // Strategy 2: strip leading zeros from scene part (004_0060 → 4_0060)
+    const normalized = lowerCode.replace(/^0+/, '');
+    if (lowerFilename.includes(normalized)) return true;
+    // Strategy 3: check if code matches pattern in filename with flexible leading zeros
+    const codeMatch = lowerCode.match(/^(\d+)_(\d+)$/);
+    if (codeMatch) {
+      const [, scene, seq] = codeMatch;
+      const pattern = new RegExp(`0*${parseInt(scene)}_0*${parseInt(seq)}`, 'i');
+      if (pattern.test(lowerFilename)) return true;
+    }
+    return false;
+  });
 }
 
 export async function POST(request: NextRequest) {

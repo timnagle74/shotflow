@@ -787,7 +787,27 @@ export default function TurnoverPage() {
         let shotId: string | undefined;
         if (fileType === 'plate') {
           const lowerName = tf.file.name.toLowerCase();
-          const matchedCode = shotCodes.find(code => lowerName.includes(code.toLowerCase()));
+          // Try multiple matching strategies:
+          // 1. Exact include (filename contains shot code)
+          // 2. Normalize shot code (004_0060 → 4_0060) and check
+          // 3. Check if shot code contains the filename base
+          const matchedCode = shotCodes.find(code => {
+            const lowerCode = code.toLowerCase();
+            // Strategy 1: direct include
+            if (lowerName.includes(lowerCode)) return true;
+            // Strategy 2: strip leading zeros from scene part (004_0060 → 4_0060)
+            const normalized = lowerCode.replace(/^0+/, '');
+            if (lowerName.includes(normalized)) return true;
+            // Strategy 3: check if code matches pattern in filename (e.g., 04_0060 matches 004_0060)
+            const codeMatch = lowerCode.match(/^(\d+)_(\d+)$/);
+            if (codeMatch) {
+              const [, scene, seq] = codeMatch;
+              // Look for scene_seq pattern with flexible leading zeros
+              const pattern = new RegExp(`0*${parseInt(scene)}_0*${parseInt(seq)}`, 'i');
+              if (pattern.test(lowerName)) return true;
+            }
+            return false;
+          });
           shotId = matchedCode ? shotCodeMap[matchedCode] : undefined;
           if (!shotId) {
             console.warn(`Plate ${tf.file.name} didn't match any shot codes, skipping`);
