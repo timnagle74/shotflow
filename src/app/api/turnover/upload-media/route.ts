@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac } from "crypto";
+import { createHash } from "crypto";
 import { generateSignedUploadUrl } from "@/lib/bunny";
 import { authenticateRequest, requireInternal, getServiceClient } from "@/lib/auth";
 
-// Generate TUS upload signature for Bunny Stream
-async function generateTusSignature(libraryId: string, apiKey: string, videoId: string, expiresAt: number): Promise<string> {
+// Generate TUS upload signature for Bunny Stream (plain SHA256, not HMAC)
+function generateTusSignature(libraryId: string, apiKey: string, videoId: string, expiresAt: number): string {
   const signatureData = `${libraryId}${apiKey}${expiresAt}${videoId}`;
-  return createHmac('sha256', apiKey).update(signatureData).digest('hex');
+  return createHash('sha256').update(signatureData).digest('hex');
 }
 
 const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
