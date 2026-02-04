@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateRequest, requireInternal } from "@/lib/auth";
 
-// Allow up to 100MB uploads (Vercel Pro limit)
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
+// Route segment config for App Router
 export const maxDuration = 60; // seconds
+export const dynamic = "force-dynamic";
 
 const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
 const BUNNY_STORAGE_HOSTNAME = process.env.BUNNY_STORAGE_HOSTNAME || 'storage.bunnycdn.com';
