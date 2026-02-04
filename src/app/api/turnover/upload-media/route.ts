@@ -98,6 +98,66 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Failed to create ref record" }, { status: 500 });
       }
 
+      // Auto-match ref to shots by filename
+      let matchedShotIds: string[] = [];
+      try {
+        // Get all turnover_shots for this turnover with their shot codes
+        const { data: turnoverShots } = await supabase
+          .from("turnover_shots")
+          .select("id, shot_id, shots!inner(code)")
+          .eq("turnover_id", turnoverId);
+
+        if (turnoverShots && turnoverShots.length > 0) {
+          const lowerFilename = filename.toLowerCase();
+          
+          // Match using flexible logic (handles leading zeros)
+          const matchedTurnoverShots = turnoverShots.filter((ts: any) => {
+            const code = ts.shots?.code?.toLowerCase() || '';
+            // Strategy 1: direct include
+            if (lowerFilename.includes(code)) return true;
+            // Strategy 2: strip leading zeros from scene
+            const normalized = code.replace(/^0+/, '');
+            if (lowerFilename.includes(normalized)) return true;
+            // Strategy 3: flexible pattern match
+            const codeMatch = code.match(/^(\d+)_(\d+)$/);
+            if (codeMatch) {
+              const [, scene, seq] = codeMatch;
+              const pattern = new RegExp(`0*${parseInt(scene)}_0*${parseInt(seq)}`, 'i');
+              if (pattern.test(lowerFilename)) return true;
+            }
+            return false;
+          });
+
+          if (matchedTurnoverShots.length > 0) {
+            // Create turnover_shot_refs entries
+            const refShotLinks = matchedTurnoverShots.map((ts: any) => ({
+              turnover_shot_id: ts.id,
+              turnover_ref_id: refData.id,
+              auto_matched: true,
+            }));
+
+            await supabase.from("turnover_shot_refs").insert(refShotLinks);
+
+            // Update ref as auto_matched
+            await supabase
+              .from("turnover_refs")
+              .update({ auto_matched: true })
+              .eq("id", refData.id);
+
+            // Update turnover_shots refs_assigned flag
+            await supabase
+              .from("turnover_shots")
+              .update({ refs_assigned: true })
+              .in("id", matchedTurnoverShots.map((ts: any) => ts.id));
+
+            matchedShotIds = matchedTurnoverShots.map((ts: any) => ts.shot_id);
+          }
+        }
+      } catch (matchErr) {
+        console.error("Ref matching error:", matchErr);
+        // Non-fatal, ref still created
+      }
+
       return NextResponse.json({
         uploadUrl,
         storagePath,
@@ -106,9 +166,10 @@ export async function POST(request: NextRequest) {
           filename: refData.filename,
           cdn_url: refData.cdn_url,
           preview_url: refData.preview_url,
-          auto_matched: false,
+          auto_matched: matchedShotIds.length > 0,
         },
         videoId,
+        matchedShotIds,
       });
 
     } else {
