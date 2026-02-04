@@ -190,7 +190,7 @@ export default function VendorPortalPage() {
       const { data: userData } = await (supabase as any)
         .from("users")
         .select("id, role, vendor_id")
-        .eq("id", authUser.id)
+        .eq("auth_id", authUser.id)
         .single();
 
       if (!userData) {
