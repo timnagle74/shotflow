@@ -74,7 +74,21 @@ export function AnnotationCanvas({
 
     // Load initial data if provided
     if (initialData) {
-      canvas.loadFromJSON(JSON.parse(initialData)).then(() => {
+      // Handle both string and object formats (DB might have double-encoded JSON)
+      let dataToLoad = initialData;
+      if (typeof initialData === "string") {
+        try {
+          dataToLoad = JSON.parse(initialData);
+          // Check if it's still a string (double-encoded)
+          if (typeof dataToLoad === "string") {
+            dataToLoad = JSON.parse(dataToLoad);
+          }
+        } catch {
+          console.error("Failed to parse annotation data");
+          return;
+        }
+      }
+      canvas.loadFromJSON(dataToLoad).then(() => {
         canvas.renderAll();
       });
     }

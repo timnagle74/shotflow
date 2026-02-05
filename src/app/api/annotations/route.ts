@@ -82,11 +82,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Parse drawing_data if it's a string (ensure it's stored as JSONB object, not string)
+    let parsedDrawingData = drawing_data;
+    if (typeof drawing_data === "string") {
+      try {
+        parsedDrawingData = JSON.parse(drawing_data);
+      } catch {
+        // Already an object or invalid JSON, use as-is
+      }
+    }
+
     // Build insert object based on source type
     const insertData: Record<string, unknown> = {
       frame_number,
       timecode,
-      drawing_data,
+      drawing_data: parsedDrawingData,
       comment,
       author_id: publicUser?.id || null,
     };
