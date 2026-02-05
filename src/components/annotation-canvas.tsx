@@ -10,7 +10,7 @@ import {
   Circle, 
   Type, 
   ArrowRight,
-  Eraser,
+  Trash,
   Trash2,
   Save,
   Undo,
@@ -141,6 +141,7 @@ export function AnnotationCanvas({
         });
         canvas.add(shape);
         canvas.setActiveObject(shape);
+        setActiveTool("select"); // Auto-switch to select after placing shape
       });
     } else if (activeTool === "circle") {
       import("fabric").then(({ Circle }) => {
@@ -154,6 +155,7 @@ export function AnnotationCanvas({
         });
         canvas.add(shape);
         canvas.setActiveObject(shape);
+        setActiveTool("select"); // Auto-switch to select after placing shape
       });
     } else if (activeTool === "arrow") {
       import("fabric").then(({ Line, Triangle, Group }) => {
@@ -177,6 +179,7 @@ export function AnnotationCanvas({
         });
         canvas.add(arrow);
         canvas.setActiveObject(arrow);
+        setActiveTool("select"); // Auto-switch to select after placing shape
       });
     } else if (activeTool === "text") {
       import("fabric").then(({ IText }) => {
@@ -217,14 +220,36 @@ export function AnnotationCanvas({
   };
 
   // Delete selected
-  const handleDelete = () => {
+  const handleDelete = useCallback(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
     const selected = canvas.getActiveObjects();
+    if (selected.length === 0) return;
     selected.forEach(obj => canvas.remove(obj));
     canvas.discardActiveObject();
     canvas.renderAll();
-  };
+  }, []);
+
+  // Keyboard shortcut for delete
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (readOnly) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        // Don't delete if we're editing text
+        const canvas = fabricRef.current;
+        if (canvas) {
+          const activeObj = canvas.getActiveObject();
+          // @ts-ignore - isEditing exists on IText objects
+          if (activeObj && activeObj.isEditing) return;
+        }
+        e.preventDefault();
+        handleDelete();
+      }
+    };
+    
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleDelete, readOnly]);
 
   // Save annotation
   const handleSave = () => {
@@ -316,9 +341,9 @@ export function AnnotationCanvas({
             size="icon"
             className="h-8 w-8"
             onClick={handleDelete}
-            title="Delete Selected"
+            title="Delete Selected (Del)"
           >
-            <Eraser className="h-4 w-4" />
+            <Trash className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
