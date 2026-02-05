@@ -1,7 +1,17 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { Canvas, PencilBrush, FabricObject } from "fabric";
+import { 
+  Canvas, 
+  PencilBrush, 
+  FabricObject, 
+  Rect as FabricRect, 
+  Circle as FabricCircle, 
+  Line as FabricLine, 
+  Triangle as FabricTriangle, 
+  Group as FabricGroup, 
+  IText as FabricIText 
+} from "fabric";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { 
@@ -87,7 +97,9 @@ export function AnnotationCanvas({
         // Ensure dataToLoad is an object with the expected structure
         if (dataToLoad && typeof dataToLoad === "object") {
           canvas.loadFromJSON(dataToLoad).then(() => {
-            canvas.renderAll();
+            canvas.requestRenderAll();
+            // Force another render after a short delay for complex objects
+            setTimeout(() => canvas.requestRenderAll(), 100);
           }).catch((err: Error) => {
             console.error("Failed to load annotation canvas:", err);
           });
@@ -160,71 +172,63 @@ export function AnnotationCanvas({
     }
 
     if (activeTool === "rectangle") {
-      import("fabric").then(({ Rect }) => {
-        const shape = new Rect({
-          left: x - 25,
-          top: y - 25,
-          width: 50,
-          height: 50,
-          fill: "transparent",
-          stroke: activeColor,
-          strokeWidth: 3,
-        });
-        canvas.add(shape);
-        canvas.setActiveObject(shape);
-        setActiveTool("select"); // Auto-switch to select after placing shape
+      const shape = new FabricRect({
+        left: x - 25,
+        top: y - 25,
+        width: 50,
+        height: 50,
+        fill: "transparent",
+        stroke: activeColor,
+        strokeWidth: 3,
       });
+      canvas.add(shape);
+      canvas.setActiveObject(shape);
+      setActiveTool("select");
     } else if (activeTool === "circle") {
-      import("fabric").then(({ Circle }) => {
-        const shape = new Circle({
-          left: x - 25,
-          top: y - 25,
-          radius: 25,
-          fill: "transparent",
-          stroke: activeColor,
-          strokeWidth: 3,
-        });
-        canvas.add(shape);
-        canvas.setActiveObject(shape);
-        setActiveTool("select"); // Auto-switch to select after placing shape
+      const shape = new FabricCircle({
+        left: x - 25,
+        top: y - 25,
+        radius: 25,
+        fill: "transparent",
+        stroke: activeColor,
+        strokeWidth: 3,
       });
+      canvas.add(shape);
+      canvas.setActiveObject(shape);
+      setActiveTool("select");
     } else if (activeTool === "arrow") {
-      import("fabric").then(({ Line, Triangle, Group }) => {
-        const line = new Line([x, y, x + 80, y], {
-          stroke: activeColor,
-          strokeWidth: 3,
-        });
-        const arrowHead = new Triangle({
-          left: x + 80,
-          top: y,
-          width: 15,
-          height: 20,
-          fill: activeColor,
-          angle: 90,
-          originX: "center",
-          originY: "center",
-        });
-        const arrow = new Group([line, arrowHead], {
-          left: x,
-          top: y - 10,
-        });
-        canvas.add(arrow);
-        canvas.setActiveObject(arrow);
-        setActiveTool("select"); // Auto-switch to select after placing shape
+      const line = new FabricLine([x, y, x + 80, y], {
+        stroke: activeColor,
+        strokeWidth: 3,
       });
+      const arrowHead = new FabricTriangle({
+        left: x + 80,
+        top: y,
+        width: 15,
+        height: 20,
+        fill: activeColor,
+        angle: 90,
+        originX: "center",
+        originY: "center",
+      });
+      const arrow = new FabricGroup([line, arrowHead], {
+        left: x,
+        top: y - 10,
+      });
+      canvas.add(arrow);
+      canvas.setActiveObject(arrow);
+      setActiveTool("select");
     } else if (activeTool === "text") {
-      import("fabric").then(({ IText }) => {
-        const text = new IText("Note", {
-          left: x,
-          top: y,
-          fontSize: 20,
-          fill: activeColor,
-          fontFamily: "sans-serif",
-        });
-        canvas.add(text);
-        canvas.setActiveObject(text);
-        text.enterEditing();
+      const text = new FabricIText("Note", {
+        left: x,
+        top: y,
+        fontSize: 20,
+        fill: activeColor,
+        fontFamily: "sans-serif",
       });
+      canvas.add(text);
+      canvas.setActiveObject(text);
+      text.enterEditing();
     }
   }, [activeTool, activeColor, readOnly]);
 
