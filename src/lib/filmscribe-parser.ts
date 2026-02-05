@@ -302,13 +302,20 @@ export function filmScribeToShots(result: FilmScribeParseResult): Array<{
   take: string | null;
   camera: string | null;
 }> {
-  // Check if events have clips AND VFX codes (REEL03 style where markers are matched to events)
+  // Check which source has more valid VFX shots:
+  // - Events with real clip names (not "Opt. #X") AND VFX codes
+  // - Locators with clip names AND VFX codes
   const eventsWithClipsAndVfx = result.events.filter(
     e => e.clipName !== null && e.vfxShotCode !== null && !e.clipName.startsWith('Opt')
   );
   
-  if (eventsWithClipsAndVfx.length > 0) {
-    // Case 1: Events have clips AND VFX codes — use events
+  const locatorsWithClipsAndVfx = result.locators.filter(
+    loc => loc.vfxShotCode !== null && loc.clipName !== null && !loc.clipName.startsWith('Opt')
+  );
+  
+  // Use whichever source has more valid shots (locators usually have the camera filenames)
+  if (eventsWithClipsAndVfx.length >= locatorsWithClipsAndVfx.length && eventsWithClipsAndVfx.length > 0) {
+    // Case 1: Events have more/equal valid shots — use events
     return eventsWithClipsAndVfx.map(event => ({
       code: event.vfxShotCode!,
       clipName: event.clipName,
