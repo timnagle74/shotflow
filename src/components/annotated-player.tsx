@@ -62,6 +62,7 @@ export function AnnotatedPlayer({
   const sourceParam = `${annotationSource.type}Id=${annotationSource.id}`;
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const targetFrameRef = useRef<number | null>(null); // Track intentional frame jumps
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentFrame, setCurrentFrame] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -79,10 +80,12 @@ export function AnnotatedPlayer({
     : null);
 
   // Calculate frame from time
+  // Frame N spans [N/fps, (N+1)/fps), so floor gives correct frame
   const timeToFrame = (time: number) => Math.floor(time * fps);
   
-  // Calculate time from frame
-  const frameToTime = (frame: number) => frame / fps;
+  // Calculate time from frame - seek to near END of frame for reliable landing
+  // HLS/browser seeking often undershoots, so aim high within the frame
+  const frameToTime = (frame: number) => (frame + 0.9) / fps;
 
   // Format timecode (HH:MM:SS:FF)
   const formatTimecode = (time: number) => {
@@ -112,7 +115,7 @@ export function AnnotatedPlayer({
     loadAnnotations();
   }, [sourceParam]);
 
-  // Track video dimensions
+  // Track video dimensions with ResizeObserver for proper scaling
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -124,13 +127,16 @@ export function AnnotatedPlayer({
       });
     };
 
+    // Use ResizeObserver to catch container/video size changes
+    const resizeObserver = new ResizeObserver(updateDimensions);
+    resizeObserver.observe(video);
+
     video.addEventListener("loadedmetadata", updateDimensions);
-    window.addEventListener("resize", updateDimensions);
     updateDimensions();
 
     return () => {
+      resizeObserver.disconnect();
       video.removeEventListener("loadedmetadata", updateDimensions);
-      window.removeEventListener("resize", updateDimensions);
     };
   }, []);
 
@@ -141,7 +147,20 @@ export function AnnotatedPlayer({
 
     const handleTimeUpdate = () => {
       setCurrentTime(video.currentTime);
-      setCurrentFrame(timeToFrame(video.currentTime));
+      // If we have a target frame (from jumpToAnnotation), use it instead of calculating
+      // This prevents timeupdate from overriding our intended frame during seek
+      if (targetFrameRef.current !== null) {
+        setCurrentFrame(targetFrameRef.current);
+      } else {
+        setCurrentFrame(timeToFrame(video.currentTime));
+      }
+    };
+
+    const handleSeeked = () => {
+      // Log where video actually landed
+      console.log(`[seeked] actual currentTime=${video.currentTime}, calculated frame=${timeToFrame(video.currentTime)}, target was=${targetFrameRef.current}`);
+      // Clear target frame after seek completes
+      targetFrameRef.current = null;
     };
 
     const handleLoadedMetadata = () => {
@@ -149,10 +168,12 @@ export function AnnotatedPlayer({
     };
 
     video.addEventListener("timeupdate", handleTimeUpdate);
+    video.addEventListener("seeked", handleSeeked);
     video.addEventListener("loadedmetadata", handleLoadedMetadata);
 
     return () => {
       video.removeEventListener("timeupdate", handleTimeUpdate);
+      video.removeEventListener("seeked", handleSeeked);
       video.removeEventListener("loadedmetadata", handleLoadedMetadata);
     };
   }, [fps]);
@@ -272,8 +293,14 @@ export function AnnotatedPlayer({
 
     video.pause();
     setIsPlaying(false);
-    video.currentTime = frameToTime(annotation.frame_number);
-    // Set annotation immediately instead of waiting for timeupdate
+    // Lock the target frame so timeupdate doesn't override during seek
+    targetFrameRef.current = annotation.frame_number;
+    const targetTime = frameToTime(annotation.frame_number);
+    console.log(`[jumpToAnnotation] frame=${annotation.frame_number}, targetTime=${targetTime}, currentTime before=${video.currentTime}`);
+    video.currentTime = targetTime;
+    // Log after setting (may not reflect actual seek position yet)
+    console.log(`[jumpToAnnotation] currentTime after set=${video.currentTime}`);
+    // Set annotation and frame immediately
     setCurrentAnnotation(annotation);
     setCurrentFrame(annotation.frame_number);
   };
