@@ -48,10 +48,25 @@ export function ShotGroupsPanel({
   const [loading, setLoading] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   
+  // Predefined color options
+  const COLOR_OPTIONS = [
+    "#6366f1", // indigo
+    "#8b5cf6", // violet
+    "#ec4899", // pink
+    "#ef4444", // red
+    "#f97316", // orange
+    "#eab308", // yellow
+    "#22c55e", // green
+    "#14b8a6", // teal
+    "#06b6d4", // cyan
+    "#3b82f6", // blue
+  ];
+
   // Create dialog
   const [showCreate, setShowCreate] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [newGroupColor, setNewGroupColor] = useState(COLOR_OPTIONS[0]);
   const [creating, setCreating] = useState(false);
 
   // Add shots dialog
@@ -95,6 +110,7 @@ export function ShotGroupsPanel({
           sequenceId: sequenceId || null,
           name: newGroupName.trim(),
           description: newGroupDesc.trim() || null,
+          color: newGroupColor,
           shotIds: selectedShotIds,
         }),
       });
@@ -102,6 +118,7 @@ export function ShotGroupsPanel({
       if (res.ok) {
         setNewGroupName("");
         setNewGroupDesc("");
+        setNewGroupColor(COLOR_OPTIONS[0]);
         setShowCreate(false);
         fetchGroups();
       }
@@ -320,6 +337,24 @@ export function ShotGroupsPanel({
                 onChange={(e) => setNewGroupDesc(e.target.value)}
                 placeholder="Notes about this group..."
               />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Color</label>
+              <div className="flex gap-2 mt-2 flex-wrap">
+                {COLOR_OPTIONS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`w-7 h-7 rounded-full transition-all ${
+                      newGroupColor === color 
+                        ? "ring-2 ring-offset-2 ring-offset-background ring-primary scale-110" 
+                        : "hover:scale-110"
+                    }`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setNewGroupColor(color)}
+                  />
+                ))}
+              </div>
             </div>
             {selectedShotIds.length > 0 && (
               <p className="text-sm text-muted-foreground">
