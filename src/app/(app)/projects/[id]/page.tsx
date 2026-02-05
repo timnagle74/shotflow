@@ -10,16 +10,41 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Textarea } from "@/components/ui/textarea";
 import { 
   ArrowLeft, Users, FileImage, Settings, Plus, Trash2, Loader2, 
   Download, Upload, Crown, Clapperboard, Video, Shield, Briefcase,
-  Paintbrush, Film, Eye
+  Paintbrush, Film, Eye, Monitor, Save
 } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { roleLabels, roleColors, cn } from "@/lib/utils";
-import type { UserRole } from "@/lib/database.types";
+import type { UserRole, DeliverySpecType } from "@/lib/database.types";
+
+interface DeliverySpec {
+  id: string;
+  project_id: string;
+  spec_type: DeliverySpecType;
+  resolution: string | null;
+  format: string | null;
+  frame_rate: string | null;
+  color_space: string | null;
+  bit_depth: string | null;
+  handles_head: number;
+  handles_tail: number;
+  naming_convention: string | null;
+  audio_requirements: string | null;
+  additional_notes: string | null;
+}
+
+const SPEC_PRESETS: Record<string, { label: string; resolution: string; format: string; color_space: string; bit_depth: string }> = {
+  EXR_16: { label: "EXR 16-bit (VFX)", resolution: "Match Source", format: "OpenEXR", color_space: "ACES AP0", bit_depth: "16-bit Half" },
+  DPX_10: { label: "DPX 10-bit (Film)", resolution: "Match Source", format: "DPX", color_space: "Film Log", bit_depth: "10-bit" },
+  PRORES_4444: { label: "ProRes 4444", resolution: "Match Source", format: "ProRes 4444", color_space: "Rec.709", bit_depth: "12-bit" },
+  PRORES_HQ: { label: "ProRes HQ", resolution: "1920x1080", format: "ProRes 422 HQ", color_space: "Rec.709", bit_depth: "10-bit" },
+  DNX_36: { label: "DNxHD 36", resolution: "1920x1080", format: "DNxHD 36", color_space: "Rec.709", bit_depth: "8-bit" },
+};
 
 interface ProjectMember {
   id: string;
@@ -88,12 +113,18 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [lutFile, setLutFile] = useState<File | null>(null);
   const [lutDescription, setLutDescription] = useState("");
   const [isDefaultLut, setIsDefaultLut] = useState(false);
+  
+  // Delivery specs
+  const [editorialSpec, setEditorialSpec] = useState<DeliverySpec | null>(null);
+  const [finalSpec, setFinalSpec] = useState<DeliverySpec | null>(null);
+  const [savingSpecs, setSavingSpecs] = useState(false);
 
   useEffect(() => {
     fetchProject();
     fetchMembers();
     fetchLuts();
     fetchUsers();
+    fetchDeliverySpecs();
   }, [projectId]);
 
   async function fetchProject() {
@@ -137,6 +168,120 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       .select("id, name, email")
       .order("name");
     if (data) setUsers(data);
+  }
+
+  async function fetchDeliverySpecs() {
+    if (!supabase) return;
+    const { data } = await supabase
+      .from("delivery_specs")
+      .select("*")
+      .eq("project_id", projectId);
+    
+    if (data) {
+      const editorial = data.find(s => s.spec_type === "EDITORIAL");
+      const final = data.find(s => s.spec_type === "FINAL");
+      setEditorialSpec(editorial || createEmptySpec("EDITORIAL"));
+      setFinalSpec(final || createEmptySpec("FINAL"));
+    } else {
+      setEditorialSpec(createEmptySpec("EDITORIAL"));
+      setFinalSpec(createEmptySpec("FINAL"));
+    }
+  }
+
+  function createEmptySpec(specType: DeliverySpecType): DeliverySpec {
+    return {
+      id: "",
+      project_id: projectId,
+      spec_type: specType,
+      resolution: null,
+      format: null,
+      frame_rate: null,
+      color_space: null,
+      bit_depth: null,
+      handles_head: 8,
+      handles_tail: 8,
+      naming_convention: null,
+      audio_requirements: null,
+      additional_notes: null,
+    };
+  }
+
+  async function handleSaveSpec(spec: DeliverySpec) {
+    if (!supabase) return;
+    setSavingSpecs(true);
+    try {
+      if (spec.id) {
+        // Update existing
+        const { error } = await supabase
+          .from("delivery_specs")
+          .update({
+            resolution: spec.resolution,
+            format: spec.format,
+            frame_rate: spec.frame_rate,
+            color_space: spec.color_space,
+            bit_depth: spec.bit_depth,
+            handles_head: spec.handles_head,
+            handles_tail: spec.handles_tail,
+            naming_convention: spec.naming_convention,
+            audio_requirements: spec.audio_requirements,
+            additional_notes: spec.additional_notes,
+          })
+          .eq("id", spec.id);
+        if (error) throw error;
+      } else {
+        // Insert new
+        const { data, error } = await supabase
+          .from("delivery_specs")
+          .insert({
+            project_id: projectId,
+            spec_type: spec.spec_type,
+            resolution: spec.resolution,
+            format: spec.format,
+            frame_rate: spec.frame_rate,
+            color_space: spec.color_space,
+            bit_depth: spec.bit_depth,
+            handles_head: spec.handles_head,
+            handles_tail: spec.handles_tail,
+            naming_convention: spec.naming_convention,
+            audio_requirements: spec.audio_requirements,
+            additional_notes: spec.additional_notes,
+          })
+          .select()
+          .single();
+        if (error) throw error;
+        if (data) {
+          if (spec.spec_type === "EDITORIAL") {
+            setEditorialSpec(data);
+          } else {
+            setFinalSpec(data);
+          }
+        }
+      }
+      await fetchDeliverySpecs();
+    } catch (err) {
+      console.error("Failed to save spec:", err);
+      alert("Failed to save delivery specs");
+    }
+    setSavingSpecs(false);
+  }
+
+  function applyPreset(specType: DeliverySpecType, presetKey: string) {
+    const preset = SPEC_PRESETS[presetKey];
+    if (!preset) return;
+    
+    const updatedSpec = {
+      ...(specType === "EDITORIAL" ? editorialSpec : finalSpec)!,
+      resolution: preset.resolution,
+      format: preset.format,
+      color_space: preset.color_space,
+      bit_depth: preset.bit_depth,
+    };
+    
+    if (specType === "EDITORIAL") {
+      setEditorialSpec(updatedSpec);
+    } else {
+      setFinalSpec(updatedSpec);
+    }
   }
 
   async function handleAddMember() {
@@ -292,6 +437,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             <Users className="h-4 w-4" />
             Team
           </TabsTrigger>
+          <TabsTrigger value="specs" className="gap-2">
+            <Monitor className="h-4 w-4" />
+            Delivery Specs
+          </TabsTrigger>
           <TabsTrigger value="luts" className="gap-2">
             <FileImage className="h-4 w-4" />
             LUTs
@@ -402,6 +551,51 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
               })}
             </div>
           )}
+        </TabsContent>
+
+        {/* Delivery Specs Tab */}
+        <TabsContent value="specs" className="space-y-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            {/* Editorial Specs */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Editorial Delivery</CardTitle>
+                <CardDescription>Specs for editorial/offline deliveries</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {editorialSpec && (
+                  <DeliverySpecForm
+                    spec={editorialSpec}
+                    onChange={setEditorialSpec}
+                    onSave={() => handleSaveSpec(editorialSpec)}
+                    onApplyPreset={(key) => applyPreset("EDITORIAL", key)}
+                    saving={savingSpecs}
+                    isAdmin={isAdmin}
+                  />
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Final Specs */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Final Delivery</CardTitle>
+                <CardDescription>Specs for final/online deliveries</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {finalSpec && (
+                  <DeliverySpecForm
+                    spec={finalSpec}
+                    onChange={setFinalSpec}
+                    onSave={() => handleSaveSpec(finalSpec)}
+                    onApplyPreset={(key) => applyPreset("FINAL", key)}
+                    saving={savingSpecs}
+                    isAdmin={isAdmin}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* LUTs Tab */}
@@ -549,6 +743,169 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           )}
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+// Delivery Spec Form Component
+function DeliverySpecForm({
+  spec,
+  onChange,
+  onSave,
+  onApplyPreset,
+  saving,
+  isAdmin,
+}: {
+  spec: DeliverySpec;
+  onChange: (spec: DeliverySpec) => void;
+  onSave: () => void;
+  onApplyPreset: (key: string) => void;
+  saving: boolean;
+  isAdmin: boolean;
+}) {
+  const updateField = (field: keyof DeliverySpec, value: any) => {
+    onChange({ ...spec, [field]: value });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Presets */}
+      {isAdmin && (
+        <div>
+          <label className="text-xs text-muted-foreground">Quick Preset</label>
+          <Select onValueChange={onApplyPreset}>
+            <SelectTrigger className="mt-1">
+              <SelectValue placeholder="Apply preset..." />
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(SPEC_PRESETS).map(([key, preset]) => (
+                <SelectItem key={key} value={key}>{preset.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-muted-foreground">Resolution</label>
+          <Input
+            className="mt-1"
+            value={spec.resolution || ""}
+            onChange={(e) => updateField("resolution", e.target.value)}
+            placeholder="e.g., 1920x1080"
+            disabled={!isAdmin}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Frame Rate</label>
+          <Input
+            className="mt-1"
+            value={spec.frame_rate || ""}
+            onChange={(e) => updateField("frame_rate", e.target.value)}
+            placeholder="e.g., 23.976"
+            disabled={!isAdmin}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-muted-foreground">Format</label>
+          <Input
+            className="mt-1"
+            value={spec.format || ""}
+            onChange={(e) => updateField("format", e.target.value)}
+            placeholder="e.g., ProRes 4444"
+            disabled={!isAdmin}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Bit Depth</label>
+          <Input
+            className="mt-1"
+            value={spec.bit_depth || ""}
+            onChange={(e) => updateField("bit_depth", e.target.value)}
+            placeholder="e.g., 10-bit"
+            disabled={!isAdmin}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs text-muted-foreground">Color Space</label>
+        <Input
+          className="mt-1"
+          value={spec.color_space || ""}
+          onChange={(e) => updateField("color_space", e.target.value)}
+          placeholder="e.g., Rec.709, ACES"
+          disabled={!isAdmin}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs text-muted-foreground">Handle Head</label>
+          <Input
+            className="mt-1"
+            type="number"
+            value={spec.handles_head}
+            onChange={(e) => updateField("handles_head", parseInt(e.target.value) || 0)}
+            disabled={!isAdmin}
+          />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Handle Tail</label>
+          <Input
+            className="mt-1"
+            type="number"
+            value={spec.handles_tail}
+            onChange={(e) => updateField("handles_tail", parseInt(e.target.value) || 0)}
+            disabled={!isAdmin}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs text-muted-foreground">Naming Convention</label>
+        <Input
+          className="mt-1"
+          value={spec.naming_convention || ""}
+          onChange={(e) => updateField("naming_convention", e.target.value)}
+          placeholder="e.g., [PROJECT]_[SHOT]_[VERSION].[####].exr"
+          disabled={!isAdmin}
+        />
+      </div>
+
+      <div>
+        <label className="text-xs text-muted-foreground">Audio Requirements</label>
+        <Input
+          className="mt-1"
+          value={spec.audio_requirements || ""}
+          onChange={(e) => updateField("audio_requirements", e.target.value)}
+          placeholder="e.g., 48kHz, 24-bit, Stereo"
+          disabled={!isAdmin}
+        />
+      </div>
+
+      <div>
+        <label className="text-xs text-muted-foreground">Additional Notes</label>
+        <Textarea
+          className="mt-1"
+          value={spec.additional_notes || ""}
+          onChange={(e) => updateField("additional_notes", e.target.value)}
+          placeholder="Any other delivery requirements..."
+          rows={2}
+          disabled={!isAdmin}
+        />
+      </div>
+
+      {isAdmin && (
+        <Button onClick={onSave} disabled={saving} className="w-full">
+          {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+          Save {spec.spec_type === "EDITORIAL" ? "Editorial" : "Final"} Specs
+        </Button>
+      )}
     </div>
   );
 }
