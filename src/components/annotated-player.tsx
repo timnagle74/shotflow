@@ -366,6 +366,55 @@ export function AnnotatedPlayer({
         )}
       </div>
 
+      {/* Timeline Scrubber */}
+      <div className="bg-zinc-900 rounded-lg px-3 pt-3 pb-1">
+        <div 
+          className="relative h-8 bg-zinc-800 rounded cursor-pointer group"
+          onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const percent = (e.clientX - rect.left) / rect.width;
+            const newTime = percent * duration;
+            if (videoRef.current) {
+              videoRef.current.currentTime = newTime;
+            }
+          }}
+        >
+          {/* Progress bar */}
+          <div 
+            className="absolute top-0 left-0 h-full bg-primary/30 rounded-l"
+            style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+          />
+          
+          {/* Annotation markers */}
+          {annotations.map((annotation) => {
+            const percent = duration > 0 ? (frameToTime(annotation.frame_number) / duration) * 100 : 0;
+            return (
+              <div
+                key={annotation.id}
+                className="absolute top-0 w-1 h-full bg-yellow-500 opacity-70 hover:opacity-100"
+                style={{ left: `${percent}%` }}
+                title={`Frame ${annotation.frame_number}${annotation.comment ? `: ${annotation.comment}` : ''}`}
+              />
+            );
+          })}
+          
+          {/* Playhead */}
+          <div 
+            className="absolute top-0 w-0.5 h-full bg-white shadow-lg"
+            style={{ left: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+          >
+            {/* Playhead handle */}
+            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-white rounded-full shadow group-hover:scale-125 transition-transform" />
+          </div>
+        </div>
+        
+        {/* Duration labels */}
+        <div className="flex justify-between mt-1 text-xs text-muted-foreground font-mono">
+          <span>{formatTimecode(currentTime)}</span>
+          <span>{formatTimecode(duration)}</span>
+        </div>
+      </div>
+
       {/* Controls */}
       <div className="flex items-center justify-between bg-zinc-900 rounded-lg p-3">
         {/* Transport controls */}
@@ -389,10 +438,6 @@ export function AnnotatedPlayer({
 
         {/* Timecode display */}
         <div className="flex items-center gap-4">
-          <div className="font-mono text-sm">
-            <span className="text-muted-foreground">TC:</span>{" "}
-            <span className="text-white">{formatTimecode(currentTime)}</span>
-          </div>
           <div className="font-mono text-sm">
             <span className="text-muted-foreground">Frame:</span>{" "}
             <span className="text-white">{currentFrame}</span>
