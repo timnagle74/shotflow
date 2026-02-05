@@ -381,7 +381,7 @@ function ShotsPageContent() {
                 <ShotGroupsPanel
                   projectId={selectedProject}
                   sequenceId={filterSequence !== "all" ? filterSequence : undefined}
-                  shots={shots.map(s => ({ id: s.id, code: s.code }))}
+                  shots={shots.map(s => ({ id: s.id, code: s.code, description: s.description, notes: s.notes }))}
                   selectedShotIds={[]}
                 />
               </div>

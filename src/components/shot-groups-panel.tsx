@@ -25,6 +25,8 @@ interface ShotGroup {
 interface Shot {
   id: string;
   code: string;
+  description?: string | null;
+  notes?: string | null;
 }
 
 interface ShotGroupsPanelProps {
@@ -162,11 +164,17 @@ export function ShotGroupsPanel({
     });
   };
 
-  const filteredShots = shots.filter(
-    (s) =>
-      s.code.toLowerCase().includes(shotSearchTerm.toLowerCase()) &&
-      !groups.find((g) => g.id === showAddShots)?.shot_group_members.some((m) => m.shot_id === s.id)
-  );
+  const filteredShots = shots.filter((s) => {
+    const searchLower = shotSearchTerm.toLowerCase();
+    const matchesSearch =
+      s.code.toLowerCase().includes(searchLower) ||
+      s.description?.toLowerCase().includes(searchLower) ||
+      s.notes?.toLowerCase().includes(searchLower);
+    const notInGroup = !groups
+      .find((g) => g.id === showAddShots)
+      ?.shot_group_members.some((m) => m.shot_id === s.id);
+    return matchesSearch && notInGroup;
+  });
 
   return (
     <Card>
@@ -343,32 +351,43 @@ export function ShotGroupsPanel({
               value={shotSearchTerm}
               onChange={(e) => setShotSearchTerm(e.target.value)}
             />
-            <ScrollArea className="h-64 border rounded-md p-2">
+            <ScrollArea className="h-80 border rounded-md p-2">
               {filteredShots.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
                   No available shots
                 </p>
               ) : (
                 <div className="space-y-1">
-                  {filteredShots.map((shot) => (
-                    <label
-                      key={shot.id}
-                      className="flex items-center gap-2 p-2 hover:bg-muted rounded cursor-pointer"
-                    >
-                      <Checkbox
-                        checked={selectedForAdd.has(shot.id)}
-                        onCheckedChange={(checked) => {
-                          setSelectedForAdd((prev) => {
-                            const next = new Set(prev);
-                            if (checked) next.add(shot.id);
-                            else next.delete(shot.id);
-                            return next;
-                          });
-                        }}
-                      />
-                      <span className="text-sm">{shot.code}</span>
-                    </label>
-                  ))}
+                  {filteredShots.map((shot) => {
+                    const shotNotes = shot.description || shot.notes;
+                    return (
+                      <label
+                        key={shot.id}
+                        className="flex items-start gap-2 p-2 hover:bg-muted rounded cursor-pointer"
+                      >
+                        <Checkbox
+                          className="mt-0.5"
+                          checked={selectedForAdd.has(shot.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedForAdd((prev) => {
+                              const next = new Set(prev);
+                              if (checked) next.add(shot.id);
+                              else next.delete(shot.id);
+                              return next;
+                            });
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium">{shot.code}</span>
+                          {shotNotes && (
+                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">
+                              {shotNotes}
+                            </p>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               )}
             </ScrollArea>
