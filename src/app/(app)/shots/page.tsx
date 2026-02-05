@@ -77,6 +77,7 @@ interface EnrichedShot extends Shot {
   ref_video_id?: string | null;
   ref_filename?: string | null;
   groups: { id: string; name: string; color: string }[];
+  thumbnailVideoId?: string | null;
 }
 
 // Droppable column wrapper
@@ -102,10 +103,21 @@ function DraggableShotCard({ shot }: { shot: EnrichedShot }) {
     opacity: isDragging ? 0.4 : 1,
   };
 
+  const thumbnailUrl = shot.thumbnailVideoId ? `/api/thumbnail?videoId=${shot.thumbnailVideoId}` : null;
+  
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing">
-      <Card className="hover:border-primary/50 transition-colors group" onDoubleClick={() => window.location.href = `/shots/${shot.id}`}>
-        <CardContent className="p-3">
+      <Card 
+        className="hover:border-primary/50 transition-colors group overflow-hidden" 
+        onDoubleClick={() => window.location.href = `/shots/${shot.id}`}
+      >
+        {thumbnailUrl && (
+          <div 
+            className="h-16 bg-cover bg-center bg-no-repeat"
+            style={{ backgroundImage: `url(${thumbnailUrl})` }}
+          />
+        )}
+        <CardContent className={cn("p-3", thumbnailUrl && "pt-2")}>
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-mono font-bold flex-1">
               {shot.code}
@@ -189,6 +201,7 @@ function ShotsPageContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [shotGroups, setShotGroups] = useState<{ id: string; name: string; color: string }[]>([]);
   const [shotGroupMap, setShotGroupMap] = useState<Record<string, { id: string; name: string; color: string }[]>>({});
+  const [shotThumbnails, setShotThumbnails] = useState<Record<string, string>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -311,6 +324,24 @@ function ShotsPageContent() {
               });
               setShotGroupMap(mapping);
             }
+
+            // Fetch plate thumbnails (first plate per shot)
+            const { data: platesData } = await (supabase
+              .from("shot_plates") as any)
+              .select("shot_id, video_id")
+              .in("shot_id", shotIds)
+              .not("video_id", "is", null);
+            
+            if (platesData) {
+              const thumbnailMap: Record<string, string> = {};
+              platesData.forEach((p: { shot_id: string; video_id: string }) => {
+                // Only keep first plate per shot
+                if (!thumbnailMap[p.shot_id]) {
+                  thumbnailMap[p.shot_id] = p.video_id;
+                }
+              });
+              setShotThumbnails(thumbnailMap);
+            }
           }
         }
       } catch (err) {
@@ -335,6 +366,7 @@ function ShotsPageContent() {
     sequence: sequences.find(s => s.id === shot.sequence_id) || null,
     versionCount: versionCounts[shot.id] || 0,
     groups: shotGroupMap[shot.id] || [],
+    thumbnailVideoId: shotThumbnails[shot.id] || null,
   }));
 
   const projectSequences = sequences.filter(s => s.project_id === selectedProject);
