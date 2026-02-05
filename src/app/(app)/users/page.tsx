@@ -65,6 +65,8 @@ const roleIcons: Record<string, typeof Shield> = {
   SUPERVISOR: Shield,
   PRODUCER: Shield,
   COORDINATOR: Users,
+  EDITOR: Film,
+  ASSISTANT_EDITOR: Film,
   ARTIST: Paintbrush,
   VFX_EDITOR: Film,
   CLIENT: Eye,

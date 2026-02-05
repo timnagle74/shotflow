@@ -2,7 +2,7 @@
 // In production, generate with: npx supabase gen types typescript
 // Last updated: 2026-02-04 (matches all migrations through 20260204_vendor_schema_fixes)
 
-export type UserRole = 'ADMIN' | 'VFX_SUPERVISOR' | 'POST_SUPERVISOR' | 'SUPERVISOR' | 'PRODUCER' | 'COORDINATOR' | 'ARTIST' | 'VFX_EDITOR' | 'CLIENT' | 'VFX_VENDOR';
+export type UserRole = 'ADMIN' | 'VFX_SUPERVISOR' | 'POST_SUPERVISOR' | 'SUPERVISOR' | 'PRODUCER' | 'COORDINATOR' | 'EDITOR' | 'ASSISTANT_EDITOR' | 'ARTIST' | 'VFX_EDITOR' | 'CLIENT' | 'VFX_VENDOR';
 export type DeliverySpecType = 'EDITORIAL' | 'FINAL';
 export type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'ARCHIVED';
 export type ShotStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'INTERNAL_REVIEW' | 'CLIENT_REVIEW' | 'REVISIONS' | 'APPROVED' | 'FINAL';
