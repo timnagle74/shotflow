@@ -101,16 +101,22 @@ export function AnnotationCanvas({
           console.log("Canvas dimensions:", width, "x", height);
           console.log("Original dimensions:", dataToLoad.originalWidth, "x", dataToLoad.originalHeight);
           
-          // Calculate scale factors if original dimensions were stored
-          // Fallback assumes annotations were created at 16:9 aspect ratio, ~800px wide
-          const origWidth = dataToLoad.originalWidth || 800;
-          const origHeight = dataToLoad.originalHeight || 450;
-          const scaleX = width / origWidth;
-          const scaleY = height / origHeight;
-          const needsScaling = scaleX !== 1 || scaleY !== 1;
+          // Only scale if original dimensions were explicitly stored
+          // Don't scale old annotations - let them stay at their saved positions
+          const hasOriginalDimensions = dataToLoad.originalWidth && dataToLoad.originalHeight;
+          let scaleX = 1;
+          let scaleY = 1;
+          let needsScaling = false;
           
-          if (needsScaling) {
-            console.log("Scaling objects by:", scaleX, scaleY);
+          if (hasOriginalDimensions) {
+            scaleX = width / dataToLoad.originalWidth;
+            scaleY = height / dataToLoad.originalHeight;
+            needsScaling = Math.abs(scaleX - 1) > 0.01 || Math.abs(scaleY - 1) > 0.01;
+            if (needsScaling) {
+              console.log("Scaling objects by:", scaleX, scaleY);
+            }
+          } else {
+            console.log("No original dimensions - showing at saved positions");
           }
           
           // Use enlivenObjects for more reliable deserialization
