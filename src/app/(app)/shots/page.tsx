@@ -9,7 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ShotStatusBadge } from "@/components/status-badge";
 import { shotStatusLabels, shotStatusColors, complexityColors, cn } from "@/lib/utils";
-import { LayoutGrid, List, Search, Clock, Loader2 } from "lucide-react";
+import { LayoutGrid, List, Search, Clock, Loader2, Users } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { ShotGroupsPanel } from "@/components/shot-groups-panel";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useSearchParams } from "next/navigation";
@@ -367,6 +369,24 @@ function ShotsPageContent() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Users className="h-4 w-4 mr-2" />
+                Groups
+              </Button>
+            </SheetTrigger>
+            <SheetContent className="w-[400px] sm:w-[500px]">
+              <div className="mt-6">
+                <ShotGroupsPanel
+                  projectId={selectedProject}
+                  sequenceId={filterSequence !== "all" ? filterSequence : undefined}
+                  shots={shots.map(s => ({ id: s.id, code: s.code }))}
+                  selectedShotIds={[]}
+                />
+              </div>
+            </SheetContent>
+          </Sheet>
           <CountSheetExport 
             shots={filteredShots.map(s => ({
               id: s.id,
