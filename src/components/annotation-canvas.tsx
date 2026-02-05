@@ -24,7 +24,7 @@ interface AnnotationCanvasProps {
   height: number;
   className?: string;
   onSave?: (data: string) => void;
-  initialData?: string;
+  initialData?: string | object;
   readOnly?: boolean;
 }
 
@@ -74,23 +74,27 @@ export function AnnotationCanvas({
 
     // Load initial data if provided
     if (initialData) {
-      // Handle both string and object formats (DB might have double-encoded JSON)
-      let dataToLoad = initialData;
-      if (typeof initialData === "string") {
-        try {
+      try {
+        // Handle both string and object formats (DB might have double-encoded JSON)
+        let dataToLoad: any = initialData;
+        if (typeof initialData === "string") {
           dataToLoad = JSON.parse(initialData);
           // Check if it's still a string (double-encoded)
           if (typeof dataToLoad === "string") {
             dataToLoad = JSON.parse(dataToLoad);
           }
-        } catch {
-          console.error("Failed to parse annotation data");
-          return;
         }
+        // Ensure dataToLoad is an object with the expected structure
+        if (dataToLoad && typeof dataToLoad === "object") {
+          canvas.loadFromJSON(dataToLoad).then(() => {
+            canvas.renderAll();
+          }).catch((err: Error) => {
+            console.error("Failed to load annotation canvas:", err);
+          });
+        }
+      } catch (err) {
+        console.error("Failed to parse annotation data:", err);
       }
-      canvas.loadFromJSON(dataToLoad).then(() => {
-        canvas.renderAll();
-      });
     }
 
     // Save state on changes
