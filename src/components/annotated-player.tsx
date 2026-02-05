@@ -273,6 +273,9 @@ export function AnnotatedPlayer({
     video.pause();
     setIsPlaying(false);
     video.currentTime = frameToTime(annotation.frame_number);
+    // Set annotation immediately instead of waiting for timeupdate
+    setCurrentAnnotation(annotation);
+    setCurrentFrame(annotation.frame_number);
   };
 
   if (!streamUrl) {
