@@ -106,6 +106,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log("Inserting annotation with data:", JSON.stringify(insertData, null, 2));
+    
     const { data: annotation, error } = await (supabase as any)
       .from("frame_annotations")
       .insert(insertData)
@@ -115,7 +117,7 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error("Error creating annotation:", error);
       return NextResponse.json(
-        { error: "Failed to create annotation" },
+        { error: "Failed to create annotation", details: error.message, code: error.code },
         { status: 500 }
       );
     }

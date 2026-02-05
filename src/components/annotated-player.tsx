@@ -240,7 +240,9 @@ export function AnnotatedPlayer({
         setIsAnnotating(false);
         setComment("");
       } else {
-        console.error("Failed to save annotation");
+        const errorData = await res.json().catch(() => ({}));
+        console.error("Failed to save annotation:", res.status, errorData);
+        alert(`Failed to save: ${errorData.error || res.statusText}${errorData.details ? ` - ${errorData.details}` : ''}`);
       }
     } catch (err) {
       console.error("Failed to save annotation:", err);
