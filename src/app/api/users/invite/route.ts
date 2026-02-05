@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // New user — send invite email via Supabase Auth
+    // Try invite first, fall back to direct user creation
     console.log("Attempting to invite user:", { email, name, role });
     
     const { data: authData, error: authError } =
@@ -70,12 +70,35 @@ export async function POST(req: NextRequest) {
 
     if (authError) {
       console.error("Auth invite error:", JSON.stringify(authError, null, 2));
-      console.error("Auth error code:", authError.code);
-      console.error("Auth error status:", authError.status);
-      return NextResponse.json(
-        { error: `Invite failed: ${authError.message}` },
-        { status: 500 }
-      );
+      
+      // Fallback: Create user directly in public.users
+      // They can use "Forgot Password" to set their password and log in
+      console.log("Invite failed, creating user directly in public.users");
+      
+      const { data: directUser, error: directError } = await adminClient
+        .from("users")
+        .insert({ email, name: name || null, role })
+        .select()
+        .single();
+      
+      if (directError) {
+        // Maybe user already exists?
+        if (directError.code === '23505') { // unique violation
+          return NextResponse.json({
+            user: null,
+            message: "User already exists with this email",
+          });
+        }
+        return NextResponse.json(
+          { error: `Failed to create user: ${directError.message}` },
+          { status: 500 }
+        );
+      }
+      
+      return NextResponse.json({
+        user: directUser,
+        message: "User created (no invite email - they should use 'Forgot Password' to set up access)",
+      });
     }
     
     console.log("Auth invite successful:", authData?.user?.id);
