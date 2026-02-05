@@ -98,16 +98,20 @@ export function AnnotationCanvas({
         if (dataToLoad && typeof dataToLoad === "object") {
           console.log("Loading annotation data:", dataToLoad);
           console.log("Objects to load:", dataToLoad.objects?.length);
-          canvas.loadFromJSON(dataToLoad).then(() => {
-            console.log("Canvas loaded, objects on canvas:", canvas.getObjects().length);
-            canvas.requestRenderAll();
-            // Force another render after a short delay for complex objects
-            setTimeout(() => {
-              console.log("Delayed render, objects:", canvas.getObjects().length);
-              canvas.requestRenderAll();
-            }, 100);
-          }).catch((err: Error) => {
-            console.error("Failed to load annotation canvas:", err);
+          
+          // Use enlivenObjects for more reliable deserialization
+          import("fabric").then(({ util }) => {
+            if (dataToLoad.objects && dataToLoad.objects.length > 0) {
+              util.enlivenObjects(dataToLoad.objects).then((enlivenedObjects: any[]) => {
+                console.log("Enlivened objects:", enlivenedObjects.length);
+                enlivenedObjects.forEach((obj: any) => {
+                  canvas.add(obj);
+                });
+                canvas.requestRenderAll();
+              }).catch((err: Error) => {
+                console.error("Failed to enliven objects:", err);
+              });
+            }
           });
         }
       } catch (err) {
