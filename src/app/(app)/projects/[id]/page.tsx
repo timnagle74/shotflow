@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -90,8 +90,9 @@ const roleIcons: Record<string, any> = {
   VFX_VENDOR: Briefcase,
 };
 
-export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id: projectId } = use(params);
+export default function ProjectDetailPage() {
+  const params = useParams();
+  const projectId = params.id as string;
   const router = useRouter();
   const { currentUser, isAdmin } = useCurrentUser();
   
