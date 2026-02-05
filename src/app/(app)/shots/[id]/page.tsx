@@ -12,7 +12,8 @@ import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
 import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
-import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download, Play, Video, FolderOpen, CheckCircle, RotateCcw, AlertCircle, History, Send } from "lucide-react";
+import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download, Play, Video, FolderOpen, CheckCircle, RotateCcw, AlertCircle, History, Send, Trash2, MoreHorizontal, ArrowRight } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -184,6 +185,7 @@ export default function ShotDetailPage() {
   const [playerSource, setPlayerSource] = useState<'version' | 'ref' | 'plate'>('version');
   const [selectedPlateId, setSelectedPlateId] = useState<string | null>(null);
   const [showLut, setShowLut] = useState<{ name: string; url: string } | null>(null);
+  const [siblingShots, setSiblingShots] = useState<{ id: string; code: string }[]>([]);
 
   // Fetch all data
   useEffect(() => {
@@ -219,6 +221,18 @@ export default function ShotDetailPage() {
 
         if (seqData) {
           setSequence(seqData);
+
+          // Fetch sibling shots for plate reassignment
+          const { data: siblingsData } = await supabase
+            .from("shots")
+            .select("id, code")
+            .eq("sequence_id", seqData.id)
+            .neq("id", shotId)
+            .order("code", { ascending: true });
+          
+          if (siblingsData) {
+            setSiblingShots(siblingsData);
+          }
 
           // Fetch project
           const { data: projData } = await supabase
@@ -358,6 +372,32 @@ export default function ShotDetailPage() {
       setPlates(platesData);
     }
   }, [shotId]);
+
+  const handleUnassignPlate = useCallback(async (plateId: string) => {
+    if (!supabase) return;
+    
+    const { error } = await (supabase
+      .from("shot_plates") as any)
+      .delete()
+      .eq("id", plateId);
+    
+    if (!error) {
+      setPlates(prev => prev.filter(p => p.id !== plateId));
+    }
+  }, []);
+
+  const handleReassignPlate = useCallback(async (plateId: string, newShotId: string) => {
+    if (!supabase) return;
+    
+    const { error } = await (supabase
+      .from("shot_plates") as any)
+      .update({ shot_id: newShotId })
+      .eq("id", plateId);
+    
+    if (!error) {
+      setPlates(prev => prev.filter(p => p.id !== plateId));
+    }
+  }, []);
 
   const refreshShot = useCallback(async () => {
     if (!supabase) return;
@@ -881,6 +921,41 @@ export default function ShotDetailPage() {
                             </Button>
                           </a>
                         )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="ghost" className="h-7 px-2">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {siblingShots.length > 0 && (
+                              <DropdownMenuSub>
+                                <DropdownMenuSubTrigger>
+                                  <ArrowRight className="h-3.5 w-3.5 mr-2" />
+                                  Move to shot
+                                </DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
+                                  {siblingShots.map((s) => (
+                                    <DropdownMenuItem
+                                      key={s.id}
+                                      onClick={() => handleReassignPlate(plate.id, s.id)}
+                                    >
+                                      {s.code}
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuSubContent>
+                              </DropdownMenuSub>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => handleUnassignPlate(plate.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-2" />
+                              Remove plate
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     ))}
                   </div>
