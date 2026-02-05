@@ -123,10 +123,23 @@ export function AnnotationCanvas({
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const canvas = fabricRef.current;
     if (!canvas || readOnly) return;
+    
+    // Don't create shapes if in select mode
+    if (activeTool === "select") return;
 
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    
+    // Check if clicking on an existing object - if so, don't create new shape
+    const pointer = canvas.getPointer(e.nativeEvent);
+    const target = canvas.findTarget(e.nativeEvent);
+    if (target) {
+      // Clicked on existing object, select it instead
+      canvas.setActiveObject(target);
+      setActiveTool("select");
+      return;
+    }
 
     if (activeTool === "rectangle") {
       import("fabric").then(({ Rect }) => {
