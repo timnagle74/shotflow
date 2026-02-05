@@ -608,7 +608,7 @@ export function ShotCountSheet({
             {generating ? (
               <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Generating...</>
             ) : (
-              <><FileDown className="h-4 w-4 mr-2" />Export PDF</>
+              <><FileDown className="h-4 w-4 mr-2" />Export Count Sheet</>
             )}
           </Button>
         </div>

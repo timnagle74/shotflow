@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
 import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
@@ -57,6 +58,7 @@ interface Shot {
   handle_head: number | null;
   handle_tail: number | null;
   plate_source: string | null;
+  source_clip_name: string | null;
   camera_data: any;
   edit_ref: string | null;
   notes: string | null;
@@ -437,6 +439,43 @@ export default function ShotDetailPage() {
     }
   }, [shotId]);
 
+  const handleComplexityChange = useCallback(async (newComplexity: string) => {
+    if (!supabase) return;
+    try {
+      const { error } = await supabase
+        .from("shots")
+        .update({ complexity: newComplexity as any })
+        .eq("id", shotId);
+
+      if (error) {
+        console.error("Failed to update complexity:", error);
+      } else {
+        setShot(prev => prev ? { ...prev, complexity: newComplexity } : prev);
+      }
+    } catch (err) {
+      console.error("Complexity update error:", err);
+    }
+  }, [shotId]);
+
+  const handleDueDateChange = useCallback(async (newDate: string) => {
+    if (!supabase) return;
+    const dateValue = newDate || null;
+    try {
+      const { error } = await supabase
+        .from("shots")
+        .update({ due_date: dateValue })
+        .eq("id", shotId);
+
+      if (error) {
+        console.error("Failed to update due date:", error);
+      } else {
+        setShot(prev => prev ? { ...prev, due_date: dateValue } : prev);
+      }
+    } catch (err) {
+      console.error("Due date update error:", err);
+    }
+  }, [shotId]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -527,15 +566,32 @@ export default function ShotDetailPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Gauge className="h-3 w-3" />Complexity</span>
-                  <span className={cn("text-sm font-semibold", complexityColors[shot.complexity as keyof typeof complexityColors])}>{shot.complexity}</span>
+                  <Select defaultValue={shot.complexity} onValueChange={handleComplexityChange}>
+                    <SelectTrigger className="w-28 h-7 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="SIMPLE">Simple</SelectItem>
+                      <SelectItem value="MEDIUM">Medium</SelectItem>
+                      <SelectItem value="COMPLEX">Complex</SelectItem>
+                      <SelectItem value="HERO">Hero</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Calendar className="h-3 w-3" />Due Date</span>
-                  <span className="text-sm">{shot.due_date ? new Date(shot.due_date).toLocaleDateString() : "—"}</span>
+                  <Input
+                    type="date"
+                    className="w-32 h-7 text-xs"
+                    value={shot.due_date || ""}
+                    onChange={(e) => handleDueDateChange(e.target.value)}
+                  />
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Camera className="h-3 w-3" />Plate Source</span>
-                  <span className="text-sm text-muted-foreground">{shot.plate_source || "—"}</span>
+                  <span className="text-sm text-muted-foreground truncate max-w-[150px]" title={shot.source_clip_name || shot.plate_source || undefined}>
+                    {shot.source_clip_name || shot.plate_source || "—"}
+                  </span>
                 </div>
               </div>
 
@@ -560,6 +616,8 @@ export default function ShotDetailPage() {
             projectCode={project?.code || ""}
             shotAction={shot.description || undefined}
             vfxSummary={shot.notes || undefined}
+            sceneNumber={shot.code.split("_")[0] || undefined}
+            sourceClip={shot.source_clip_name || undefined}
           />
 
           {/* Assignment Card */}
