@@ -98,6 +98,23 @@ interface Project {
   code: string;
 }
 
+interface TurnoverShot {
+  id: string;
+  turnover_id: string;
+  vendor_id: string | null;
+  artist_id: string | null;
+  reel_name: string | null;
+  turnover: {
+    id: string;
+    turnover_number: number;
+    turnover_date: string | null;
+  } | null;
+  vendor: {
+    id: string;
+    name: string;
+  } | null;
+}
+
 interface Version {
   id: string;
   shot_id: string;
@@ -148,6 +165,7 @@ export default function ShotDetailPage() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [plates, setPlates] = useState<ShotPlate[]>([]);
+  const [turnoverShot, setTurnoverShot] = useState<TurnoverShot | null>(null);
   const [currentStatus, setCurrentStatus] = useState<string>("NOT_STARTED");
   const [selectedVersion, setSelectedVersion] = useState<string>("");
   const [updating, setUpdating] = useState(false);
@@ -200,6 +218,22 @@ export default function ShotDetailPage() {
           if (projData) {
             setProject(projData);
           }
+        }
+
+        // Fetch turnover_shot data (for vendor, reel, TO# info)
+        const { data: tsData } = await supabase
+          .from("turnover_shots")
+          .select(`
+            id, turnover_id, vendor_id, artist_id, reel_name,
+            turnover:turnovers(id, turnover_number, turnover_date),
+            vendor:vendors(id, name)
+          `)
+          .eq("shot_id", shotId)
+          .limit(1)
+          .single();
+
+        if (tsData) {
+          setTurnoverShot(tsData as unknown as TurnoverShot);
         }
 
         // Fetch versions — prefer shot_versions (richer schema), fall back to legacy versions table
@@ -618,6 +652,10 @@ export default function ShotDetailPage() {
             vfxSummary={shot.notes || undefined}
             sceneNumber={shot.code.split("_")[0] || undefined}
             sourceClip={shot.source_clip_name || undefined}
+            turnoverNumber={turnoverShot?.turnover?.turnover_number?.toString() || undefined}
+            turnoverDate={turnoverShot?.turnover?.turnover_date || undefined}
+            vendor={turnoverShot?.vendor?.name || undefined}
+            reelNumber={turnoverShot?.reel_name || undefined}
           />
 
           {/* Assignment Card */}
