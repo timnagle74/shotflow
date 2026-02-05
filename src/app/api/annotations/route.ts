@@ -65,6 +65,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Look up the public user id from auth id
+    const { data: publicUser } = await supabase
+      .from("users")
+      .select("id")
+      .eq("auth_id", user.id)
+      .single() as { data: { id: string } | null };
+
     const body = await request.json();
     const { source_type, source_id, frame_number, timecode, drawing_data, comment } = body;
 
@@ -81,7 +88,7 @@ export async function POST(request: NextRequest) {
       timecode,
       drawing_data,
       comment,
-      author_id: user.id,
+      author_id: publicUser?.id || null,
     };
 
     if (source_type === "version") {
