@@ -98,6 +98,20 @@ export function AnnotationCanvas({
         if (dataToLoad && typeof dataToLoad === "object") {
           console.log("Loading annotation data:", dataToLoad);
           console.log("Objects to load:", dataToLoad.objects?.length);
+          console.log("Canvas dimensions:", width, "x", height);
+          console.log("Original dimensions:", dataToLoad.originalWidth, "x", dataToLoad.originalHeight);
+          
+          // Calculate scale factors if original dimensions were stored
+          // Fallback assumes annotations were created at 16:9 aspect ratio, ~800px wide
+          const origWidth = dataToLoad.originalWidth || 800;
+          const origHeight = dataToLoad.originalHeight || 450;
+          const scaleX = width / origWidth;
+          const scaleY = height / origHeight;
+          const needsScaling = scaleX !== 1 || scaleY !== 1;
+          
+          if (needsScaling) {
+            console.log("Scaling objects by:", scaleX, scaleY);
+          }
           
           // Use enlivenObjects for more reliable deserialization
           import("fabric").then(({ util }) => {
@@ -105,6 +119,16 @@ export function AnnotationCanvas({
               util.enlivenObjects(dataToLoad.objects).then((enlivenedObjects: any[]) => {
                 console.log("Enlivened objects:", enlivenedObjects.length);
                 enlivenedObjects.forEach((obj: any) => {
+                  // Scale position and size if canvas dimensions changed
+                  if (needsScaling) {
+                    obj.set({
+                      left: (obj.left || 0) * scaleX,
+                      top: (obj.top || 0) * scaleY,
+                      scaleX: (obj.scaleX || 1) * scaleX,
+                      scaleY: (obj.scaleY || 1) * scaleY,
+                    });
+                    obj.setCoords();
+                  }
                   canvas.add(obj);
                 });
                 canvas.requestRenderAll();
@@ -296,11 +320,15 @@ export function AnnotationCanvas({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleDelete, readOnly]);
 
-  // Save annotation
+  // Save annotation (include canvas dimensions for scaling on load)
   const handleSave = () => {
     const canvas = fabricRef.current;
     if (!canvas || !onSave) return;
-    const json = JSON.stringify(canvas.toJSON());
+    const canvasData = canvas.toJSON();
+    // Store original dimensions for scaling when loading at different sizes
+    canvasData.originalWidth = width;
+    canvasData.originalHeight = height;
+    const json = JSON.stringify(canvasData);
     onSave(json);
   };
 
