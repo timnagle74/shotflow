@@ -532,7 +532,26 @@ export default function ShotDetailPage() {
 
   const assignee = shot.assigned_to_id ? users.find(u => u.id === shot.assigned_to_id) : null;
   const currentVersionNotes = notes.filter(n => n.version_id === selectedVersion);
-  const frameCount = shot.frame_start && shot.frame_end ? shot.frame_end - shot.frame_start : null;
+  // Calculate frame counts - prefer record TC range, fall back to frame_start/frame_end
+  const handleHead = shot.handle_head || 8;
+  const handleTail = shot.handle_tail || 8;
+  
+  let cutLength: number | null = null;
+  let frameStart: number | null = null;
+  let frameEnd: number | null = null;
+  
+  if (shot.record_frame_in != null && shot.record_frame_out != null && shot.record_frame_out > shot.record_frame_in) {
+    cutLength = shot.record_frame_out - shot.record_frame_in;
+    frameStart = shot.record_frame_in;
+    frameEnd = shot.record_frame_out;
+  } else if (shot.frame_start != null && shot.frame_end != null && shot.frame_end > shot.frame_start) {
+    cutLength = shot.frame_end - shot.frame_start;
+    frameStart = shot.frame_start;
+    frameEnd = shot.frame_end;
+  }
+  
+  const compLength = cutLength != null ? cutLength + handleHead + handleTail : null;
+  const frameCount = cutLength;
   const allowedTransitions = STATUS_TRANSITIONS[currentStatus] || [];
   const selectedVersionData = versions.find(v => v.id === selectedVersion);
 
@@ -589,11 +608,13 @@ export default function ShotDetailPage() {
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Film className="h-3 w-3" />Frame Range</span>
-                  <span className="text-sm font-mono">{shot.frame_start || '—'}–{shot.frame_end || '—'}</span>
+                  <span className="text-sm font-mono">{frameStart ?? '—'}–{frameEnd ?? '—'}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Ruler className="h-3 w-3" />Duration</span>
-                  <span className="text-sm font-mono">{frameCount ? `${frameCount}f (${(frameCount / 24).toFixed(1)}s)` : '—'}</span>
+                  <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Ruler className="h-3 w-3" />Cut / Comp</span>
+                  <span className="text-sm font-mono">
+                    {cutLength != null ? `${cutLength}f` : '—'} / {compLength != null ? `${compLength}f` : '—'}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-muted-foreground flex items-center gap-1.5"><Hash className="h-3 w-3" />Handles</span>
