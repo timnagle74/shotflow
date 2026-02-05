@@ -83,6 +83,41 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(group);
 }
 
+// PATCH /api/shot-groups - Update a group
+export async function PATCH(req: NextRequest) {
+  const auth = await authenticateRequest(req);
+  if (auth.error) return auth.error;
+  const roleCheck = requireInternal(auth.user);
+  if (roleCheck) return roleCheck;
+
+  const body = await req.json();
+  const { id, name, description, color } = body;
+
+  if (!id) {
+    return NextResponse.json({ error: "id required" }, { status: 400 });
+  }
+
+  const supabase = getServiceClient();
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (name !== undefined) updates.name = name;
+  if (description !== undefined) updates.description = description;
+  if (color !== undefined) updates.color = color;
+
+  const { data, error } = await supabase
+    .from("shot_groups")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json(data);
+}
+
 // DELETE /api/shot-groups?id=xxx - Delete a group
 export async function DELETE(req: NextRequest) {
   const auth = await authenticateRequest(req);

@@ -69,6 +69,13 @@ export function ShotGroupsPanel({
   const [newGroupColor, setNewGroupColor] = useState(COLOR_OPTIONS[0]);
   const [creating, setCreating] = useState(false);
 
+  // Edit dialog
+  const [editingGroup, setEditingGroup] = useState<ShotGroup | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editColor, setEditColor] = useState(COLOR_OPTIONS[0]);
+  const [saving, setSaving] = useState(false);
+
   // Add shots dialog
   const [showAddShots, setShowAddShots] = useState<string | null>(null);
   const [shotSearchTerm, setShotSearchTerm] = useState("");
@@ -137,6 +144,39 @@ export function ShotGroupsPanel({
     } catch (err) {
       console.error("Failed to delete group:", err);
     }
+  };
+
+  const openEditDialog = (group: ShotGroup) => {
+    setEditingGroup(group);
+    setEditName(group.name);
+    setEditDesc(group.description || "");
+    setEditColor(group.color);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingGroup || !editName.trim()) return;
+    setSaving(true);
+
+    try {
+      const res = await fetch("/api/shot-groups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editingGroup.id,
+          name: editName.trim(),
+          description: editDesc.trim() || null,
+          color: editColor,
+        }),
+      });
+
+      if (res.ok) {
+        setEditingGroup(null);
+        fetchGroups();
+      }
+    } catch (err) {
+      console.error("Failed to update group:", err);
+    }
+    setSaving(false);
   };
 
   const handleAddShots = async (groupId: string) => {
@@ -296,6 +336,17 @@ export function ShotGroupsPanel({
                         <Button
                           size="sm"
                           variant="ghost"
+                          className="h-7 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditDialog(group);
+                          }}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           className="h-7 text-xs text-destructive"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -369,6 +420,60 @@ export function ShotGroupsPanel({
             <Button onClick={handleCreateGroup} disabled={!newGroupName.trim() || creating}>
               {creating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
               Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Group Dialog */}
+      <Dialog open={!!editingGroup} onOpenChange={() => setEditingGroup(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Group</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium">Name</label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="Group name"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Description (optional)</label>
+              <Input
+                value={editDesc}
+                onChange={(e) => setEditDesc(e.target.value)}
+                placeholder="Notes about this group..."
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Color</label>
+              <div className="flex gap-2 mt-2 flex-wrap">
+                {COLOR_OPTIONS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`w-7 h-7 rounded-full transition-all ${
+                      editColor === color 
+                        ? "ring-2 ring-offset-2 ring-offset-background ring-primary scale-110" 
+                        : "hover:scale-110"
+                    }`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setEditColor(color)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingGroup(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={!editName.trim() || saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>
