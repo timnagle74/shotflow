@@ -61,18 +61,24 @@ export async function POST(req: NextRequest) {
     }
 
     // New user — send invite email via Supabase Auth
+    console.log("Attempting to invite user:", { email, name, role });
+    
     const { data: authData, error: authError } =
       await adminClient.auth.admin.inviteUserByEmail(email, {
         data: { name, role },
       });
 
     if (authError) {
-      console.error("Auth invite error:", JSON.stringify(authError));
+      console.error("Auth invite error:", JSON.stringify(authError, null, 2));
+      console.error("Auth error code:", authError.code);
+      console.error("Auth error status:", authError.status);
       return NextResponse.json(
         { error: `Invite failed: ${authError.message}` },
         { status: 500 }
       );
     }
+    
+    console.log("Auth invite successful:", authData?.user?.id);
 
     // The handle_new_user trigger on auth.users will auto-create 
     // the public.users record. Update it with the correct role/name.
