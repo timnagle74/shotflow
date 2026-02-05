@@ -1488,7 +1488,7 @@ export default function TurnoverPage() {
                     <p className="text-sm font-mono font-medium">{filmscribeResult.title}</p>
                   </div>
                   <Badge variant="outline" className="text-xs">FilmScribe XML</Badge>
-                  <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="grid grid-cols-2 gap-2 text-center">
                     <div className="rounded-md bg-muted/50 p-2">
                       <p className="text-lg font-bold">{filmscribeResult.shotsToCreate}</p>
                       <p className="text-[10px] text-muted-foreground">VFX SHOTS</p>
@@ -1496,10 +1496,6 @@ export default function TurnoverPage() {
                     <div className="rounded-md bg-purple-600/10 p-2">
                       <p className="text-lg font-bold text-purple-400">{filmscribeResult.totalVfxMarkers}</p>
                       <p className="text-[10px] text-muted-foreground">MARKERS</p>
-                    </div>
-                    <div className="rounded-md bg-blue-600/10 p-2">
-                      <p className="text-lg font-bold text-blue-400">{filmscribeResult.eventsWithClips}</p>
-                      <p className="text-[10px] text-muted-foreground">TOTAL CLIPS</p>
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
