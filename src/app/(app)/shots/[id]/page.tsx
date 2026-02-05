@@ -12,10 +12,12 @@ import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
 import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
-import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download, Play, Video, FolderOpen } from "lucide-react";
+import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download, Play, Video, FolderOpen, CheckCircle, RotateCcw, AlertCircle, History, Send } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import type { ShotStatus } from "@/lib/database.types";
 import { VideoPlayer } from "@/components/video-player";
 import { AnnotatedPlayer } from "@/components/annotated-player";
@@ -156,7 +158,11 @@ export default function ShotDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { user: authUser } = useAuth();
+  const { currentUser, isAdmin } = useCurrentUser();
   const shotId = params.id as string;
+  
+  // Roles that can approve/reject versions
+  const canApprove = currentUser && ['ADMIN', 'VFX_SUPERVISOR', 'POST_SUPERVISOR', 'SUPERVISOR', 'PRODUCER'].includes(currentUser.role);
 
   const [loading, setLoading] = useState(true);
   const [shot, setShot] = useState<Shot | null>(null);
@@ -171,6 +177,10 @@ export default function ShotDetailPage() {
   const [selectedVersion, setSelectedVersion] = useState<string>("");
   const [updating, setUpdating] = useState(false);
   const [noteText, setNoteText] = useState("");
+  const [revisionNotes, setRevisionNotes] = useState("");
+  const [showRevisionDialog, setShowRevisionDialog] = useState(false);
+  const [updatingVersionStatus, setUpdatingVersionStatus] = useState(false);
+  const [statusHistory, setStatusHistory] = useState<any[]>([]);
   const [playerSource, setPlayerSource] = useState<'version' | 'ref' | 'plate'>('version');
   const [selectedPlateId, setSelectedPlateId] = useState<string | null>(null);
   const [showLut, setShowLut] = useState<{ name: string; url: string } | null>(null);
@@ -467,6 +477,58 @@ export default function ShotDetailPage() {
     }
     setPostingNote(false);
   }, [noteText, selectedVersion, authUser]);
+
+  // Version status handlers
+  const handleVersionStatusChange = async (newStatus: string, notes?: string) => {
+    if (!selectedVersion) return;
+    setUpdatingVersionStatus(true);
+    try {
+      const res = await fetch(`/api/versions/${selectedVersion}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus, notes }),
+      });
+      
+      if (res.ok) {
+        // Update local state
+        setVersions(prev => prev.map(v => 
+          v.id === selectedVersion ? { ...v, status: newStatus } : v
+        ));
+        setShowRevisionDialog(false);
+        setRevisionNotes("");
+        // Refresh history
+        fetchStatusHistory(selectedVersion);
+      } else {
+        const data = await res.json();
+        alert(data.error || "Failed to update status");
+      }
+    } catch (err) {
+      console.error("Failed to update version status:", err);
+      alert("Failed to update status");
+    }
+    setUpdatingVersionStatus(false);
+  };
+
+  const fetchStatusHistory = async (versionId: string) => {
+    try {
+      const res = await fetch(`/api/versions/${versionId}/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setStatusHistory(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch status history:", err);
+    }
+  };
+
+  // Fetch status history when version changes
+  useEffect(() => {
+    if (selectedVersion) {
+      fetchStatusHistory(selectedVersion);
+    } else {
+      setStatusHistory([]);
+    }
+  }, [selectedVersion]);
 
   const handleAssignmentChange = useCallback(async (userId: string) => {
     if (!supabase) return;
@@ -1115,6 +1177,164 @@ export default function ShotDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Version Approval Card */}
+          {selectedVersion && selectedVersionData && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4" />
+                  Approval — v{String(selectedVersionData.version_number).padStart(3, "0")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Current Status */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Current Status</span>
+                  <VersionStatusBadge status={selectedVersionData.status} />
+                </div>
+
+                {/* Action Buttons */}
+                {canApprove && selectedVersionData.status !== 'WIP' && (
+                  <div className="flex gap-2">
+                    {selectedVersionData.status === 'PENDING_REVIEW' && (
+                      <>
+                        <Button
+                          size="sm"
+                          className="flex-1 bg-green-600 hover:bg-green-700"
+                          disabled={updatingVersionStatus}
+                          onClick={() => handleVersionStatusChange('APPROVED')}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="flex-1"
+                          disabled={updatingVersionStatus}
+                          onClick={() => setShowRevisionDialog(true)}
+                        >
+                          <RotateCcw className="h-4 w-4 mr-2" />
+                          Revisions
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={updatingVersionStatus}
+                          onClick={() => handleVersionStatusChange('CBB')}
+                          title="Could Be Better"
+                        >
+                          CBB
+                        </Button>
+                      </>
+                    )}
+                    {selectedVersionData.status === 'APPROVED' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        disabled={updatingVersionStatus}
+                        onClick={() => setShowRevisionDialog(true)}
+                      >
+                        <RotateCcw className="h-4 w-4 mr-2" />
+                        Request Revisions
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {/* Submit for Review (for artists) */}
+                {selectedVersionData.status === 'WIP' && (
+                  <Button
+                    size="sm"
+                    className="w-full"
+                    disabled={updatingVersionStatus}
+                    onClick={() => handleVersionStatusChange('PENDING_REVIEW')}
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    Submit for Review
+                  </Button>
+                )}
+
+                {/* Retract from Review */}
+                {selectedVersionData.status === 'PENDING_REVIEW' && !canApprove && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    disabled={updatingVersionStatus}
+                    onClick={() => handleVersionStatusChange('WIP')}
+                  >
+                    Retract Submission
+                  </Button>
+                )}
+
+                {/* Status History */}
+                {statusHistory.length > 0 && (
+                  <>
+                    <Separator />
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <History className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">History</span>
+                      </div>
+                      <div className="space-y-2 max-h-32 overflow-y-auto">
+                        {statusHistory.slice(0, 5).map((entry: any) => (
+                          <div key={entry.id} className="text-xs flex items-start gap-2">
+                            <span className="text-muted-foreground whitespace-nowrap">
+                              {new Date(entry.created_at).toLocaleDateString()}
+                            </span>
+                            <span className="text-muted-foreground">→</span>
+                            <span className="font-medium">{entry.to_status}</span>
+                            <span className="text-muted-foreground">by {entry.changed_by?.name || 'Unknown'}</span>
+                            {entry.notes && (
+                              <span className="text-amber-400 truncate" title={entry.notes}>
+                                "{entry.notes}"
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Revision Notes Dialog */}
+          <Dialog open={showRevisionDialog} onOpenChange={setShowRevisionDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Request Revisions</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <p className="text-sm text-muted-foreground">
+                  Please provide notes explaining what needs to be revised.
+                </p>
+                <Textarea
+                  placeholder="Describe the revisions needed..."
+                  value={revisionNotes}
+                  onChange={(e) => setRevisionNotes(e.target.value)}
+                  rows={4}
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowRevisionDialog(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={!revisionNotes.trim() || updatingVersionStatus}
+                  onClick={() => handleVersionStatusChange('REVISE', revisionNotes)}
+                >
+                  {updatingVersionStatus ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-2" />}
+                  Request Revisions
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {selectedVersion && (
             <Card>
