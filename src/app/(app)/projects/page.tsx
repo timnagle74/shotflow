@@ -16,7 +16,7 @@ import { useCurrentUser } from "@/hooks/use-current-user";
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const { currentUser, loading: userLoading, isArtist } = useCurrentUser();
+  const { currentUser, loading: userLoading, isArtist, isAdmin } = useCurrentUser();
   const [showCreate, setShowCreate] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [editingProject, setEditingProject] = useState<any>(null);
@@ -28,10 +28,10 @@ export default function ProjectsPage() {
   const [newProject, setNewProject] = useState({ name: "", code: "", status: "ACTIVE" });
 
   useEffect(() => {
-    if (!userLoading) {
+    if (!userLoading && currentUser) {
       fetchProjects();
     }
-  }, [userLoading, currentUser]);
+  }, [userLoading, currentUser, isAdmin]);
 
   async function fetchProjects() {
     if (!supabase) {
@@ -39,8 +39,24 @@ export default function ProjectsPage() {
       return;
     }
     try {
-      const { data, error } = await supabase.from("projects").select("id, name, code, status, created_at").order("created_at", { ascending: false }).limit(100);
-      if (error) throw error;
+      let data: any[] | null = null;
+      
+      // Admins see all projects, others only see projects they're assigned to
+      if (isAdmin) {
+        const result = await supabase.from("projects").select("id, name, code, status, created_at").order("created_at", { ascending: false }).limit(100);
+        if (result.error) throw result.error;
+        data = result.data;
+      } else if (currentUser) {
+        // Get projects user is a member of
+        const { data: memberProjects, error: memberError } = await supabase
+          .from("project_members")
+          .select("project:projects(id, name, code, status, created_at)")
+          .eq("user_id", currentUser.id);
+        if (memberError) throw memberError;
+        data = (memberProjects || []).map(m => m.project).filter(Boolean);
+      }
+      
+      if (!data) data = [];
 
       // Fetch shot counts per project
       if (data && data.length > 0) {
