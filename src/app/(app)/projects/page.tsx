@@ -243,11 +243,13 @@ export default function ProjectsPage() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Link href={`/projects/${project.id}`} className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center hover:bg-primary/20 transition-colors">
                         <FolderKanban className="h-5 w-5 text-primary" />
-                      </div>
+                      </Link>
                       <div>
-                        <CardTitle className="text-base">{project.name}</CardTitle>
+                        <Link href={`/projects/${project.id}`}>
+                          <CardTitle className="text-base hover:text-primary transition-colors">{project.name}</CardTitle>
+                        </Link>
                         <p className="text-xs text-muted-foreground font-mono">{project.code}</p>
                       </div>
                     </div>

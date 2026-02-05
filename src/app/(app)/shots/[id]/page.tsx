@@ -173,6 +173,7 @@ export default function ShotDetailPage() {
   const [noteText, setNoteText] = useState("");
   const [playerSource, setPlayerSource] = useState<'version' | 'ref' | 'plate'>('version');
   const [selectedPlateId, setSelectedPlateId] = useState<string | null>(null);
+  const [showLut, setShowLut] = useState<{ name: string; url: string } | null>(null);
 
   // Fetch all data
   useEffect(() => {
@@ -218,6 +219,18 @@ export default function ShotDetailPage() {
 
           if (projData) {
             setProject(projData);
+            
+            // Fetch default show LUT
+            const { data: lutData } = await supabase
+              .from("lut_files")
+              .select("name, file_path")
+              .eq("project_id", projData.id)
+              .eq("is_default", true)
+              .single();
+            
+            if (lutData) {
+              setShowLut({ name: lutData.name, url: lutData.file_path });
+            }
           }
         }
 
@@ -657,6 +670,27 @@ export default function ShotDetailPage() {
                   <div>
                     <label className="text-xs text-muted-foreground">Shot Notes</label>
                     <p className="text-sm mt-1 text-amber-300 bg-amber-600/10 rounded-md p-2">{shot.notes}</p>
+                  </div>
+                </>
+              )}
+
+              {showLut && (
+                <>
+                  <Separator />
+                  <div>
+                    <label className="text-xs text-muted-foreground">Show LUT</label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-1.5 gap-2"
+                      asChild
+                    >
+                      <a href={showLut.url} download>
+                        <Palette className="h-4 w-4" />
+                        {showLut.name}
+                        <Download className="h-3 w-3 ml-auto" />
+                      </a>
+                    </Button>
                   </div>
                 </>
               )}
