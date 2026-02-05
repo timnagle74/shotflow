@@ -62,7 +62,7 @@ interface LutFile {
   id: string;
   name: string;
   description: string | null;
-  file_path: string;
+  file_path: string | null;
   format: string | null;
   lut_type: string | null;
   is_default: boolean;
@@ -721,7 +721,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                         size="icon"
                         asChild
                       >
-                        <a href={lut.file_path} download>
+                        <a href={lut.file_path || "#"} download={!!lut.file_path}>
                           <Download className="h-4 w-4" />
                         </a>
                       </Button>

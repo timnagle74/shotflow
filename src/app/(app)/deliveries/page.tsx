@@ -452,6 +452,7 @@ function DeliverySpecsDialog({ project, specs, onSave }: { project: { id: string
     try {
       const payload = {
         project_id: project.id,
+        spec_type: 'FINAL' as const, // Default to FINAL for backward compatibility
         resolution: formData.resolution || null,
         format: formData.format || null,
         frame_rate: formData.frame_rate || null,

@@ -238,7 +238,7 @@ export default function ShotDetailPage() {
               .eq("is_default", true)
               .single();
             
-            if (lutData) {
+            if (lutData && lutData.file_path) {
               setShowLut({ name: lutData.name, url: lutData.file_path });
             }
           }
