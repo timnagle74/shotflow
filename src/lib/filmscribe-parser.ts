@@ -302,27 +302,27 @@ export function filmScribeToShots(result: FilmScribeParseResult): Array<{
   take: string | null;
   camera: string | null;
 }> {
-  // Check if events have clips (REEL03 style)
-  const eventsWithClips = result.events.filter(e => e.clipName !== null && !e.clipName.startsWith('Opt'));
+  // Check if events have clips AND VFX codes (REEL03 style where markers are matched to events)
+  const eventsWithClipsAndVfx = result.events.filter(
+    e => e.clipName !== null && e.vfxShotCode !== null && !e.clipName.startsWith('Opt')
+  );
   
-  if (eventsWithClips.length > 0) {
-    // Case 1: Events have clips — use existing logic
-    return result.events
-      .filter(e => e.clipName !== null && e.vfxShotCode !== null && !e.clipName.startsWith('Opt'))
-      .map(event => ({
-        code: event.vfxShotCode!,
-        clipName: event.clipName,
-        cameraRoll: event.tapeId || event.tapeName,
-        sourceIn: event.sourceIn,
-        sourceOut: event.sourceOut,
-        recordIn: event.recordIn,
-        recordOut: event.recordOut,
-        durationFrames: event.length,
-        vfxNotes: event.vfxDescription || (event.vfxNotes.length > 0 ? event.vfxNotes.join('\n') : null),
-        scene: event.scene,
-        take: event.take,
-        camera: event.camera,
-      }));
+  if (eventsWithClipsAndVfx.length > 0) {
+    // Case 1: Events have clips AND VFX codes — use events
+    return eventsWithClipsAndVfx.map(event => ({
+      code: event.vfxShotCode!,
+      clipName: event.clipName,
+      cameraRoll: event.tapeId || event.tapeName,
+      sourceIn: event.sourceIn,
+      sourceOut: event.sourceOut,
+      recordIn: event.recordIn,
+      recordOut: event.recordOut,
+      durationFrames: event.length,
+      vfxNotes: event.vfxDescription || (event.vfxNotes.length > 0 ? event.vfxNotes.join('\n') : null),
+      scene: event.scene,
+      take: event.take,
+      camera: event.camera,
+    }));
   }
   
   // Case 2: Events don't have clips — build shots from locators directly (REEL01 style)
