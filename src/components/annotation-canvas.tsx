@@ -96,10 +96,16 @@ export function AnnotationCanvas({
         }
         // Ensure dataToLoad is an object with the expected structure
         if (dataToLoad && typeof dataToLoad === "object") {
+          console.log("Loading annotation data:", dataToLoad);
+          console.log("Objects to load:", dataToLoad.objects?.length);
           canvas.loadFromJSON(dataToLoad).then(() => {
+            console.log("Canvas loaded, objects on canvas:", canvas.getObjects().length);
             canvas.requestRenderAll();
             // Force another render after a short delay for complex objects
-            setTimeout(() => canvas.requestRenderAll(), 100);
+            setTimeout(() => {
+              console.log("Delayed render, objects:", canvas.getObjects().length);
+              canvas.requestRenderAll();
+            }, 100);
           }).catch((err: Error) => {
             console.error("Failed to load annotation canvas:", err);
           });
