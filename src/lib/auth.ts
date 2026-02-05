@@ -16,10 +16,10 @@ export interface AuthUser {
 }
 
 /** Roles that count as "admin-level" (can manage users, projects, etc.) */
-const ADMIN_ROLES: UserRole[] = ['ADMIN', 'SUPERVISOR', 'PRODUCER'];
+const ADMIN_ROLES: UserRole[] = ['ADMIN', 'VFX_SUPERVISOR', 'POST_SUPERVISOR', 'SUPERVISOR', 'PRODUCER'];
 
 /** Roles that count as internal team members */
-const INTERNAL_ROLES: UserRole[] = ['ADMIN', 'SUPERVISOR', 'PRODUCER', 'COORDINATOR', 'VFX_EDITOR', 'ARTIST'];
+const INTERNAL_ROLES: UserRole[] = ['ADMIN', 'VFX_SUPERVISOR', 'POST_SUPERVISOR', 'SUPERVISOR', 'PRODUCER', 'COORDINATOR', 'VFX_EDITOR', 'ARTIST'];
 
 /** Roles allowed to upload versions (internal + vendors) */
 const UPLOAD_ROLES: UserRole[] = [...INTERNAL_ROLES, 'VFX_VENDOR'];

@@ -39,6 +39,8 @@ import {
   CheckCircle2,
   Pencil,
   Trash2,
+  Clapperboard,
+  Video,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import type { UserRole } from "@/lib/database.types";
@@ -58,6 +60,8 @@ interface UserRow {
 
 const roleIcons: Record<string, typeof Shield> = {
   ADMIN: Crown,
+  VFX_SUPERVISOR: Clapperboard,
+  POST_SUPERVISOR: Video,
   SUPERVISOR: Shield,
   PRODUCER: Shield,
   COORDINATOR: Users,

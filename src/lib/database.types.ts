@@ -2,7 +2,7 @@
 // In production, generate with: npx supabase gen types typescript
 // Last updated: 2026-02-04 (matches all migrations through 20260204_vendor_schema_fixes)
 
-export type UserRole = 'ADMIN' | 'SUPERVISOR' | 'PRODUCER' | 'COORDINATOR' | 'ARTIST' | 'VFX_EDITOR' | 'CLIENT' | 'VFX_VENDOR';
+export type UserRole = 'ADMIN' | 'VFX_SUPERVISOR' | 'POST_SUPERVISOR' | 'SUPERVISOR' | 'PRODUCER' | 'COORDINATOR' | 'ARTIST' | 'VFX_EDITOR' | 'CLIENT' | 'VFX_VENDOR';
 export type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'ARCHIVED';
 export type ShotStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'INTERNAL_REVIEW' | 'CLIENT_REVIEW' | 'REVISIONS' | 'APPROVED' | 'FINAL';
 export type ShotComplexity = 'SIMPLE' | 'MEDIUM' | 'COMPLEX' | 'HERO';
@@ -239,6 +239,46 @@ export interface Database {
           updated_at?: string;
         };
         Relationships: [];
+      };
+      project_members: {
+        Row: {
+          id: string;
+          project_id: string;
+          user_id: string;
+          role: UserRole;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          user_id: string;
+          role: UserRole;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          user_id?: string;
+          role?: UserRole;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "project_members_project_id_fkey";
+            columns: ["project_id"];
+            referencedRelation: "projects";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "project_members_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       sequences: {
         Row: {

@@ -27,6 +27,8 @@ export const shotStatusLabels: Record<string, string> = {
 
 export const roleLabels: Record<string, string> = {
   ADMIN: "Admin",
+  VFX_SUPERVISOR: "VFX Supervisor",
+  POST_SUPERVISOR: "Post Supervisor",
   SUPERVISOR: "Supervisor",
   PRODUCER: "Producer",
   COORDINATOR: "Coordinator",
@@ -38,6 +40,8 @@ export const roleLabels: Record<string, string> = {
 
 export const roleColors: Record<string, { color: string; bg: string }> = {
   ADMIN: { color: "text-amber-400", bg: "bg-amber-400/10" },
+  VFX_SUPERVISOR: { color: "text-red-400", bg: "bg-red-400/10" },
+  POST_SUPERVISOR: { color: "text-rose-400", bg: "bg-rose-400/10" },
   SUPERVISOR: { color: "text-blue-400", bg: "bg-blue-400/10" },
   PRODUCER: { color: "text-indigo-400", bg: "bg-indigo-400/10" },
   COORDINATOR: { color: "text-cyan-400", bg: "bg-cyan-400/10" },
