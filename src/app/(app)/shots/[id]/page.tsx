@@ -933,11 +933,11 @@ export default function ShotDetailPage() {
                   );
                 }
                 
-                // Use AnnotatedPlayer for versions (supports frame notes), VideoPlayer for ref/plates
+                // Use AnnotatedPlayer for all sources (version, ref, plate)
                 if (playerSource === 'version' && selectedVersion && selectedVersionData) {
                   return (
                     <AnnotatedPlayer
-                      versionId={selectedVersion}
+                      source={{ type: 'version', id: selectedVersion }}
                       hlsUrl={hlsUrl}
                       poster={selectedVersionData?.thumbnail_path || undefined}
                       fps={24}
@@ -945,6 +945,32 @@ export default function ShotDetailPage() {
                   );
                 }
                 
+                if (playerSource === 'ref' && shot.id && shot.ref_preview_url) {
+                  // Shot refs are stored directly on the shot record (not in turnover_refs)
+                  // Use shotRef type with shot.id as the identifier
+                  return (
+                    <AnnotatedPlayer
+                      source={{ type: 'shotRef', id: shot.id }}
+                      hlsUrl={hlsUrl}
+                      fps={24}
+                    />
+                  );
+                }
+                
+                if (playerSource === 'plate') {
+                  const selectedPlate = plates.find(p => p.id === (selectedPlateId || plates[0]?.id));
+                  if (selectedPlate) {
+                    return (
+                      <AnnotatedPlayer
+                        source={{ type: 'plate', id: selectedPlate.id }}
+                        hlsUrl={hlsUrl}
+                        fps={24}
+                      />
+                    );
+                  }
+                }
+                
+                // Fallback to VideoPlayer if no valid source
                 return (
                   <VideoPlayer
                     shotCode={shot.code}

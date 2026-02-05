@@ -30,10 +30,19 @@ interface Annotation {
   created_at: string;
 }
 
+type AnnotationSource = 
+  | { type: 'version'; id: string }
+  | { type: 'ref'; id: string }
+  | { type: 'shotRef'; id: string }
+  | { type: 'plate'; id: string };
+
 interface AnnotatedPlayerProps {
   videoId?: string;
   hlsUrl?: string;
-  versionId: string;
+  /** @deprecated Use source prop instead */
+  versionId?: string;
+  /** Annotation source - version, ref, or plate */
+  source?: AnnotationSource;
   poster?: string;
   className?: string;
   fps?: number; // Frames per second, default 24
@@ -43,10 +52,14 @@ export function AnnotatedPlayer({
   videoId,
   hlsUrl,
   versionId,
+  source,
   poster,
   className,
   fps = 24,
 }: AnnotatedPlayerProps) {
+  // Support legacy versionId prop
+  const annotationSource: AnnotationSource = source || { type: 'version', id: versionId! };
+  const sourceParam = `${annotationSource.type}Id=${annotationSource.id}`;
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -83,11 +96,11 @@ export function AnnotatedPlayer({
     return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}:${frames.toString().padStart(2, "0")}`;
   };
 
-  // Load annotations for this version
+  // Load annotations for this source (version, ref, or plate)
   useEffect(() => {
     const loadAnnotations = async () => {
       try {
-        const res = await fetch(`/api/versions/${versionId}/annotations`);
+        const res = await fetch(`/api/annotations?${sourceParam}`);
         if (res.ok) {
           const data = await res.json();
           setAnnotations(data);
@@ -97,7 +110,7 @@ export function AnnotatedPlayer({
       }
     };
     loadAnnotations();
-  }, [versionId]);
+  }, [sourceParam]);
 
   // Track video dimensions
   useEffect(() => {
@@ -208,10 +221,12 @@ export function AnnotatedPlayer({
   const saveAnnotation = async (drawingData: string) => {
     setIsSaving(true);
     try {
-      const res = await fetch(`/api/versions/${versionId}/annotations`, {
+      const res = await fetch(`/api/annotations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          source_type: annotationSource.type,
+          source_id: annotationSource.id,
           frame_number: currentFrame,
           timecode: formatTimecode(currentTime),
           drawing_data: drawingData,
@@ -236,7 +251,7 @@ export function AnnotatedPlayer({
   // Delete annotation
   const deleteAnnotation = async (annotationId: string) => {
     try {
-      const res = await fetch(`/api/versions/${versionId}/annotations/${annotationId}`, {
+      const res = await fetch(`/api/annotations/${annotationId}`, {
         method: "DELETE",
       });
       if (res.ok) {
