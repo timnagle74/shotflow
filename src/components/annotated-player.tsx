@@ -301,7 +301,7 @@ export function AnnotatedPlayer({
         {currentAnnotation && !isAnnotating && dimensions.width > 0 && (
           <div className="absolute inset-0 pointer-events-none">
             <AnnotationCanvas
-              key={currentAnnotation.id}
+              key={`${currentAnnotation.id}-${dimensions.width}-${dimensions.height}`}
               width={dimensions.width}
               height={dimensions.height}
               initialData={currentAnnotation.drawing_data}
