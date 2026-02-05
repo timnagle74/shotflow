@@ -20,27 +20,40 @@ function findMatchingShotCodes(filename: string, shotCodes: string[]): string[] 
   // Extract base name without extension for matching
   const baseName = lowerFilename.replace(/\.[^/.]+$/, '');
   
-  return shotCodes.filter(code => {
+  // Score each potential match - higher score = better match
+  const matches: { code: string; score: number }[] = [];
+  
+  for (const code of shotCodes) {
     const lowerCode = code.toLowerCase();
     
-    // Strategy 1: filename starts with the shot code (most common: 04_0010.mov, 04_0010_bgv1.mov)
-    if (baseName.startsWith(lowerCode)) return true;
-    if (baseName.startsWith(lowerCode.replace(/^0+/, ''))) return true;
-    
-    // Strategy 2: shot code appears after underscore/dash/space (for prefixed files)
-    const boundaryPattern = new RegExp(`(?:^|[_\\-\\s])${lowerCode.replace(/^0+/, '0*')}(?:[_\\-\\s.]|$)`, 'i');
-    if (boundaryPattern.test(baseName)) return true;
-    
-    // Strategy 3: flexible leading zeros but ONLY at word boundaries
-    const codeMatch = lowerCode.match(/^(\d+)_(\d+)$/);
-    if (codeMatch) {
-      const [, scene, seq] = codeMatch;
-      // Require word boundary before the scene number to avoid 24_0010 matching 04_0010
-      const pattern = new RegExp(`(?:^|[^\\d])0*${parseInt(scene)}_0*${parseInt(seq)}(?:[^\\d]|$)`, 'i');
-      if (pattern.test(baseName)) return true;
+    // Strategy 1: filename starts with EXACT shot code (best match)
+    // e.g., "04_0010.mov" or "04_0010_bgv1.mov" for code "04_0010"
+    if (baseName.startsWith(lowerCode)) {
+      // Check that the code is followed by end, underscore, dash, or dot
+      const nextChar = baseName[lowerCode.length];
+      if (!nextChar || nextChar === '_' || nextChar === '-' || nextChar === '.') {
+        matches.push({ code, score: 100 + lowerCode.length }); // Prefer longer exact matches
+        continue;
+      }
     }
-    return false;
-  });
+    
+    // Strategy 2: shot code appears after prefix (e.g., "PROJ_04_0010.mov")
+    // Require underscore/dash/space before AND after the code
+    const boundaryPattern = new RegExp(`(?:^|[_\\-\\s])${escapeRegex(lowerCode)}(?:[_\\-\\s.]|$)`, 'i');
+    if (boundaryPattern.test(baseName)) {
+      matches.push({ code, score: 50 + lowerCode.length });
+      continue;
+    }
+  }
+  
+  // Sort by score descending, return codes only
+  return matches
+    .sort((a, b) => b.score - a.score)
+    .map(m => m.code);
+}
+
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export async function POST(request: NextRequest) {
