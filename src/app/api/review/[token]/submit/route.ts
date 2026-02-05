@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient, validateReviewToken } from "@/lib/auth";
 
+// Valid status values for client review
+const VALID_STATUSES = ['approved', 'rejected', 'needs_changes'] as const;
+type ReviewStatus = typeof VALID_STATUSES[number];
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { token: string } }
@@ -12,6 +16,14 @@ export async function POST(
 
     if (!versionId || !status || !reviewerName) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    // Validate status is one of the allowed values
+    if (!VALID_STATUSES.includes(status)) {
+      return NextResponse.json(
+        { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` },
+        { status: 400 }
+      );
     }
 
     // Validate token via centralized auth helper (requires approvals)
@@ -51,11 +63,9 @@ export async function POST(
     }
 
     // Also update the shot_version status
-    const newStatus = status === 'approved' ? 'approved' 
-                    : status === 'rejected' ? 'rejected'
-                    : 'needs_changes';
+    const newStatus: ReviewStatus = status;
 
-    await supabase
+    const { error: versionError } = await supabase
       .from("shot_versions")
       .update({
         status: newStatus,
@@ -63,6 +73,11 @@ export async function POST(
         review_notes: `Client review by ${reviewerName}: ${status}`,
       })
       .eq("id", versionId);
+
+    if (versionError) {
+      console.error("shot_versions update error:", versionError);
+      // Non-fatal - the review_session_versions was updated successfully
+    }
 
     return NextResponse.json({ success: true });
 

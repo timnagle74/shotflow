@@ -78,8 +78,15 @@ export async function middleware(request: NextRequest) {
       "/shots",
       "/artists",
       "/vendors",
-      "/deliverables",
+      "/deliveries",
+      "/turnovers",
+      "/turnover",
+      "/reviews",
+      "/users",
+      "/source-media",
+      "/color",
       "/settings",
+      "/account",
     ];
     const isInternalOnlyRoute = internalOnlyRoutes.some((route) => 
       pathname.startsWith(route)

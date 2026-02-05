@@ -25,12 +25,7 @@ export async function POST(req: NextRequest) {
 
     const adminClient = getServiceClient() as any;
 
-    // Check if auth user already exists (filtered lookup, not full table scan)
-    const { data: existingUsers } = await adminClient.auth.admin.listUsers({
-      perPage: 1,
-      page: 1,
-    });
-    // Use a targeted query: look up the user row by email instead of scanning all auth users
+    // Check if user already exists via public.users table (avoids scanning all auth users)
     const { data: existingUserRow } = await adminClient
       .from('users')
       .select('auth_id')
