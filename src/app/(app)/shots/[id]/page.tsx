@@ -18,6 +18,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
 import type { ShotStatus } from "@/lib/database.types";
 import { VideoPlayer } from "@/components/video-player";
+import { AnnotatedPlayer } from "@/components/annotated-player";
 import { VersionUpload } from "@/components/version-upload";
 import { DownloadButton, VideoStatusBadge } from "@/components/bunny-player";
 import { PlateUpload } from "@/components/plate-upload";
@@ -929,6 +930,18 @@ export default function ShotDetailPage() {
                         </p>
                       </div>
                     </div>
+                  );
+                }
+                
+                // Use AnnotatedPlayer for versions (supports frame notes), VideoPlayer for ref/plates
+                if (playerSource === 'version' && selectedVersion && selectedVersionData) {
+                  return (
+                    <AnnotatedPlayer
+                      versionId={selectedVersion}
+                      hlsUrl={hlsUrl}
+                      poster={selectedVersionData?.thumbnail_path || undefined}
+                      fps={24}
+                    />
                   );
                 }
                 
