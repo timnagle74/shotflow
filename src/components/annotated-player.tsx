@@ -157,8 +157,6 @@ export function AnnotatedPlayer({
     };
 
     const handleSeeked = () => {
-      // Log where video actually landed
-      console.log(`[seeked] actual currentTime=${video.currentTime}, calculated frame=${timeToFrame(video.currentTime)}, target was=${targetFrameRef.current}`);
       // Clear target frame after seek completes
       targetFrameRef.current = null;
     };
@@ -295,11 +293,7 @@ export function AnnotatedPlayer({
     setIsPlaying(false);
     // Lock the target frame so timeupdate doesn't override during seek
     targetFrameRef.current = annotation.frame_number;
-    const targetTime = frameToTime(annotation.frame_number);
-    console.log(`[jumpToAnnotation] frame=${annotation.frame_number}, targetTime=${targetTime}, currentTime before=${video.currentTime}`);
-    video.currentTime = targetTime;
-    // Log after setting (may not reflect actual seek position yet)
-    console.log(`[jumpToAnnotation] currentTime after set=${video.currentTime}`);
+    video.currentTime = frameToTime(annotation.frame_number);
     // Set annotation and frame immediately
     setCurrentAnnotation(annotation);
     setCurrentFrame(annotation.frame_number);
