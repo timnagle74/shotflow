@@ -62,9 +62,10 @@ export interface FilmScribeParseResult {
   
   // Stats
   eventsWithClips: number;
-  eventsWithVfx: number;      // Events with VFX markers (these become shots)
+  eventsWithVfx: number;      // Events with VFX markers matched
   totalVfxMarkers: number;
   matchedVfxMarkers: number;
+  shotsToCreate: number;      // Actual number of shots that will be created (may use locators)
   
   warnings: string[];
 }
@@ -250,15 +251,21 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
   // Count events with actual clips and VFX markers
   const eventsWithClips = events.filter(e => e.clipName !== null && !e.clipName?.startsWith('Opt')).length;
   
-  // eventsWithVfx: either from events (if they have clips) or from locators (fallback)
-  let eventsWithVfx: number;
-  if (eventsWithClips > 0) {
-    // Events have clips — count events with VFX markers
-    eventsWithVfx = events.filter(e => e.clipName !== null && e.vfxShotCode !== null && !e.clipName?.startsWith('Opt')).length;
-  } else {
-    // Events don't have clips — count locators with VFX codes (these become shots)
-    eventsWithVfx = locators.filter(l => l.vfxShotCode !== null && l.clipName !== null && !l.clipName?.startsWith('Opt')).length;
-  }
+  // Count events with VFX markers matched
+  const eventsWithVfx = events.filter(e => e.vfxShotCode !== null).length;
+  
+  // Calculate actual shots to create (same logic as filmScribeToShots)
+  const eventsWithClipsAndVfx = events.filter(
+    e => e.clipName !== null && e.vfxShotCode !== null && !e.clipName?.startsWith('Opt')
+  ).length;
+  const locatorsWithClipsAndVfx = locators.filter(
+    loc => loc.vfxShotCode !== null && loc.clipName !== null && !loc.clipName?.startsWith('Opt')
+  ).length;
+  
+  // Use whichever source has more valid shots
+  const shotsToCreate = eventsWithClipsAndVfx >= locatorsWithClipsAndVfx 
+    ? eventsWithClipsAndVfx 
+    : locatorsWithClipsAndVfx;
   
   if (events.length !== eventCount) {
     warnings.push(`Expected ${eventCount} events, found ${events.length}`);
@@ -277,6 +284,7 @@ export function parseFilmScribe(content: string): FilmScribeParseResult {
     eventsWithVfx,
     totalVfxMarkers: locators.length,
     matchedVfxMarkers: matchedCount,
+    shotsToCreate,
     warnings,
   };
 }

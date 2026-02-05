@@ -724,7 +724,7 @@ export default function TurnoverPage() {
   }, [xmlResult, xmlFileName, selectedProject, selectedSequence, refFiles, plateFiles, generalVfxNotes, router]);
 
   const handleFilmscribeImport = useCallback(async () => {
-    if (!filmscribeResult || filmscribeResult.eventsWithVfx === 0) return;
+    if (!filmscribeResult || filmscribeResult.shotsToCreate === 0) return;
     
     setImporting(true);
     setImportError(null);
@@ -1490,7 +1490,7 @@ export default function TurnoverPage() {
                   <Badge variant="outline" className="text-xs">FilmScribe XML</Badge>
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="rounded-md bg-muted/50 p-2">
-                      <p className="text-lg font-bold">{filmscribeResult.eventsWithVfx}</p>
+                      <p className="text-lg font-bold">{filmscribeResult.shotsToCreate}</p>
                       <p className="text-[10px] text-muted-foreground">VFX SHOTS</p>
                     </div>
                     <div className="rounded-md bg-purple-600/10 p-2">
@@ -1510,7 +1510,7 @@ export default function TurnoverPage() {
                       <AlertTriangle className="h-3 w-3" />{filmscribeResult.warnings.length} warnings
                     </div>
                   )}
-                  {filmscribeResult.eventsWithVfx > 0 && !filmscribeImported && (
+                  {filmscribeResult.shotsToCreate > 0 && !filmscribeImported && (
                     <>
                       <div className="text-xs text-center py-1 rounded text-green-400/80 bg-green-600/10">
                         ✓ Shot codes derived from VFX marker IDs
@@ -1519,7 +1519,7 @@ export default function TurnoverPage() {
                         {importing ? (
                           <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{importStatus || "Importing..."}</>
                         ) : (
-                          <><Check className="h-4 w-4 mr-2" />Import {filmscribeResult.eventsWithVfx} VFX Shots</>
+                          <><Check className="h-4 w-4 mr-2" />Import {filmscribeResult.shotsToCreate} VFX Shots</>
                         )}
                       </Button>
                     </>
@@ -1540,7 +1540,7 @@ export default function TurnoverPage() {
                 <CardHeader>
                   <CardTitle className="text-sm flex items-center gap-2">
                     VFX Shots
-                    <Badge variant="secondary" className="ml-auto">{filmscribeResult.eventsWithVfx} shots</Badge>
+                    <Badge variant="secondary" className="ml-auto">{filmscribeResult.shotsToCreate} shots</Badge>
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
