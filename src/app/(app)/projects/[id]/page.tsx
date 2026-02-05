@@ -516,26 +516,28 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             </Card>
           ) : (
             <div className="grid gap-3">
-              {members.map((member) => {
+              {members.filter(m => m.user).map((member) => {
                 const Icon = roleIcons[member.role] || Users;
                 const colors = roleColors[member.role] || { color: "text-gray-400", bg: "bg-gray-400/10" };
+                const userName = member.user?.name || member.user?.email || "Unknown";
+                const userEmail = member.user?.email || "";
                 return (
                   <Card key={member.id}>
                     <CardContent className="p-4 flex items-center gap-4">
                       <Avatar>
                         <AvatarFallback>
-                          {(member.user.name || member.user.email).slice(0, 2).toUpperCase()}
+                          {userName.slice(0, 2).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{member.user.name || member.user.email}</p>
-                        <p className="text-sm text-muted-foreground truncate">{member.user.email}</p>
+                        <p className="font-medium truncate">{userName}</p>
+                        <p className="text-sm text-muted-foreground truncate">{userEmail}</p>
                       </div>
                       <Badge variant="outline" className={cn("gap-1", colors.color, colors.bg)}>
                         <Icon className="h-3 w-3" />
                         {roleLabels[member.role] || member.role}
                       </Badge>
-                      {isAdmin && (
+                      {isAdmin && member.user && (
                         <Button 
                           variant="ghost" 
                           size="icon"
