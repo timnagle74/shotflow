@@ -414,7 +414,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   }
 
   // Users not already on the team
-  const availableUsers = users.filter(u => !members.some(m => m.user.id === u.id));
+  const availableUsers = users.filter(u => !members.some(m => m.user?.id === u.id));
 
   return (
     <div className="p-6 space-y-6">
