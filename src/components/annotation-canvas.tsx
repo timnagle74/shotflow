@@ -124,7 +124,8 @@ export function AnnotationCanvas({
             if (dataToLoad.objects && dataToLoad.objects.length > 0) {
               util.enlivenObjects(dataToLoad.objects).then((enlivenedObjects: any[]) => {
                 console.log("Enlivened objects:", enlivenedObjects.length);
-                enlivenedObjects.forEach((obj: any) => {
+                enlivenedObjects.forEach((obj: any, idx: number) => {
+                  console.log(`Object ${idx}:`, obj.type, "at", obj.left, obj.top, "visible:", obj.visible);
                   // Scale position and size if canvas dimensions changed
                   if (needsScaling) {
                     obj.set({
@@ -137,7 +138,13 @@ export function AnnotationCanvas({
                   }
                   canvas.add(obj);
                 });
+                console.log("After adding, canvas objects:", canvas.getObjects().length);
                 canvas.requestRenderAll();
+                // Extra render after delay
+                setTimeout(() => {
+                  console.log("Delayed check - canvas objects:", canvas.getObjects().length);
+                  canvas.requestRenderAll();
+                }, 200);
               }).catch((err: Error) => {
                 console.error("Failed to enliven objects:", err);
               });
