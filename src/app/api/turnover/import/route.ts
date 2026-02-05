@@ -17,19 +17,27 @@ interface UploadedFile {
 // Find all shot codes that appear in a filename (flexible matching for leading zeros)
 function findMatchingShotCodes(filename: string, shotCodes: string[]): string[] {
   const lowerFilename = filename.toLowerCase();
+  // Extract base name without extension for matching
+  const baseName = lowerFilename.replace(/\.[^/.]+$/, '');
+  
   return shotCodes.filter(code => {
     const lowerCode = code.toLowerCase();
-    // Strategy 1: direct include
-    if (lowerFilename.includes(lowerCode)) return true;
-    // Strategy 2: strip leading zeros from scene part (004_0060 → 4_0060)
-    const normalized = lowerCode.replace(/^0+/, '');
-    if (lowerFilename.includes(normalized)) return true;
-    // Strategy 3: check if code matches pattern in filename with flexible leading zeros
+    
+    // Strategy 1: filename starts with the shot code (most common: 04_0010.mov, 04_0010_bgv1.mov)
+    if (baseName.startsWith(lowerCode)) return true;
+    if (baseName.startsWith(lowerCode.replace(/^0+/, ''))) return true;
+    
+    // Strategy 2: shot code appears after underscore/dash/space (for prefixed files)
+    const boundaryPattern = new RegExp(`(?:^|[_\\-\\s])${lowerCode.replace(/^0+/, '0*')}(?:[_\\-\\s.]|$)`, 'i');
+    if (boundaryPattern.test(baseName)) return true;
+    
+    // Strategy 3: flexible leading zeros but ONLY at word boundaries
     const codeMatch = lowerCode.match(/^(\d+)_(\d+)$/);
     if (codeMatch) {
       const [, scene, seq] = codeMatch;
-      const pattern = new RegExp(`0*${parseInt(scene)}_0*${parseInt(seq)}`, 'i');
-      if (pattern.test(lowerFilename)) return true;
+      // Require word boundary before the scene number to avoid 24_0010 matching 04_0010
+      const pattern = new RegExp(`(?:^|[^\\d])0*${parseInt(scene)}_0*${parseInt(seq)}(?:[^\\d]|$)`, 'i');
+      if (pattern.test(baseName)) return true;
     }
     return false;
   });
