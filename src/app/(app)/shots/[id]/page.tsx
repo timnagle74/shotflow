@@ -89,6 +89,15 @@ interface ShotPlate {
   preview_url: string | null;
 }
 
+interface ShotRef {
+  id: string; // turnover_ref_id
+  turnover_shot_id: string;
+  turnover_shot_ref_id: string; // the join table id
+  filename: string;
+  cdn_url: string | null;
+  preview_url: string | null;
+}
+
 interface Sequence {
   id: string;
   name: string;
@@ -186,6 +195,8 @@ export default function ShotDetailPage() {
   const [selectedPlateId, setSelectedPlateId] = useState<string | null>(null);
   const [showLut, setShowLut] = useState<{ name: string; url: string } | null>(null);
   const [siblingShots, setSiblingShots] = useState<{ id: string; code: string }[]>([]);
+  const [shotRefs, setShotRefs] = useState<ShotRef[]>([]);
+  const [turnoverShotId, setTurnoverShotId] = useState<string | null>(null);
 
   // Fetch all data
   useEffect(() => {
@@ -272,6 +283,32 @@ export default function ShotDetailPage() {
 
         if (tsData) {
           setTurnoverShot(tsData as unknown as TurnoverShot);
+          setTurnoverShotId(tsData.id);
+          
+          // Fetch refs linked to this shot via turnover_shot_refs
+          const { data: refsData } = await supabase
+            .from("turnover_shot_refs")
+            .select(`
+              id,
+              turnover_shot_id,
+              turnover_ref_id,
+              turnover_refs(id, filename, cdn_url, preview_url)
+            `)
+            .eq("turnover_shot_id", tsData.id);
+          
+          if (refsData) {
+            const mappedRefs: ShotRef[] = refsData
+              .filter((r: any) => r.turnover_refs)
+              .map((r: any) => ({
+                id: r.turnover_ref_id,
+                turnover_shot_id: r.turnover_shot_id,
+                turnover_shot_ref_id: r.id,
+                filename: r.turnover_refs.filename,
+                cdn_url: r.turnover_refs.cdn_url,
+                preview_url: r.turnover_refs.preview_url,
+              }));
+            setShotRefs(mappedRefs);
+          }
         }
 
         // Fetch versions — prefer shot_versions (richer schema), fall back to legacy versions table
@@ -396,6 +433,43 @@ export default function ShotDetailPage() {
     
     if (!error) {
       setPlates(prev => prev.filter(p => p.id !== plateId));
+    }
+  }, []);
+
+  const handleUnassignRef = useCallback(async (turnoverShotRefId: string) => {
+    if (!supabase) return;
+    
+    const { error } = await (supabase
+      .from("turnover_shot_refs") as any)
+      .delete()
+      .eq("id", turnoverShotRefId);
+    
+    if (!error) {
+      setShotRefs(prev => prev.filter(r => r.turnover_shot_ref_id !== turnoverShotRefId));
+    }
+  }, []);
+
+  const handleReassignRef = useCallback(async (turnoverShotRefId: string, refId: string, newShotId: string) => {
+    if (!supabase) return;
+    
+    // Get the turnover_shot_id for the new shot
+    const { data: newTsData } = await supabase
+      .from("turnover_shots")
+      .select("id")
+      .eq("shot_id", newShotId)
+      .limit(1)
+      .single();
+    
+    if (!newTsData) return;
+    
+    // Update the turnover_shot_refs record to point to the new turnover_shot
+    const { error } = await (supabase
+      .from("turnover_shot_refs") as any)
+      .update({ turnover_shot_id: newTsData.id })
+      .eq("id", turnoverShotRefId);
+    
+    if (!error) {
+      setShotRefs(prev => prev.filter(r => r.turnover_shot_ref_id !== turnoverShotRefId));
     }
   }, []);
 
@@ -874,14 +948,65 @@ export default function ShotDetailPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {/* Reference Clip */}
+              {/* Reference Clips */}
               <div>
                 <label className="text-xs text-muted-foreground flex items-center gap-1.5 mb-2">
-                  <Video className="h-3 w-3" /> Reference Clip
+                  <Video className="h-3 w-3" /> Reference Clips ({shotRefs.length || (shot.ref_filename ? 1 : 0)})
                 </label>
-                {shot.ref_filename ? (
+                {shotRefs.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {shotRefs.map((ref) => (
+                      <div key={ref.turnover_shot_ref_id} className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
+                        <Video className="h-4 w-4 text-green-500 shrink-0" />
+                        <span className="text-sm truncate flex-1">{ref.filename}</span>
+                        {ref.cdn_url && (
+                          <a href={ref.cdn_url} target="_blank" rel="noopener noreferrer">
+                            <Button size="sm" variant="ghost" className="h-7 px-2">
+                              <Download className="h-3.5 w-3.5" />
+                            </Button>
+                          </a>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="ghost" className="h-7 px-2">
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {siblingShots.length > 0 && (
+                              <DropdownMenuSub>
+                                <DropdownMenuSubTrigger>
+                                  <ArrowRight className="h-3.5 w-3.5 mr-2" />
+                                  Move to shot
+                                </DropdownMenuSubTrigger>
+                                <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
+                                  {siblingShots.map((s) => (
+                                    <DropdownMenuItem
+                                      key={s.id}
+                                      onClick={() => handleReassignRef(ref.turnover_shot_ref_id, ref.id, s.id)}
+                                    >
+                                      {s.code}
+                                    </DropdownMenuItem>
+                                  ))}
+                                </DropdownMenuSubContent>
+                              </DropdownMenuSub>
+                            )}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => handleUnassignRef(ref.turnover_shot_ref_id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-2" />
+                              Remove ref
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    ))}
+                  </div>
+                ) : shot.ref_filename ? (
                   <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-md">
-                    <Film className="h-4 w-4 text-green-500 shrink-0" />
+                    <Video className="h-4 w-4 text-green-500 shrink-0" />
                     <span className="text-sm truncate flex-1">{shot.ref_filename}</span>
                     {shot.ref_cdn_url && (
                       <a href={shot.ref_cdn_url} target="_blank" rel="noopener noreferrer">
