@@ -76,6 +76,7 @@ interface EnrichedShot extends Shot {
   notes: string | null;
   ref_video_id?: string | null;
   ref_filename?: string | null;
+  groups: { id: string; name: string; color: string }[];
 }
 
 // Droppable column wrapper
@@ -110,6 +111,14 @@ function DraggableShotCard({ shot }: { shot: EnrichedShot }) {
               {shot.code}
             </span>
             <div className="flex items-center gap-1">
+              {shot.groups.length > 0 && (
+                <div className="flex gap-0.5 mr-1" title={shot.groups.map(g => g.name).join(", ")}>
+                  {shot.groups.slice(0, 3).map(g => (
+                    <div key={g.id} className="w-2 h-2 rounded-full" style={{ backgroundColor: g.color }} />
+                  ))}
+                  {shot.groups.length > 3 && <span className="text-[8px] text-muted-foreground">+{shot.groups.length - 3}</span>}
+                </div>
+              )}
               <span className={cn("text-[10px] font-semibold", complexityColors[shot.complexity as keyof typeof complexityColors])}>{shot.complexity}</span>
             </div>
           </div>
@@ -176,7 +185,10 @@ function ShotsPageContent() {
   const [filterSequence, setFilterSequence] = useState("all");
   const [filterAssignee, setFilterAssignee] = useState("all");
   const [filterComplexity, setFilterComplexity] = useState("all");
+  const [filterGroup, setFilterGroup] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [shotGroups, setShotGroups] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [shotGroupMap, setShotGroupMap] = useState<Record<string, { id: string; name: string; color: string }[]>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -279,6 +291,26 @@ function ShotsPageContent() {
               });
               setVersionCounts(counts);
             }
+
+            // Fetch shot groups for this project
+            const { data: groupsData } = await (supabase
+              .from("shot_groups") as any)
+              .select("id, name, color, shot_group_members(shot_id)")
+              .eq("project_id", selectedProject);
+            
+            if (groupsData) {
+              setShotGroups(groupsData.map((g: any) => ({ id: g.id, name: g.name, color: g.color })));
+              
+              // Build shot -> groups mapping
+              const mapping: Record<string, { id: string; name: string; color: string }[]> = {};
+              groupsData.forEach((group: any) => {
+                (group.shot_group_members as { shot_id: string }[])?.forEach(member => {
+                  if (!mapping[member.shot_id]) mapping[member.shot_id] = [];
+                  mapping[member.shot_id].push({ id: group.id, name: group.name, color: group.color });
+                });
+              });
+              setShotGroupMap(mapping);
+            }
           }
         }
       } catch (err) {
@@ -302,6 +334,7 @@ function ShotsPageContent() {
     assignedTo: shot.assigned_to_id ? users.find(u => u.id === shot.assigned_to_id) || null : null,
     sequence: sequences.find(s => s.id === shot.sequence_id) || null,
     versionCount: versionCounts[shot.id] || 0,
+    groups: shotGroupMap[shot.id] || [],
   }));
 
   const projectSequences = sequences.filter(s => s.project_id === selectedProject);
@@ -310,6 +343,7 @@ function ShotsPageContent() {
     if (filterSequence !== "all" && shot.sequence_id !== filterSequence) return false;
     if (filterAssignee !== "all" && shot.assigned_to_id !== filterAssignee) return false;
     if (filterComplexity !== "all" && shot.complexity !== filterComplexity) return false;
+    if (filterGroup !== "all" && !shot.groups.some(g => g.id === filterGroup)) return false;
     if (searchQuery && !shot.code.toLowerCase().includes(searchQuery.toLowerCase()) && !shot.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
@@ -449,6 +483,22 @@ function ShotsPageContent() {
             <SelectItem value="HERO">Hero</SelectItem>
           </SelectContent>
         </Select>
+        {shotGroups.length > 0 && (
+          <Select value={filterGroup} onValueChange={setFilterGroup}>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Group" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Groups</SelectItem>
+              {shotGroups.map(g => (
+                <SelectItem key={g.id} value={g.id}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: g.color }} />
+                    {g.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       <Tabs defaultValue="kanban">
