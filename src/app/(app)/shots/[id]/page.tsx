@@ -13,7 +13,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ShotStatusBadge, VersionStatusBadge } from "@/components/status-badge";
 import { complexityColors, shotStatusLabels, cn } from "@/lib/utils";
 import { ArrowLeft, Clock, Film, User, MessageSquare, Layers, Calendar, Hash, Camera, Ruler, Gauge, FileVideo, Loader2, Monitor, Palette, Download, Play, Video, FolderOpen, CheckCircle, RotateCcw, AlertCircle, History, Send } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
@@ -1308,11 +1308,11 @@ export default function ShotDetailPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Request Revisions</DialogTitle>
+                <DialogDescription>
+                  Please provide notes explaining what needs to be revised.
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
-                <p className="text-sm text-muted-foreground">
-                  Please provide notes explaining what needs to be revised.
-                </p>
                 <Textarea
                   placeholder="Describe the revisions needed..."
                   value={revisionNotes}
