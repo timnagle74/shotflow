@@ -509,6 +509,53 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Auto-match shots to source_media if available
+    let sourceMediaMatched = 0;
+    try {
+      // Get all source_media for this project
+      const { data: sourceMedia } = await supabase
+        .from('source_media')
+        .select('id, clip_name, tc_in, tc_in_frames, tc_out_frames')
+        .eq('project_id', projectId);
+      
+      if (sourceMedia && sourceMedia.length > 0) {
+        // Match newly created shots to source_media
+        for (const shot of shots) {
+          const shotId = shotCodeToId[shot.code];
+          if (!shotId) continue;
+          
+          const clipName = shot.clipName || shot.code;
+          
+          // Try exact match on clip name
+          let match = sourceMedia.find(sm => sm.clip_name === clipName);
+          
+          // Try without extension
+          if (!match) {
+            const clipBase = clipName.replace(/\.[^.]+$/, '');
+            match = sourceMedia.find(sm => sm.clip_name.replace(/\.[^.]+$/, '') === clipBase);
+          }
+          
+          // Try partial match
+          if (!match) {
+            const clipBase = clipName.replace(/\.[^.]+$/, '');
+            match = sourceMedia.find(sm => 
+              sm.clip_name.includes(clipBase) || clipBase.includes(sm.clip_name.replace(/\.[^.]+$/, ''))
+            );
+          }
+          
+          if (match) {
+            await supabase
+              .from('shots')
+              .update({ source_media_id: match.id })
+              .eq('id', shotId);
+            sourceMediaMatched++;
+          }
+        }
+      }
+    } catch (matchErr) {
+      console.error('Source media matching error:', matchErr);
+    }
+
     return NextResponse.json({
       success: true,
       turnoverId: turnover.id,
@@ -520,6 +567,7 @@ export async function POST(request: NextRequest) {
       shots: createdShots,
       refs: { created: refsCreated, matched: refsMatched },
       plates: { created: platesCreated, matched: platesMatched },
+      sourceMediaMatched,
       reviewUrl: `/turnover/${turnover.id}/review`,
     });
   } catch (error) {

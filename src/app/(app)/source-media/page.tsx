@@ -254,6 +254,23 @@ export default function SourceMediaPage() {
         // Clear imported ALEs
         setImportedALEs([]);
         setAllRecords([]);
+        
+        // Auto-match imported source_media to existing shots
+        try {
+          const matchResponse = await fetch('/api/shots/match-source-media', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: selectedProjectId }),
+          });
+          if (matchResponse.ok) {
+            const matchResult = await matchResponse.json();
+            if (matchResult.matched > 0) {
+              allErrors.push(`✓ Auto-matched ${matchResult.matched} shots to source media`);
+            }
+          }
+        } catch (matchErr) {
+          console.error('Auto-match failed:', matchErr);
+        }
       }
     } catch (err) {
       setSaveResult({ inserted: totalInserted, errors: [...allErrors, String(err)] });

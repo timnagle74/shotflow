@@ -73,6 +73,25 @@ interface Shot {
   ref_cdn_url: string | null;
   ref_video_id: string | null;
   ref_preview_url: string | null;
+  // Source media link
+  source_media_id: string | null;
+}
+
+interface SourceMediaData {
+  id: string;
+  clip_name: string;
+  camera: string | null;
+  camera_id: string | null;
+  lens: string | null;
+  focal_length: string | null;
+  scene: string | null;
+  take: string | null;
+  tc_in: string | null;
+  tc_out: string | null;
+  iso: string | null;
+  f_stop: string | null;
+  shutter: string | null;
+  colorspace: string | null;
 }
 
 interface ShotPlate {
@@ -197,6 +216,7 @@ export default function ShotDetailPage() {
   const [siblingShots, setSiblingShots] = useState<{ id: string; code: string }[]>([]);
   const [shotRefs, setShotRefs] = useState<ShotRef[]>([]);
   const [turnoverShotId, setTurnoverShotId] = useState<string | null>(null);
+  const [sourceMedia, setSourceMedia] = useState<SourceMediaData | null>(null);
 
   // Fetch all data
   useEffect(() => {
@@ -222,6 +242,19 @@ export default function ShotDetailPage() {
 
         setShot(shotData);
         setCurrentStatus(shotData.status);
+
+        // Fetch linked source_media if available
+        if (shotData.source_media_id) {
+          const { data: smData } = await supabase
+            .from("source_media")
+            .select("id, clip_name, camera, camera_id, lens, focal_length, scene, take, tc_in, tc_out, iso, f_stop, shutter, colorspace")
+            .eq("id", shotData.source_media_id)
+            .single();
+          
+          if (smData) {
+            setSourceMedia(smData as SourceMediaData);
+          }
+        }
 
         // Fetch sequence
         const { data: seqData } = await supabase
@@ -882,12 +915,15 @@ export default function ShotDetailPage() {
             projectCode={project?.code || ""}
             shotAction={shot.description || undefined}
             vfxSummary={shot.notes || undefined}
-            sceneNumber={shot.code.split("_")[0] || undefined}
-            sourceClip={shot.source_clip_name || undefined}
+            sceneNumber={sourceMedia?.scene || shot.code.split("_")[0] || undefined}
+            sourceClip={sourceMedia?.clip_name || shot.source_clip_name || undefined}
+            sourceTc={sourceMedia?.tc_in || shot.source_tc_in || undefined}
             turnoverNumber={turnoverShot?.turnover?.turnover_number?.toString() || undefined}
             turnoverDate={turnoverShot?.turnover?.turnover_date || undefined}
             vendor={turnoverShot?.vendor?.name || undefined}
             reelNumber={turnoverShot?.reel_name || undefined}
+            camera={sourceMedia?.camera || sourceMedia?.camera_id || undefined}
+            lens={sourceMedia?.lens || (sourceMedia?.focal_length ? `${sourceMedia.focal_length}mm` : undefined)}
           />
 
           {/* Assignment Card */}

@@ -227,6 +227,7 @@ export default function TurnoverReviewPage() {
     try {
       const res = await fetch("/api/turnover/upload-media", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           turnoverId: turnover.id,
@@ -288,6 +289,7 @@ export default function TurnoverReviewPage() {
     try {
       const res = await fetch("/api/turnover/upload-media", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           turnoverId: turnover.id,

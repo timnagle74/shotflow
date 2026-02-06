@@ -142,6 +142,7 @@ export function PlateUpload({
         // Get upload URL
         const prepareResponse = await fetch("/api/plates/prepare-upload", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             shotId,
@@ -180,6 +181,7 @@ export function PlateUpload({
         // Save to database
         const saveResponse = await fetch("/api/plates", {
           method: "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             shotId,
