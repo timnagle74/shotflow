@@ -8,8 +8,13 @@ const BUNNY_STORAGE_CDN_URL = process.env.BUNNY_STORAGE_CDN_URL;
 
 export async function POST(request: NextRequest) {
   try {
+    // Debug: log cookies received
+    const cookies = request.cookies.getAll();
+    console.log("[prepare-upload] Cookies received:", cookies.map(c => c.name));
+    
     // Auth: internal team only
     const auth = await authenticateRequest(request);
+    console.log("[prepare-upload] Auth result:", auth.error ? "FAILED" : `OK - ${auth.user?.email}`);
     if (auth.error) return auth.error;
     const roleCheck = requireInternal(auth.user);
     if (roleCheck) return roleCheck;

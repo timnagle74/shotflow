@@ -71,7 +71,10 @@ export async function authenticateRequest(
 
   const {
     data: { user: authUser },
+    error: authError,
   } = await supabase.auth.getUser();
+
+  console.log("[auth] getUser result:", authUser ? authUser.email : "null", "error:", authError?.message || "none");
 
   if (!authUser) {
     return {
