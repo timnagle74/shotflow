@@ -18,6 +18,7 @@ import { isFilmScribeXML, parseFilmScribe, filmScribeToShots, type FilmScribePar
 import { Upload, FileText, Check, AlertCircle, AlertTriangle, Film, X, Database, Video, FolderOpen, Trash2, Loader2, MessageSquare, Download, FileCode } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { downloadEDL } from "@/lib/edl-export";
 import { downloadALE } from "@/lib/ale-export";
 import { downloadFCPXML } from "@/lib/xml-export";
@@ -45,6 +46,9 @@ interface Sequence {
 
 export default function TurnoverPage() {
   const router = useRouter();
+  const { currentUser, loading: userLoading, isAdmin } = useCurrentUser();
+  
+  const canImportToAll = isAdmin || (currentUser && ['VFX_SUPERVISOR', 'POST_SUPERVISOR', 'SUPERVISOR', 'PRODUCER', 'COORDINATOR'].includes(currentUser.role));
   
   // Data from Supabase
   const [projects, setProjects] = useState<Project[]>([]);
@@ -54,23 +58,41 @@ export default function TurnoverPage() {
   const [selectedProject, setSelectedProject] = useState("");
   const [selectedSequence, setSelectedSequence] = useState("new");
 
-  // Load projects and sequences from Supabase
+  // Load projects and sequences from Supabase (filtered by membership for non-admins)
   useEffect(() => {
     async function loadData() {
-      if (!supabase) {
-        setLoadingData(false);
+      if (!supabase || userLoading) {
         return;
       }
 
       try {
-        const { data: projectsData } = await supabase
-          .from("projects")
-          .select("id, name, code")
-          .order("name") as { data: Project[] | null };
+        let projectsData: Project[] | null = null;
+        
+        if (canImportToAll) {
+          // Admins/supervisors see all projects
+          const result = await supabase
+            .from("projects")
+            .select("id, name, code")
+            .order("name");
+          projectsData = result.data;
+        } else if (currentUser) {
+          // Non-admins only see projects they're members of
+          const { data: memberProjects } = await supabase
+            .from("project_members")
+            .select("project:projects(id, name, code)")
+            .eq("user_id", currentUser.id);
+          
+          projectsData = (memberProjects || [])
+            .map((m: any) => m.project)
+            .filter(Boolean)
+            .sort((a: Project, b: Project) => a.name.localeCompare(b.name));
+        }
 
         if (projectsData && projectsData.length > 0) {
           setProjects(projectsData);
           setSelectedProject(projectsData[0].id);
+        } else {
+          setProjects([]);
         }
 
         const { data: sequencesData } = await supabase
@@ -89,7 +111,7 @@ export default function TurnoverPage() {
     }
 
     loadData();
-  }, []);
+  }, [userLoading, canImportToAll, currentUser]);
 
   // EDL state
   const [parseResult, setParseResult] = useState<EDLParseResult | null>(null);
