@@ -217,6 +217,29 @@ export default function ShotDetailPage() {
   const [shotRefs, setShotRefs] = useState<ShotRef[]>([]);
   const [turnoverShotId, setTurnoverShotId] = useState<string | null>(null);
   const [sourceMedia, setSourceMedia] = useState<SourceMediaData | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteShot = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/shots/${shotId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete");
+      }
+      
+      router.push("/shots");
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert(error instanceof Error ? error.message : "Failed to delete shot");
+      setDeleting(false);
+    }
+  };
 
   // Fetch all data
   useEffect(() => {
@@ -807,8 +830,47 @@ export default function ShotDetailPage() {
               {shotStatusLabels[key as keyof typeof shotStatusLabels] || key}
             </Button>
           ))}
+          {isAdmin && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setShowDeleteDialog(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete Shot
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Shot?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete <strong>{shot.code}</strong> and all associated versions, plates, and annotations. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)} disabled={deleting}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteShot} disabled={deleting}>
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trash2 className="h-4 w-4 mr-2" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Left Column: Metadata */}
