@@ -104,6 +104,8 @@ export async function POST(request: NextRequest) {
         shot_id: shotId,
         filename,
         description: description || null,
+        storage_path: null, // Stream-based upload, no storage path
+        cdn_url: null, // Stream-based, use preview_url instead
         video_id: videoId,
         preview_url: previewUrl,
         file_size: 0, // Will be updated after upload if needed
@@ -114,7 +116,7 @@ export async function POST(request: NextRequest) {
 
     if (plateError) {
       console.error("Plate insert error:", plateError);
-      return NextResponse.json({ error: "Failed to create plate record" }, { status: 500 });
+      return NextResponse.json({ error: `Failed to create plate record: ${plateError.message}` }, { status: 500 });
     }
 
     return NextResponse.json({
