@@ -65,8 +65,8 @@ export function aleToSourceMedia(
       
       // Clip identification
       clip_name: clipName,
-      tape: aleRecord['Tape'] || aleRecord['Reel'] || null,
-      uuid: aleRecord['UUID'] || aleRecord['Clip UID'] || aleRecord['UMI'] || null,
+      tape: aleRecord['Tape'] || aleRecord['Reel'] || aleRecord['Reel_name'] || null,
+      uuid: aleRecord['UUID'] || aleRecord['Clip UID'] || aleRecord['UMI'] || aleRecord['Uuid'] || null,
       
       // Timecode
       tc_in: tcIn,
@@ -80,21 +80,21 @@ export function aleToSourceMedia(
       file_path: aleRecord['Filepath'] || aleRecord['Source File Path'] || aleRecord['Source File'] || null,
       file_type: aleRecord['File Type'] || aleRecord['Filetype'] || extractExtension(clipName),
       resolution: buildResolution(aleRecord),
-      codec: aleRecord['Video Codec'] || aleRecord['Codec'] || null,
+      codec: aleRecord['Video Codec'] || aleRecord['Codec'] || aleRecord['Original_video'] || null,
       
-      // Camera metadata
-      camera: aleRecord['Camera'] || aleRecord['Camera Type'] || aleRecord['Camera Model'] || null,
-      camera_id: aleRecord['Camera ID'] || aleRecord['Camera Label'] || aleRecord['Cam'] || null,
-      camera_roll: aleRecord['Camera Roll'] || aleRecord['Roll'] || aleRecord['Reel'] || null,
-      lens: aleRecord['Lens'] || aleRecord['Lens Type'] || null,
-      focal_length: aleRecord['Focal Length'] || aleRecord['Focal Length (mm)'] || null,
+      // Camera metadata (supports both standard and ARRI camera card column names)
+      camera: aleRecord['Camera'] || aleRecord['Camera Type'] || aleRecord['Camera Model'] || aleRecord['Camera_model'] || aleRecord['Manufacturer'] || null,
+      camera_id: aleRecord['Camera ID'] || aleRecord['Camera Label'] || aleRecord['Cam'] || aleRecord['Camera_index'] || null,
+      camera_roll: aleRecord['Camera Roll'] || aleRecord['Roll'] || aleRecord['Reel'] || aleRecord['Reel_name'] || null,
+      lens: aleRecord['Lens'] || aleRecord['Lens Type'] || aleRecord['Lens_type'] || null,
+      focal_length: aleRecord['Focal Length'] || aleRecord['Focal Length (mm)'] || extractFocalFromLensType(aleRecord['Lens_type']) || null,
       focus_distance: aleRecord['Focus Distance'] || aleRecord['Focus Dist'] || null,
       f_stop: aleRecord['F-Stop'] || aleRecord['Aperture'] || null,
       t_stop: aleRecord['T-Stop'] || null,
-      iso: aleRecord['ISO'] || aleRecord['EI'] || aleRecord['ASA'] || null,
-      shutter: aleRecord['Shutter'] || aleRecord['Shutter Angle'] || aleRecord['Shutter Speed'] || null,
-      sensor_fps: aleRecord['Sensor FPS'] || aleRecord['Project FPS'] || aleRecord['Capture FPS'] || null,
-      white_balance: aleRecord['White Balance'] || aleRecord['WB'] || aleRecord['Color Temp'] || null,
+      iso: aleRecord['ISO'] || aleRecord['EI'] || aleRecord['ASA'] || aleRecord['Exposure_index'] || null,
+      shutter: aleRecord['Shutter'] || aleRecord['Shutter Angle'] || aleRecord['Shutter Speed'] || aleRecord['Shutter_angle'] || null,
+      sensor_fps: aleRecord['Sensor FPS'] || aleRecord['Project FPS'] || aleRecord['Capture FPS'] || aleRecord['Sensor_fps'] || null,
+      white_balance: aleRecord['White Balance'] || aleRecord['WB'] || aleRecord['Color Temp'] || aleRecord['White_balance'] || null,
       
       // Scene/shot info
       scene: aleRecord['Scene'] || aleRecord['Slate'] || null,
@@ -114,8 +114,8 @@ export function aleToSourceMedia(
       
       // Color
       colorspace: aleRecord['Colorspace'] || aleRecord['Color Space'] || aleRecord['Gamma'] || null,
-      look: aleRecord['Look'] || aleRecord['LUT'] || aleRecord['Look Info'] || null,
-      lut: aleRecord['LUT Name'] || aleRecord['Applied LUT'] || null,
+      look: aleRecord['Look'] || aleRecord['LUT'] || aleRecord['Look Info'] || aleRecord['Look_name'] || null,
+      lut: aleRecord['LUT Name'] || aleRecord['Applied LUT'] || aleRecord['Lut_file_name'] || null,
       
       // CDL data
       cdl_slope_r: sop?.slope[0] ?? null,
@@ -130,7 +130,7 @@ export function aleToSourceMedia(
       cdl_saturation: sat ?? null,
       
       // Shoot info
-      shoot_date: options.shootDate || aleRecord['Shoot Date'] || aleRecord['Date'] || null,
+      shoot_date: options.shootDate || aleRecord['Shoot Date'] || aleRecord['Date'] || formatArriDate(aleRecord['Date_camera']) || null,
       shoot_day: options.shootDay || aleRecord['Shoot Day'] || aleRecord['Day'] || null,
       
       // Import tracking
@@ -217,38 +217,66 @@ function extractExtension(filename: string): string | null {
 }
 
 function buildResolution(record: AleRecord): string | null {
-  const width = record['Resolution Width'] || record['Image Width'] || record['Width'];
-  const height = record['Resolution Height'] || record['Image Height'] || record['Height'];
+  const width = record['Resolution Width'] || record['Image Width'] || record['Width'] || record['Frame_width'];
+  const height = record['Resolution Height'] || record['Image Height'] || record['Height'] || record['Frame_height'];
   
   if (width && height) {
     return `${width}x${height}`;
   }
   
+  // ARRI cameras include resolution in Original_video field like "ARRIRAW (3164p)"
+  if (record['Original_video']) {
+    return record['Original_video'];
+  }
+  
   return record['Resolution'] || record['Format'] || null;
+}
+
+function extractFocalFromLensType(lensType: string | undefined): string | null {
+  if (!lensType) return null;
+  // Extract focal length from strings like "Cooke Anam/i 50mm" or "Angenieux 25-250mm"
+  const match = lensType.match(/(\d+(?:-\d+)?)\s*mm/i);
+  return match ? match[1] : null;
+}
+
+function formatArriDate(arriDate: string | undefined): string | null {
+  if (!arriDate) return null;
+  // ARRI format: YYYYMMDD -> YYYY-MM-DD
+  const match = arriDate.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (match) {
+    return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+  return arriDate;
 }
 
 // Standard ALE columns we've already mapped
 const KNOWN_COLUMNS = new Set([
   'Name', 'Clip Name', 'ImageFileName', 'Video Clip Name Of Source',
-  'Tape', 'Reel', 'UUID', 'Clip UID', 'UMI',
+  'Tape', 'Reel', 'UUID', 'Clip UID', 'UMI', 'Uuid', 'Reel_name',
   'Start', 'Start TC', 'SRC Start TC', 'End', 'End TC', 'SRC End TC', 'Duration',
   'Filepath', 'Source File Path', 'Source File', 'File Type', 'Filetype',
   'Resolution Width', 'Image Width', 'Width', 'Resolution Height', 'Image Height', 'Height',
+  'Frame_width', 'Frame_height', 'Original_video',
   'Resolution', 'Format', 'Video Codec', 'Codec',
   'Camera', 'Camera Type', 'Camera Model', 'Camera ID', 'Camera Label', 'Cam',
-  'Camera Roll', 'Roll', 'Lens', 'Lens Type',
-  'Focal Length', 'Focal Length (mm)', 'Focus Distance', 'Focus Dist',
-  'F-Stop', 'Aperture', 'T-Stop', 'ISO', 'EI', 'ASA',
-  'Shutter', 'Shutter Angle', 'Shutter Speed',
-  'Sensor FPS', 'Project FPS', 'Capture FPS',
-  'White Balance', 'WB', 'Color Temp',
+  'Camera_model', 'Camera_sn', 'Camera_index', 'Manufacturer',
+  'Camera Roll', 'Roll', 'Lens', 'Lens Type', 'Lens_type', 'Lens_sn',
+  'Focal Length', 'Focal Length (mm)', 'Focus Distance', 'Focus Dist', 'Focus_distance_unit',
+  'F-Stop', 'Aperture', 'T-Stop', 'ISO', 'EI', 'ASA', 'Exposure_index',
+  'Shutter', 'Shutter Angle', 'Shutter Speed', 'Shutter_angle',
+  'Sensor FPS', 'Project FPS', 'Capture FPS', 'Sensor_fps', 'Project_fps',
+  'White Balance', 'WB', 'Color Temp', 'White_balance',
   'Scene', 'Slate', 'Take', 'Tk', 'Circled', 'Circled Take',
   'Day/Night', 'D/N', 'Int/Ext', 'I/E', 'Location', 'Set',
-  'Director', 'DP', 'DOP', 'Cinematographer',
+  'Director', 'DP', 'DOP', 'Cinematographer', 'Operator', 'Production', 'Company',
   'Sound Roll', 'Audio Roll', 'Sound TC', 'Audio TC',
   'Colorspace', 'Color Space', 'Gamma', 'Look', 'LUT', 'Look Info', 'LUT Name', 'Applied LUT',
+  'Look_name', 'Look_burned_in', 'Look_intensity', 'Look_user_lut', 'Lut_file_name',
   'ASC_SOP', 'ASC SOP', 'ASC_SAT', 'ASC SAT',
-  'Shoot Date', 'Date', 'Shoot Day', 'Day',
+  'Shoot Date', 'Date', 'Shoot Day', 'Day', 'Date_camera', 'Time_camera',
+  'Nd_filterdensity', 'Texture', 'Cc_shift', 'Enhanced_sensitivity_mode', 'Sup_version',
+  'Image_orientation', 'Image_sharpness', 'Image_detail', 'Image_denoising',
+  'Storage_sn', 'User_info1', 'User_info2', 'FPS', 'Tracks', 'Clip', 'Audio_format', 'Audio_sr', 'Audio_bit',
 ]);
 
 function extractCustomMetadata(record: AleRecord): Record<string, unknown> | null {
