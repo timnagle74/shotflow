@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useCallback, useRef } from "react";
+import * as tus from "tus-js-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -85,43 +85,6 @@ export function PlateUpload({
     );
   }, []);
 
-  const uploadWithProgress = (
-    url: string,
-    file: File,
-    headers: Record<string, string>,
-    onProgress: (progress: number) => void
-  ): Promise<Response> => {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-
-      xhr.upload.addEventListener("progress", (e) => {
-        if (e.lengthComputable) {
-          const percent = Math.round((e.loaded / e.total) * 100);
-          onProgress(percent);
-        }
-      });
-
-      xhr.addEventListener("load", () => {
-        resolve(
-          new Response(xhr.response, {
-            status: xhr.status,
-            statusText: xhr.statusText,
-          })
-        );
-      });
-
-      xhr.addEventListener("error", () => {
-        reject(new Error("Upload failed"));
-      });
-
-      xhr.open("PUT", url);
-      Object.entries(headers).forEach(([key, value]) => {
-        xhr.setRequestHeader(key, value);
-      });
-      xhr.send(file);
-    });
-  };
-
   const handleUpload = useCallback(async () => {
     if (plates.length === 0) {
       setErrorMessage("Please add at least one plate");
@@ -137,9 +100,9 @@ export function PlateUpload({
     try {
       for (let i = 0; i < plates.length; i++) {
         const plate = plates[i];
-        setCurrentUpload(`Uploading ${plate.file.name} (${i + 1}/${plates.length})`);
+        setCurrentUpload(`Preparing ${plate.file.name} (${i + 1}/${plates.length})`);
 
-        // Get upload URL
+        // Get TUS upload credentials from API
         const prepareResponse = await fetch("/api/plates/prepare-upload", {
           method: "POST",
           credentials: "include",
@@ -156,51 +119,49 @@ export function PlateUpload({
 
         if (!prepareResponse.ok) {
           const errorData = await prepareResponse.json();
-          throw new Error(errorData.error || "Failed to prepare upload");
+          throw new Error(errorData.error || `Failed to prepare upload: ${prepareResponse.status}`);
         }
 
-        const { uploadUrl, storagePath, cdnUrl } = await prepareResponse.json();
+        const { plate: plateRecord, tusUpload, videoId } = await prepareResponse.json();
 
-        // Upload to Bunny Storage using signed URL (no raw key needed)
-        const response = await uploadWithProgress(
-          uploadUrl,
-          plate.file,
-          {
-            "Content-Type": "application/octet-stream",
-          },
-          (progress) => {
-            const overallProgress = ((i + progress / 100) / plates.length) * 100;
-            setUploadProgress(Math.round(overallProgress));
-          }
-        );
-
-        if (!response.ok && response.status !== 201) {
-          throw new Error(`Upload failed: ${response.status}`);
+        if (!tusUpload) {
+          throw new Error("No upload credentials received - video files only");
         }
 
-        // Save to database
-        const saveResponse = await fetch("/api/plates", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            shotId,
-            filename: plate.file.name,
-            description: plate.description,
-            storagePath,
-            cdnUrl,
-            fileSize: plate.file.size,
-            sortOrder: i,
-          }),
+        setCurrentUpload(`Uploading ${plate.file.name} (${i + 1}/${plates.length})`);
+
+        // Upload using TUS (direct to Bunny Stream)
+        await new Promise<void>((resolve, reject) => {
+          const upload = new tus.Upload(plate.file, {
+            endpoint: tusUpload.url,
+            headers: {
+              'AuthorizationSignature': tusUpload.authSignature,
+              'AuthorizationExpire': String(tusUpload.expiresAt),
+              'VideoId': tusUpload.videoId,
+              'LibraryId': tusUpload.libraryId,
+            },
+            metadata: {
+              filename: plate.file.name,
+              filetype: plate.file.type || 'video/quicktime',
+            },
+            onError: (error) => {
+              console.error("TUS upload error:", error);
+              reject(new Error(`Upload failed: ${error.message}`));
+            },
+            onProgress: (bytesUploaded, bytesTotal) => {
+              const fileProgress = bytesUploaded / bytesTotal;
+              const overallProgress = ((i + fileProgress) / plates.length) * 100;
+              setUploadProgress(Math.round(overallProgress));
+            },
+            onSuccess: () => {
+              console.log("TUS upload complete for:", plate.file.name);
+              resolve();
+            },
+          });
+          upload.start();
         });
 
-        if (!saveResponse.ok) {
-          const errorData = await saveResponse.json();
-          throw new Error(errorData.error || "Failed to save plate");
-        }
-
-        const savedPlate = await saveResponse.json();
-        uploadedPlates.push(savedPlate);
+        uploadedPlates.push(plateRecord);
       }
 
       setUploadStatus("success");
@@ -260,7 +221,7 @@ export function PlateUpload({
           <input
             ref={fileInputRef}
             type="file"
-            accept=".mov,.mxf,.mp4,.m4v,.exr,.dpx,.tiff,.tif"
+            accept=".mov,.mxf,.mp4,.m4v"
             multiple
             className="hidden"
             onChange={handleFileSelect}
@@ -325,7 +286,7 @@ export function PlateUpload({
                 {plates.length === 0 ? "Add plate files" : "Add more plates"}
               </p>
               <p className="text-xs text-muted-foreground mt-1">
-                ProRes, MXF, EXR, DPX, or TIFF
+                Video files: MOV, MP4, MXF, M4V
               </p>
             </CardContent>
           </Card>
