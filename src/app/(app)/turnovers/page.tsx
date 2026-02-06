@@ -10,8 +10,19 @@ import { supabase } from "@/lib/supabase";
 import { 
   FileText, Database, FileCode, Download, Loader2, Calendar, Film, 
   FolderOpen, ExternalLink, CheckCircle2, Clock, Building2, AlertCircle,
-  ArrowRight, Eye
+  ArrowRight, Eye, Trash2
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import Link from "next/link";
 import { downloadEDL } from "@/lib/edl-export";
 import { downloadALE } from "@/lib/ale-export";
@@ -69,6 +80,30 @@ export default function TurnoversPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [turnoverShots, setTurnoverShots] = useState<Record<string, TurnoverShot[]>>({});
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (turnoverId: string) => {
+    setDeletingId(turnoverId);
+    try {
+      const res = await fetch(`/api/turnovers/${turnoverId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete");
+      }
+      
+      // Remove from local state
+      setTurnovers(prev => prev.filter(t => t.id !== turnoverId));
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert(error instanceof Error ? error.message : "Failed to delete turnover");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   useEffect(() => {
     async function loadTurnovers() {
@@ -349,6 +384,40 @@ export default function TurnoversPage() {
                         </Badge>
                       </div>
                       {getActionButton(turnover)}
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button 
+                            size="sm" 
+                            variant="ghost" 
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            disabled={deletingId === turnover.id}
+                          >
+                            {deletingId === turnover.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Turnover?</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              This will permanently delete <strong>TO{turnover.turnover_number}</strong> ({turnover.title || "Untitled"}) 
+                              and all associated shots, refs, and assignments. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction
+                              onClick={() => handleDelete(turnover.id)}
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
                     </div>
                   </div>
                 </CardHeader>
