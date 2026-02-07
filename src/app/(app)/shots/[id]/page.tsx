@@ -92,6 +92,22 @@ interface SourceMediaData {
   f_stop: string | null;
   shutter: string | null;
   colorspace: string | null;
+  // Additional metadata for count sheet
+  white_balance: string | null;
+  look: string | null;
+  resolution: string | null;
+  shoot_date: string | null;
+  // CDL values
+  cdl_slope_r: number | null;
+  cdl_slope_g: number | null;
+  cdl_slope_b: number | null;
+  cdl_offset_r: number | null;
+  cdl_offset_g: number | null;
+  cdl_offset_b: number | null;
+  cdl_power_r: number | null;
+  cdl_power_g: number | null;
+  cdl_power_b: number | null;
+  cdl_saturation: number | null;
 }
 
 interface ShotPlate {
@@ -270,7 +286,7 @@ export default function ShotDetailPage() {
         if (shotData.source_media_id) {
           const { data: smData } = await supabase
             .from("source_media")
-            .select("id, clip_name, camera, camera_id, lens, focal_length, scene, take, tc_in, tc_out, iso, f_stop, shutter, colorspace")
+            .select("id, clip_name, camera, camera_id, lens, focal_length, scene, take, tc_in, tc_out, iso, f_stop, shutter, colorspace, white_balance, look, resolution, shoot_date, cdl_slope_r, cdl_slope_g, cdl_slope_b, cdl_offset_r, cdl_offset_g, cdl_offset_b, cdl_power_r, cdl_power_g, cdl_power_b, cdl_saturation")
             .eq("id", shotData.source_media_id)
             .single();
           
@@ -984,8 +1000,23 @@ export default function ShotDetailPage() {
             turnoverDate={turnoverShot?.turnover?.turnover_date || undefined}
             vendor={turnoverShot?.vendor?.name || undefined}
             reelNumber={turnoverShot?.reel_name || undefined}
-            camera={sourceMedia?.camera || sourceMedia?.camera_id || undefined}
-            lens={sourceMedia?.lens || (sourceMedia?.focal_length ? `${sourceMedia.focal_length}mm` : undefined)}
+            camera={sourceMedia?.camera || undefined}
+            cameraId={sourceMedia?.camera_id || undefined}
+            lens={sourceMedia?.lens || undefined}
+            focalLength={sourceMedia?.focal_length || undefined}
+            iso={sourceMedia?.iso || undefined}
+            shutter={sourceMedia?.shutter || undefined}
+            colorspace={sourceMedia?.colorspace || undefined}
+            whiteBalance={sourceMedia?.white_balance || undefined}
+            look={sourceMedia?.look || undefined}
+            resolution={sourceMedia?.resolution || undefined}
+            shootDate={sourceMedia?.shoot_date || undefined}
+            cdl={sourceMedia?.cdl_slope_r != null ? {
+              slope: [sourceMedia.cdl_slope_r, sourceMedia.cdl_slope_g, sourceMedia.cdl_slope_b],
+              offset: [sourceMedia.cdl_offset_r, sourceMedia.cdl_offset_g, sourceMedia.cdl_offset_b],
+              power: [sourceMedia.cdl_power_r, sourceMedia.cdl_power_g, sourceMedia.cdl_power_b],
+              saturation: sourceMedia.cdl_saturation,
+            } : undefined}
           />
 
           {/* Assignment Card */}
