@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -42,7 +42,7 @@ export function SendForBidsDialog({
   const [open, setOpen] = useState(false);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [selectedVendors, setSelectedVendors] = useState<Set<string>>(new Set());
-  const [deadline, setDeadline] = useState("");
+  const [deadline, setDeadline] = useState<Date | undefined>(undefined);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -105,7 +105,7 @@ export function SendForBidsDialog({
         body: JSON.stringify({
           turnoverId,
           vendorIds: Array.from(selectedVendors),
-          deadline: deadline || null,
+          deadline: deadline?.toISOString() || null,
           notes: notes || null,
         }),
       });
@@ -113,7 +113,7 @@ export function SendForBidsDialog({
       if (res.ok) {
         setOpen(false);
         setSelectedVendors(new Set());
-        setDeadline("");
+        setDeadline(undefined);
         setNotes("");
         onSent?.();
       }
@@ -147,15 +147,14 @@ export function SendForBidsDialog({
 
           {/* Deadline */}
           <div>
-            <label className="text-sm font-medium flex items-center gap-2">
+            <label className="text-sm font-medium flex items-center gap-2 mb-1.5">
               <Calendar className="h-4 w-4" />
               Bid Deadline (optional)
             </label>
-            <Input
-              type="datetime-local"
-              className="mt-1.5"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
+            <DatePicker
+              date={deadline}
+              onSelect={setDeadline}
+              placeholder="Select deadline"
             />
           </div>
 
