@@ -160,10 +160,11 @@ export default function VendorTurnoverDetailPage() {
           .select("id, status, deadline, notes")
           .eq("turnover_id", turnoverId)
           .eq("vendor_id", userData.vendor_id)
-          .single();
+          .maybeSingle();
 
-        if (bidRequestData) {
-          setBidRequest(bidRequestData);
+        const typedBidRequest = bidRequestData as BidRequest | null;
+        if (typedBidRequest) {
+          setBidRequest(typedBidRequest);
         }
 
         // Load turnover shots with shot details
@@ -229,11 +230,11 @@ export default function VendorTurnoverDetailPage() {
         }
 
         // Mark bid request as viewed if pending
-        if (bidRequestData?.status === "pending") {
-          await supabase
+        if (typedBidRequest?.status === "pending") {
+          await (supabase as any)
             .from("bid_requests")
             .update({ status: "viewed", updated_at: new Date().toISOString() })
-            .eq("id", bidRequestData.id);
+            .eq("id", typedBidRequest.id);
         }
       } catch (err: any) {
         console.error("Failed to load turnover:", err);
