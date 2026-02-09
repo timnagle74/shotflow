@@ -20,6 +20,8 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
+import { BidRequestsPanel } from "@/components/bid-requests-panel";
+import { SendForBidsDialog } from "@/components/send-for-bids-dialog";
 
 interface TurnoverShot {
   id: string;
@@ -277,6 +279,27 @@ export default function TurnoverDetailPage() {
             <Video className="h-5 w-5 mx-auto mb-1 text-muted-foreground" />
             <p className="text-3xl font-bold">{refs.length}</p>
             <p className="text-xs text-muted-foreground">References</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Bidding Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <BidRequestsPanel turnoverId={turnoverId} />
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Send for Bids</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Request quotes from vendors for this turnover.
+            </p>
+            <SendForBidsDialog
+              turnoverId={turnoverId}
+              projectId={turnover.project?.id || ""}
+              turnoverTitle={turnover.title || `TO${turnover.turnover_number}`}
+              shotCount={shots.length}
+            />
           </CardContent>
         </Card>
       </div>
