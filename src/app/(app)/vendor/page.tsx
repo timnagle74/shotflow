@@ -39,6 +39,7 @@ import {
   Users,
   Mail,
   Paintbrush,
+  FileText,
 } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -46,6 +47,7 @@ import { useAuth } from "@/components/auth-provider";
 import { cn } from "@/lib/utils";
 import { VendorVersionUpload } from "@/components/vendor-version-upload";
 import { VersionTimeline } from "@/components/version-timeline";
+import { VendorBidSubmission } from "@/components/vendor-bid-submission";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -176,6 +178,10 @@ export default function VendorPortalPage() {
   const [invitingArtist, setInvitingArtist] = useState(false);
   const [inviteArtistError, setInviteArtistError] = useState<string | null>(null);
   const [inviteArtistSuccess, setInviteArtistSuccess] = useState<string | null>(null);
+
+  // Bid requests state
+  const [bidRequests, setBidRequests] = useState<any[]>([]);
+  const [loadingBidRequests, setLoadingBidRequests] = useState(false);
 
   // ─── Step 1: Resolve the user's vendor(s) ──────────────────────────────
 
@@ -358,8 +364,31 @@ export default function VendorPortalPage() {
   useEffect(() => {
     if (selectedVendorId && !selectedProject) {
       loadProjects();
+      loadBidRequests();
     }
   }, [selectedVendorId, selectedProject, loadProjects]);
+
+  // ─── Load Bid Requests ─────────────────────────────────────────────────
+
+  const loadBidRequests = useCallback(async () => {
+    if (!selectedVendorId) return;
+
+    setLoadingBidRequests(true);
+    try {
+      const res = await fetch(`/api/bid-requests?vendorId=${selectedVendorId}`);
+      if (res.ok) {
+        const data = await res.json();
+        // Filter to show only pending/submitted (not accepted/rejected/expired)
+        const activeBids = data.filter((br: any) => 
+          ["pending", "viewed", "submitted"].includes(br.status)
+        );
+        setBidRequests(activeBids);
+      }
+    } catch (err) {
+      console.error("Failed to load bid requests:", err);
+    }
+    setLoadingBidRequests(false);
+  }, [selectedVendorId]);
 
   // ─── Step 3: Load shots for a specific project ─────────────────────────
 
@@ -900,7 +929,31 @@ export default function VendorPortalPage() {
       {/* ─── Level 1: Projects View ────────────────────────────────────── */}
       {!selectedProject && (
         <>
-          {projects.length === 0 ? (
+          {/* Bid Requests Section */}
+          {bidRequests.length > 0 && (
+            <Card className="mb-6">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Bid Requests ({bidRequests.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {bidRequests.map((br) => (
+                    <VendorBidSubmission
+                      key={br.id}
+                      bidRequest={br}
+                      userId={appUser?.id || ""}
+                      onSubmit={loadBidRequests}
+                    />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {projects.length === 0 && bidRequests.length === 0 && (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <FolderOpen className="h-12 w-12 text-muted-foreground/30 mb-4" />
@@ -909,7 +962,9 @@ export default function VendorPortalPage() {
                 </p>
               </CardContent>
             </Card>
-          ) : (
+          )}
+
+          {projects.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {projects.map((project) => (
                 <Card
