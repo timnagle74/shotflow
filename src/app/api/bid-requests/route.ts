@@ -11,6 +11,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const turnoverId = searchParams.get("turnoverId");
   const vendorId = searchParams.get("vendorId");
+  const projectId = searchParams.get("projectId");
 
   let query = supabase
     .from("bid_requests")
@@ -23,7 +24,12 @@ export async function GET(request: NextRequest) {
         title,
         project:projects(id, name, code)
       ),
-      bids(*)
+      project:projects(id, name, code),
+      bids(*),
+      bid_request_shots(
+        shot_id,
+        shot:shots(id, code, description, status)
+      )
     `)
     .order("created_at", { ascending: false });
 
@@ -32,6 +38,9 @@ export async function GET(request: NextRequest) {
   }
   if (vendorId) {
     query = query.eq("vendor_id", vendorId);
+  }
+  if (projectId) {
+    query = query.eq("project_id", projectId);
   }
 
   const { data, error } = await query;
@@ -43,21 +52,31 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(data);
 }
 
-// POST: Create bid request(s) - send turnover to vendors for bidding
+// POST: Create bid request(s) - send shots/turnover to vendors for bidding
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { turnoverId, vendorIds, deadline, notes } = body;
+  const { turnoverId, vendorIds, deadline, notes, shotIds, projectId, title } = body;
 
-  if (!turnoverId || !vendorIds || !Array.isArray(vendorIds) || vendorIds.length === 0) {
+  if (!vendorIds || !Array.isArray(vendorIds) || vendorIds.length === 0) {
     return NextResponse.json(
-      { error: "turnoverId and vendorIds[] required" },
+      { error: "vendorIds[] required" },
+      { status: 400 }
+    );
+  }
+
+  // Must have either turnoverId or shotIds
+  if (!turnoverId && (!shotIds || shotIds.length === 0)) {
+    return NextResponse.json(
+      { error: "Either turnoverId or shotIds[] required" },
       { status: 400 }
     );
   }
 
   // Create bid requests for each vendor
   const bidRequests = vendorIds.map((vendorId: string) => ({
-    turnover_id: turnoverId,
+    turnover_id: turnoverId || null,
+    project_id: projectId || null,
+    title: title || null,
     vendor_id: vendorId,
     status: "pending",
     deadline: deadline || null,
@@ -66,7 +85,7 @@ export async function POST(request: NextRequest) {
 
   const { data, error } = await supabase
     .from("bid_requests")
-    .upsert(bidRequests, { onConflict: "turnover_id,vendor_id" })
+    .insert(bidRequests)
     .select(`
       *,
       vendor:vendors(id, name, code)
@@ -74,6 +93,18 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // If shotIds provided, link them to the bid requests
+  if (shotIds && shotIds.length > 0 && data) {
+    const shotLinks = data.flatMap((br: any) =>
+      shotIds.map((shotId: string) => ({
+        bid_request_id: br.id,
+        shot_id: shotId,
+      }))
+    );
+
+    await supabase.from("bid_request_shots").insert(shotLinks);
   }
 
   // TODO: Send email notifications to vendors

@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Trash2, Users, Film, Video, ChevronRight, ChevronDown, Loader2 } from "lucide-react";
+import { Plus, Trash2, Users, Film, Video, ChevronRight, ChevronDown, Loader2, Send } from "lucide-react";
+import { SendShotsForBids } from "@/components/send-shots-for-bids";
 
 interface ShotGroup {
   id: string;
@@ -336,7 +337,7 @@ export function ShotGroupsPanel({
                         ))}
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Button
                           size="sm"
                           variant="ghost"
@@ -349,6 +350,24 @@ export function ShotGroupsPanel({
                           <Plus className="h-3 w-3 mr-1" />
                           Add Shots
                         </Button>
+                        {group.shot_group_members.length > 0 && (
+                          <SendShotsForBids
+                            shots={group.shot_group_members.map(m => ({ id: m.shot_id, code: m.shots.code }))}
+                            projectId={projectId}
+                            title={group.name}
+                            trigger={
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Send className="h-3 w-3 mr-1" />
+                                Send for Bids
+                              </Button>
+                            }
+                          />
+                        )}
                         <Button
                           size="sm"
                           variant="ghost"

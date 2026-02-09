@@ -9,9 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ShotStatusBadge } from "@/components/status-badge";
 import { shotStatusLabels, shotStatusColors, complexityColors, cn } from "@/lib/utils";
-import { LayoutGrid, List, Search, Clock, Loader2, Users } from "lucide-react";
+import { LayoutGrid, List, Search, Clock, Loader2, Users, Send, X } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ShotGroupsPanel } from "@/components/shot-groups-panel";
+import { Checkbox } from "@/components/ui/checkbox";
+import { SendShotsForBids } from "@/components/send-shots-for-bids";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useSearchParams } from "next/navigation";
@@ -203,6 +205,7 @@ function ShotsPageContent() {
   const [shotGroupMap, setShotGroupMap] = useState<Record<string, { id: string; name: string; color: string }[]>>({});
   const [shotThumbnails, setShotThumbnails] = useState<Record<string, string>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [selectedShotIds, setSelectedShotIds] = useState<Set<string>>(new Set());
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -533,6 +536,39 @@ function ShotsPageContent() {
         )}
       </div>
 
+      {/* Selection Toolbar */}
+      {selectedShotIds.size > 0 && (
+        <div className="flex items-center gap-4 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-sm">
+              {selectedShotIds.size} shot{selectedShotIds.size !== 1 ? 's' : ''} selected
+            </Badge>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setSelectedShotIds(new Set())}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <SendShotsForBids
+              shots={filteredShots.filter(s => selectedShotIds.has(s.id)).map(s => ({ id: s.id, code: s.code }))}
+              projectId={selectedProject}
+              title={`${selectedShotIds.size} selected shots`}
+              onSent={() => setSelectedShotIds(new Set())}
+              trigger={
+                <Button size="sm">
+                  <Send className="h-4 w-4 mr-2" />
+                  Send for Bids
+                </Button>
+              }
+            />
+          </div>
+        </div>
+      )}
+
       <Tabs defaultValue="kanban">
         <TabsList>
           <TabsTrigger value="kanban"><LayoutGrid className="h-4 w-4 mr-2" />Kanban</TabsTrigger>
@@ -579,6 +615,18 @@ function ShotsPageContent() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-border">
+                    <th className="p-3 w-10">
+                      <Checkbox
+                        checked={filteredShots.length > 0 && filteredShots.every(s => selectedShotIds.has(s.id))}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedShotIds(new Set(filteredShots.map(s => s.id)));
+                          } else {
+                            setSelectedShotIds(new Set());
+                          }
+                        }}
+                      />
+                    </th>
                     <th className="text-left text-xs font-medium text-muted-foreground p-3">Shot</th>
                     <th className="text-left text-xs font-medium text-muted-foreground p-3">Description</th>
                     <th className="text-left text-xs font-medium text-muted-foreground p-3">Status</th>
@@ -591,7 +639,20 @@ function ShotsPageContent() {
                 </thead>
                 <tbody>
                   {filteredShots.map(shot => (
-                    <tr key={shot.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                    <tr key={shot.id} className={cn("border-b border-border/50 hover:bg-muted/30 transition-colors", selectedShotIds.has(shot.id) && "bg-primary/5")}>
+                      <td className="p-3 w-10">
+                        <Checkbox
+                          checked={selectedShotIds.has(shot.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedShotIds(prev => {
+                              const next = new Set(prev);
+                              if (checked) next.add(shot.id);
+                              else next.delete(shot.id);
+                              return next;
+                            });
+                          }}
+                        />
+                      </td>
                       <td className="p-3">
                         <Link href={`/shots/${shot.id}`} className="font-mono text-sm font-bold text-primary hover:underline">{shot.code}</Link>
                       </td>
