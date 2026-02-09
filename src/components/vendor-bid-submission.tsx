@@ -190,17 +190,19 @@ export function VendorBidSubmission({
 
           {/* Actions */}
           <div className="flex gap-2 pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              asChild
-            >
-              <a href={`/turnover/${bidRequest.turnover_id}`} target="_blank">
-                <Eye className="h-4 w-4 mr-2" />
-                View Shots
-              </a>
-            </Button>
+            {bidRequest.turnover_id && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1"
+                asChild
+              >
+                <a href={`/vendor/turnover/${bidRequest.turnover_id}`} target="_blank">
+                  <Eye className="h-4 w-4 mr-2" />
+                  View Shots
+                </a>
+              </Button>
+            )}
 
             {(canSubmit || canRevise) && (
               <Button
