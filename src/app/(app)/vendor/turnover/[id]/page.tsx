@@ -22,10 +22,13 @@ import {
   Calendar,
   Send,
   CheckCircle2,
+  FileDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 interface TurnoverShot {
   id: string;
@@ -335,6 +338,112 @@ export default function VendorTurnoverDetailPage() {
   const getPlateForShot = (shotId: string) => 
     plates.find((p) => p.shot_id === shotId);
 
+  // Generate PDF for shot review
+  const generatePDF = () => {
+    if (!turnover) return;
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    
+    // Header
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
+    doc.text(`${turnover.project?.code} - TO${turnover.turnover_number}`, 14, 20);
+    
+    if (turnover.title) {
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "normal");
+      doc.text(turnover.title, 14, 28);
+    }
+    
+    // Summary stats
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    const summaryY = turnover.title ? 36 : 28;
+    doc.text(`Total Shots: ${totalShots}  |  Total Frames: ${totalFrames.toLocaleString()} (incl. ${handles.head}+${handles.tail} handles)  |  Date: ${new Date().toLocaleDateString()}`, 14, summaryY);
+    
+    // Producer notes if present
+    let startY = summaryY + 10;
+    if (bidRequest?.notes) {
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Producer Notes:", 14, startY);
+      doc.setFont("helvetica", "normal");
+      const splitNotes = doc.splitTextToSize(bidRequest.notes, pageWidth - 28);
+      doc.text(splitNotes, 14, startY + 5);
+      startY += 5 + (splitNotes.length * 4) + 5;
+    }
+    
+    // General notes if present
+    if (turnover.general_notes) {
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "bold");
+      doc.text("Turnover Notes:", 14, startY);
+      doc.setFont("helvetica", "normal");
+      const splitGeneral = doc.splitTextToSize(turnover.general_notes, pageWidth - 28);
+      doc.text(splitGeneral, 14, startY + 5);
+      startY += 5 + (splitGeneral.length * 4) + 5;
+    }
+
+    // Shot table
+    const tableData = shots.map((shot) => {
+      const plate = getPlateForShot(shot.shot_id);
+      const frameCount = shot.duration_frames ? shot.duration_frames + handlesPerShot : "—";
+      return [
+        shot.shot.code,
+        frameCount.toString(),
+        plate?.filename || "—",
+        shot.vfx_notes || "",
+        "" // Empty column for handwritten notes
+      ];
+    });
+
+    autoTable(doc, {
+      startY: startY + 2,
+      head: [["Shot", "Frames", "Plate", "Comp Notes", "Notes"]],
+      body: tableData,
+      headStyles: {
+        fillColor: [50, 50, 50],
+        textColor: [255, 255, 255],
+        fontStyle: "bold",
+        fontSize: 9,
+      },
+      bodyStyles: {
+        fontSize: 8,
+        cellPadding: 3,
+      },
+      columnStyles: {
+        0: { cellWidth: 25, fontStyle: "bold" }, // Shot code
+        1: { cellWidth: 18, halign: "center" }, // Frames
+        2: { cellWidth: 35 }, // Plate filename
+        3: { cellWidth: 60 }, // Comp notes
+        4: { cellWidth: 45 }, // Notes (blank for writing)
+      },
+      alternateRowStyles: {
+        fillColor: [245, 245, 245],
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    // Footer
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text(
+        `Page ${i} of ${pageCount}`,
+        pageWidth / 2,
+        doc.internal.pageSize.getHeight() - 10,
+        { align: "center" }
+      );
+    }
+
+    // Download
+    const filename = `${turnover.project?.code}_TO${turnover.turnover_number}_shots.pdf`;
+    doc.save(filename);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -370,6 +479,10 @@ export default function VendorTurnoverDetailPage() {
               </p>
             </div>
           )}
+          <Button variant="outline" size="sm" onClick={generatePDF}>
+            <FileDown className="h-4 w-4 mr-2" />
+            Download PDF
+          </Button>
         </div>
       </div>
 
