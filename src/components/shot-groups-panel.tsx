@@ -247,16 +247,17 @@ export function ShotGroupsPanel({
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-0">
         {loading ? (
           <div className="flex items-center justify-center py-4">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         ) : groups.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">
+          <p className="text-sm text-muted-foreground text-center py-4 px-4">
             No groups yet. Create one to organize related shots.
           </p>
         ) : (
+          <ScrollArea className="h-[300px] px-4 pb-4">
           <div className="space-y-2">
             {groups.map((group) => {
               const isExpanded = expandedGroups.has(group.id);
@@ -363,12 +364,13 @@ export function ShotGroupsPanel({
               );
             })}
           </div>
+          </ScrollArea>
         )}
       </CardContent>
 
       {/* Create Group Dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create Shot Group</DialogTitle>
           </DialogHeader>
@@ -427,7 +429,7 @@ export function ShotGroupsPanel({
 
       {/* Edit Group Dialog */}
       <Dialog open={!!editingGroup} onOpenChange={() => setEditingGroup(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Group</DialogTitle>
           </DialogHeader>
@@ -481,7 +483,7 @@ export function ShotGroupsPanel({
 
       {/* Add Shots Dialog */}
       <Dialog open={!!showAddShots} onOpenChange={() => setShowAddShots(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add Shots to Group</DialogTitle>
           </DialogHeader>
