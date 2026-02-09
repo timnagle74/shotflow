@@ -442,8 +442,8 @@ function ShotsPageContent() {
                 Groups
               </Button>
             </SheetTrigger>
-            <SheetContent className="w-[400px] sm:w-[500px]">
-              <div className="mt-6">
+            <SheetContent className="w-[400px] sm:w-[500px] flex flex-col">
+              <div className="mt-6 flex-1 overflow-hidden">
                 <ShotGroupsPanel
                   projectId={selectedProject}
                   sequenceId={filterSequence !== "all" ? filterSequence : undefined}

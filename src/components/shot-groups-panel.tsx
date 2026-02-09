@@ -234,8 +234,8 @@ export function ShotGroupsPanel({
   });
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className="flex flex-col h-full">
+      <CardHeader className="pb-3 flex-shrink-0">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Users className="h-4 w-4" />
@@ -247,7 +247,7 @@ export function ShotGroupsPanel({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="p-0">
+      <CardContent className="p-0 flex-1 overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-4">
             <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -257,7 +257,7 @@ export function ShotGroupsPanel({
             No groups yet. Create one to organize related shots.
           </p>
         ) : (
-          <ScrollArea className="h-[300px] px-4 pb-4">
+          <ScrollArea className="h-full px-4 pb-4">
           <div className="space-y-2">
             {groups.map((group) => {
               const isExpanded = expandedGroups.has(group.id);
