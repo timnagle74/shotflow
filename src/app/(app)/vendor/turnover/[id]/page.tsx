@@ -75,6 +75,11 @@ interface BidRequest {
   notes: string | null;
 }
 
+interface DeliverySpec {
+  handles_head: number;
+  handles_tail: number;
+}
+
 export default function VendorTurnoverDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -88,6 +93,7 @@ export default function VendorTurnoverDetailPage() {
   const [plates, setPlates] = useState<ShotPlate[]>([]);
   const [vendorId, setVendorId] = useState<string | null>(null);
   const [bidRequest, setBidRequest] = useState<BidRequest | null>(null);
+  const [handles, setHandles] = useState({ head: 8, tail: 8 }); // Default 8+8
 
   useEffect(() => {
     async function loadData() {
@@ -132,6 +138,23 @@ export default function VendorTurnoverDetailPage() {
 
         if (turnoverError) throw turnoverError;
         setTurnover(turnoverData as any);
+
+        // Load delivery specs for handles
+        const projectId = (turnoverData as any)?.project?.id;
+        if (projectId) {
+          const { data: specsData } = await supabase
+            .from("delivery_specs")
+            .select("handles_head, handles_tail")
+            .eq("project_id", projectId)
+            .maybeSingle();
+
+          if (specsData) {
+            setHandles({
+              head: (specsData as DeliverySpec).handles_head || 8,
+              tail: (specsData as DeliverySpec).handles_tail || 8,
+            });
+          }
+        }
 
         // Check for bid request for this turnover + vendor
         const { data: bidRequestData } = await supabase
@@ -213,7 +236,10 @@ export default function VendorTurnoverDetailPage() {
   }
 
   // Calculate stats
-  const totalFrames = shots.reduce((sum, s) => sum + (s.duration_frames || 0), 0);
+  const handlesPerShot = handles.head + handles.tail;
+  const totalBaseFrames = shots.reduce((sum, s) => sum + (s.duration_frames || 0), 0);
+  const totalHandleFrames = shots.length * handlesPerShot;
+  const totalFrames = totalBaseFrames + totalHandleFrames;
   const totalShots = shots.length;
 
   // Get plate for a shot (first plate if multiple)
@@ -270,6 +296,9 @@ export default function VendorTurnoverDetailPage() {
           <Clock className="h-5 w-5 text-muted-foreground" />
           <span className="text-2xl font-bold">{totalFrames.toLocaleString()}</span>
           <span className="text-muted-foreground">frames</span>
+          <span className="text-xs text-muted-foreground/70">
+            (incl. {handles.head}+{handles.tail} handles)
+          </span>
         </div>
         <div className="w-px h-8 bg-border" />
         <div className="flex items-center gap-2">
@@ -355,7 +384,9 @@ export default function VendorTurnoverDetailPage() {
                     <div className="absolute top-2 right-2">
                       <Badge variant="secondary" className="bg-black/70 text-white">
                         <Clock className="h-3 w-3 mr-1" />
-                        {shot.duration_frames || "—"} fr
+                        {shot.duration_frames 
+                          ? `${shot.duration_frames + handlesPerShot} fr` 
+                          : "— fr"}
                       </Badge>
                     </div>
 
