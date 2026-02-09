@@ -56,6 +56,7 @@ export function SendForBidsDialog({
   }, [open]);
 
   const fetchVendors = async () => {
+    if (!supabase) return;
     setLoading(true);
     // Get vendors for this project + global vendors
     const { data } = await supabase
@@ -70,13 +71,14 @@ export function SendForBidsDialog({
   };
 
   const fetchExistingRequests = async () => {
+    if (!supabase) return;
     const { data } = await supabase
       .from("bid_requests")
       .select("vendor_id")
       .eq("turnover_id", turnoverId);
 
     if (data) {
-      setExistingRequests(new Set(data.map((r) => r.vendor_id)));
+      setExistingRequests(new Set((data as { vendor_id: string }[]).map((r) => r.vendor_id)));
     }
   };
 
