@@ -28,6 +28,7 @@ import { downloadEDL } from "@/lib/edl-export";
 import { downloadALE } from "@/lib/ale-export";
 import { downloadFCPXML } from "@/lib/xml-export";
 import { cn } from "@/lib/utils";
+import { SendForBidsDialog } from "@/components/send-for-bids-dialog";
 import { TurnoverStepper } from "@/components/turnover-stepper";
 
 interface Turnover {
@@ -227,12 +228,20 @@ export default function TurnoversPage() {
         );
       case 'reviewed':
         return (
-          <Link href={`/turnover/${turnover.id}/assign`}>
-            <Button size="sm" variant="default">
-              <Building2 className="h-3 w-3 mr-1" />
-              Assign Vendors
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <SendForBidsDialog
+              turnoverId={turnover.id}
+              turnoverTitle={turnover.title || `Turnover #${turnover.turnover_number}`}
+              projectId={turnover.project_id}
+              shotCount={turnover.shot_count || 0}
+            />
+            <Link href={`/turnover/${turnover.id}/assign`}>
+              <Button size="sm" variant="default">
+                <Building2 className="h-3 w-3 mr-1" />
+                Assign
+              </Button>
+            </Link>
+          </div>
         );
       case 'assigned':
       case 'in_progress':
