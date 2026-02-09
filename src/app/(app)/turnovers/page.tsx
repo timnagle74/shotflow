@@ -456,6 +456,11 @@ export default function TurnoversPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      <Link href={`/turnover/${turnover.id}`}>
+                        <Button variant="outline" size="sm">
+                          View Details
+                        </Button>
+                      </Link>
                       <Button
                         variant="ghost"
                         size="sm"
