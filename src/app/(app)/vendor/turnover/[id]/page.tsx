@@ -5,6 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Loader2,
   Film,
@@ -16,6 +18,10 @@ import {
   Play,
   Download,
   Layers,
+  DollarSign,
+  Calendar,
+  Send,
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
@@ -80,6 +86,16 @@ interface DeliverySpec {
   handles_tail: number;
 }
 
+interface Bid {
+  id: string;
+  price_cents: number | null;
+  currency: string;
+  timeline_days: number | null;
+  timeline_notes: string | null;
+  notes: string | null;
+  submitted_at: string;
+}
+
 export default function VendorTurnoverDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -92,8 +108,18 @@ export default function VendorTurnoverDetailPage() {
   const [shots, setShots] = useState<TurnoverShot[]>([]);
   const [plates, setPlates] = useState<ShotPlate[]>([]);
   const [vendorId, setVendorId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [bidRequest, setBidRequest] = useState<BidRequest | null>(null);
+  const [existingBid, setExistingBid] = useState<Bid | null>(null);
   const [handles, setHandles] = useState({ head: 8, tail: 8 }); // Default 8+8
+  
+  // Bid form state
+  const [price, setPrice] = useState("");
+  const [timelineDays, setTimelineDays] = useState("");
+  const [timelineNotes, setTimelineNotes] = useState("");
+  const [bidNotes, setBidNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -124,6 +150,7 @@ export default function VendorTurnoverDetailPage() {
         }
 
         setVendorId(userData.vendor_id);
+        setUserId(userData.id);
 
         // Load turnover with project and sequence
         const { data: turnoverData, error: turnoverError } = await supabase
@@ -167,6 +194,24 @@ export default function VendorTurnoverDetailPage() {
         const typedBidRequest = bidRequestData as BidRequest | null;
         if (typedBidRequest) {
           setBidRequest(typedBidRequest);
+          
+          // Load existing bid if any
+          const { data: bidsData } = await supabase
+            .from("bids")
+            .select("id, price_cents, currency, timeline_days, timeline_notes, notes, submitted_at")
+            .eq("bid_request_id", typedBidRequest.id)
+            .order("submitted_at", { ascending: false })
+            .limit(1);
+          
+          if (bidsData && bidsData.length > 0) {
+            const bid = bidsData[0] as Bid;
+            setExistingBid(bid);
+            // Pre-fill form with existing values
+            if (bid.price_cents) setPrice((bid.price_cents / 100).toString());
+            if (bid.timeline_days) setTimelineDays(bid.timeline_days.toString());
+            if (bid.timeline_notes) setTimelineNotes(bid.timeline_notes);
+            if (bid.notes) setBidNotes(bid.notes);
+          }
         }
 
         // Load turnover shots with shot details
@@ -241,6 +286,50 @@ export default function VendorTurnoverDetailPage() {
   const totalHandleFrames = shots.length * handlesPerShot;
   const totalFrames = totalBaseFrames + totalHandleFrames;
   const totalShots = shots.length;
+
+  // Bid submission
+  const canSubmitBid = bidRequest && ["pending", "viewed"].includes(bidRequest.status);
+  const canReviseBid = bidRequest?.status === "submitted";
+
+  const handleSubmitBid = async () => {
+    if (!bidRequest || !userId) return;
+    
+    setSubmitting(true);
+    setSubmitSuccess(false);
+    
+    try {
+      const res = await fetch("/api/bids", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bidRequestId: bidRequest.id,
+          priceCents: price ? Math.round(parseFloat(price) * 100) : null,
+          currency: "USD",
+          timelineDays: timelineDays ? parseInt(timelineDays) : null,
+          timelineNotes: timelineNotes || null,
+          notes: bidNotes || null,
+          submittedBy: userId,
+        }),
+      });
+
+      if (res.ok) {
+        setSubmitSuccess(true);
+        // Update bid request status locally
+        setBidRequest({ ...bidRequest, status: "submitted" });
+      }
+    } catch (err) {
+      console.error("Failed to submit bid:", err);
+    }
+    setSubmitting(false);
+  };
+
+  const formatPrice = (cents: number | null) => {
+    if (cents === null) return "—";
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(cents / 100);
+  };
 
   // Get plate for a shot (first plate if multiple)
   const getPlateForShot = (shotId: string) => 
@@ -440,6 +529,152 @@ export default function VendorTurnoverDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Bid Submission Section */}
+      {bidRequest && (
+        <Card className="border-green-500/30">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <DollarSign className="h-5 w-5" />
+              {existingBid ? "Your Bid" : "Submit Your Bid"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Success message */}
+            {submitSuccess && (
+              <div className="flex items-center gap-2 p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+                <CheckCircle2 className="h-5 w-5 text-green-500" />
+                <span className="text-green-500 font-medium">Bid submitted successfully!</span>
+              </div>
+            )}
+
+            {/* Existing bid display */}
+            {existingBid && bidRequest.status === "submitted" && !submitSuccess && (
+              <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+                <div>
+                  <p className="text-xs text-muted-foreground">Your Price</p>
+                  <p className="text-2xl font-bold text-green-500">
+                    {formatPrice(existingBid.price_cents)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Timeline</p>
+                  <p className="text-2xl font-bold">
+                    {existingBid.timeline_days ? `${existingBid.timeline_days} days` : "—"}
+                  </p>
+                </div>
+                {existingBid.timeline_notes && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground">Timeline Notes</p>
+                    <p className="text-sm">{existingBid.timeline_notes}</p>
+                  </div>
+                )}
+                {existingBid.notes && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground">Additional Notes</p>
+                    <p className="text-sm">{existingBid.notes}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Bid form */}
+            {(canSubmitBid || canReviseBid) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <DollarSign className="h-4 w-4" />
+                    Price (USD)
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="mt-1.5"
+                    placeholder="0.00"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    Timeline (days)
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    className="mt-1.5"
+                    placeholder="e.g., 14"
+                    value={timelineDays}
+                    onChange={(e) => setTimelineDays(e.target.value)}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-sm font-medium">Timeline Notes</label>
+                  <Textarea
+                    className="mt-1.5"
+                    placeholder="e.g., 2 weeks for first pass, 1 week for revisions"
+                    value={timelineNotes}
+                    onChange={(e) => setTimelineNotes(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="text-sm font-medium">Additional Notes</label>
+                  <Textarea
+                    className="mt-1.5"
+                    placeholder="Any assumptions, exclusions, or comments..."
+                    value={bidNotes}
+                    onChange={(e) => setBidNotes(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    onClick={handleSubmitBid}
+                    disabled={submitting || !price}
+                  >
+                    {submitting ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-2" />
+                    )}
+                    {existingBid ? "Update Bid" : "Submit Bid"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Accepted/Rejected status */}
+            {bidRequest.status === "accepted" && (
+              <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-lg text-center">
+                <CheckCircle2 className="h-8 w-8 text-green-500 mx-auto mb-2" />
+                <p className="text-green-500 font-semibold">🎉 Bid Accepted!</p>
+                <p className="text-sm text-muted-foreground">
+                  You&apos;ve been awarded this work.
+                </p>
+              </div>
+            )}
+
+            {bidRequest.status === "rejected" && (
+              <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-center">
+                <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+                <p className="text-red-500 font-semibold">Bid Not Selected</p>
+                <p className="text-sm text-muted-foreground">
+                  Another vendor was chosen for this work.
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
