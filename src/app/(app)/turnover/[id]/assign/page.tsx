@@ -119,13 +119,13 @@ export default function TurnoverAssignPage() {
         }
         setShotAssignments(existing);
 
-        // Load vendors for this project
+        // Load vendors for this project (project-specific + global vendors)
         const projectId = (turnoverData as any).project?.id;
         if (projectId) {
           const { data: vendorsData } = await supabase
             .from("vendors")
             .select("id, name, code")
-            .eq("project_id", projectId)
+            .or(`project_id.eq.${projectId},project_id.is.null`)
             .eq("active", true)
             .order("name");
 
