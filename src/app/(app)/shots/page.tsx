@@ -277,7 +277,8 @@ function ShotsPageContent() {
         let shotsQuery = supabase
           .from("shots")
           .select("*")
-          .in("sequence_id", seqIds);
+          .in("sequence_id", seqIds)
+          .order("code");
         
         if (isArtist && !canSeeAllShots && currentUser) {
           shotsQuery = shotsQuery.eq("assigned_to_id", currentUser.id);
@@ -381,7 +382,7 @@ function ShotsPageContent() {
     if (filterGroup !== "all" && !shot.groups.some(g => g.id === filterGroup)) return false;
     if (searchQuery && !shot.code.toLowerCase().includes(searchQuery.toLowerCase()) && !shot.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
-  });
+  }).sort((a, b) => a.code.localeCompare(b.code));
 
   const activeShot = activeId ? enrichedShots.find(s => s.id === activeId) : null;
 

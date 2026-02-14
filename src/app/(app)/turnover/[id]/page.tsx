@@ -16,7 +16,20 @@ import {
   MessageSquare,
   AlertCircle,
   Play,
+  Trash2,
+  X,
 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
@@ -89,6 +102,49 @@ export default function TurnoverDetailPage() {
   const [refs, setRefs] = useState<TurnoverRef[]>([]);
   const [plates, setPlates] = useState<ShotPlate[]>([]);
   const [expandedShot, setExpandedShot] = useState<string | null>(null);
+  const [deletingTurnover, setDeletingTurnover] = useState(false);
+  const [removingShotId, setRemovingShotId] = useState<string | null>(null);
+
+  // Delete entire turnover
+  const handleDeleteTurnover = async () => {
+    setDeletingTurnover(true);
+    try {
+      const res = await fetch(`/api/turnovers/${turnoverId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete");
+      }
+      router.push("/turnovers");
+    } catch (err: any) {
+      console.error("Failed to delete turnover:", err);
+      setError(err.message);
+      setDeletingTurnover(false);
+    }
+  };
+
+  // Remove a shot from this turnover (doesn't delete the shot itself)
+  const handleRemoveShot = async (turnoverShotId: string) => {
+    setRemovingShotId(turnoverShotId);
+    try {
+      const res = await fetch(`/api/turnover-shots/${turnoverShotId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to remove shot");
+      }
+      // Update local state
+      setShots(prev => prev.filter(s => s.id !== turnoverShotId));
+    } catch (err: any) {
+      console.error("Failed to remove shot:", err);
+    } finally {
+      setRemovingShotId(null);
+    }
+  };
 
   useEffect(() => {
     async function loadTurnover() {
@@ -250,12 +306,43 @@ export default function TurnoverDetailPage() {
             </div>
           </div>
         </div>
-        <Badge
-          variant={turnover.status === "draft" ? "secondary" : "default"}
-          className="capitalize"
-        >
-          {turnover.status}
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Badge
+            variant={turnover.status === "draft" ? "secondary" : "default"}
+            className="capitalize"
+          >
+            {turnover.status}
+          </Badge>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete Turnover
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Turnover?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will permanently delete TO{turnover.turnover_number}
+                  {turnover.title && ` (${turnover.title})`} and remove all {shots.length} shots from it.
+                  The shots themselves won&apos;t be deleted.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeleteTurnover}
+                  className="bg-red-500 hover:bg-red-600"
+                  disabled={deletingTurnover}
+                >
+                  {deletingTurnover ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  Delete
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
       </div>
 
       {/* Summary Stats */}
@@ -472,6 +559,42 @@ export default function TurnoverDetailPage() {
                         </Badge>
                       )}
                     </div>
+
+                    {/* Remove Shot Button */}
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-50"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {removingShotId === shot.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <X className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Remove Shot?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Remove <strong>{shot.shot.code}</strong> from this turnover?
+                            The shot itself won&apos;t be deleted from the project.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleRemoveShot(shot.id)}
+                            className="bg-red-500 hover:bg-red-600"
+                          >
+                            Remove
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
 
                   {/* Expanded Details */}
