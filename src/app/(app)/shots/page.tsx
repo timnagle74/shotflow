@@ -9,8 +9,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ShotStatusBadge } from "@/components/status-badge";
 import { shotStatusLabels, shotStatusColors, complexityColors, cn } from "@/lib/utils";
-import { LayoutGrid, List, Search, Clock, Loader2, Users, Send, X } from "lucide-react";
+import { LayoutGrid, List, Search, Clock, Loader2, Users, Send, X, Trash2 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { ShotGroupsPanel } from "@/components/shot-groups-panel";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SendShotsForBids } from "@/components/send-shots-for-bids";
@@ -206,6 +217,7 @@ function ShotsPageContent() {
   const [shotThumbnails, setShotThumbnails] = useState<Record<string, string>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const [selectedShotIds, setSelectedShotIds] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -390,6 +402,33 @@ function ShotsPageContent() {
     setActiveId(event.active.id as string);
   }, []);
 
+  const handleBulkDelete = useCallback(async () => {
+    if (!supabase || selectedShotIds.size === 0) return;
+    
+    setIsDeleting(true);
+    try {
+      const idsToDelete = Array.from(selectedShotIds);
+      
+      const { error } = await supabase
+        .from("shots")
+        .delete()
+        .in("id", idsToDelete);
+      
+      if (error) {
+        console.error("Failed to delete shots:", error);
+        alert(`Failed to delete shots: ${error.message}`);
+      } else {
+        // Remove deleted shots from local state
+        setShots(prev => prev.filter(s => !selectedShotIds.has(s.id)));
+        setSelectedShotIds(new Set());
+      }
+    } catch (err) {
+      console.error("Error deleting shots:", err);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [selectedShotIds]);
+
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     setActiveId(null);
     const { active, over } = event;
@@ -566,6 +605,31 @@ function ShotsPageContent() {
                 </Button>
               }
             />
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="destructive" disabled={isDeleting}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  {isDeleting ? "Deleting..." : "Delete"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {selectedShotIds.size} shot{selectedShotIds.size !== 1 ? 's' : ''}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete the selected shots and all associated data (versions, plates, etc.).
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleBulkDelete}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Delete {selectedShotIds.size} shot{selectedShotIds.size !== 1 ? 's' : ''}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
       )}
