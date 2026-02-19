@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServiceClient, validateReviewToken } from "@/lib/auth";
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { token: string } }
@@ -66,13 +69,15 @@ export async function GET(
       comments = commentsData || [];
     }
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       session: {
         ...session,
         versions,
       },
       comments,
     });
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    return response;
 
   } catch (error) {
     console.error("Review session error:", error);
