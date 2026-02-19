@@ -6,10 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { 
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX,
-  Check, X, MessageSquare, Clock, ChevronLeft, ChevronRight,
-  Loader2, AlertCircle, CheckCircle2, XCircle, Film
+  MessageSquare, Clock, ChevronLeft, ChevronRight,
+  Loader2, AlertCircle, CheckCircle2, XCircle, Film, Lock, FileText
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +59,14 @@ export default function ClientReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [session, setSession] = useState<ReviewSession | null>(null);
   
+  // Password state
+  const [requiresPassword, setRequiresPassword] = useState(false);
+  const [passwordVerified, setPasswordVerified] = useState(false);
+  const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [sessionName, setSessionName] = useState<string>("");
+  const [verifying, setVerifying] = useState(false);
+  
   // Current version
   const [currentIndex, setCurrentIndex] = useState(0);
   
@@ -74,7 +83,73 @@ export default function ClientReviewPage() {
   const [showCommentInput, setShowCommentInput] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Load session data
+  // Check if password is required
+  useEffect(() => {
+    async function checkPassword() {
+      try {
+        const res = await fetch(`/api/review/${token}/verify`);
+        if (!res.ok) {
+          setError("Review session not found");
+          setLoading(false);
+          return;
+        }
+        
+        const data = await res.json();
+        setSessionName(data.sessionName || "");
+        
+        if (data.requiresPassword) {
+          setRequiresPassword(true);
+          setLoading(false);
+        } else {
+          setPasswordVerified(true);
+          // Will trigger loadSession
+        }
+      } catch (err) {
+        console.error("Password check error:", err);
+        setError("Failed to check session");
+        setLoading(false);
+      }
+    }
+
+    if (token) {
+      checkPassword();
+    }
+  }, [token]);
+
+  // Verify password
+  const handleVerifyPassword = async () => {
+    if (!password.trim()) {
+      setPasswordError("Please enter the password");
+      return;
+    }
+    
+    setVerifying(true);
+    setPasswordError(null);
+    
+    try {
+      const res = await fetch(`/api/review/${token}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: password.trim() }),
+      });
+      
+      if (!res.ok) {
+        setPasswordError("Invalid password");
+        setVerifying(false);
+        return;
+      }
+      
+      setPasswordVerified(true);
+      setLoading(true);
+    } catch (err) {
+      console.error("Verify error:", err);
+      setPasswordError("Verification failed");
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  // Load session data after password verified
   useEffect(() => {
     async function loadSession() {
       try {
@@ -99,10 +174,10 @@ export default function ClientReviewPage() {
       }
     }
 
-    if (token) {
+    if (token && passwordVerified) {
       loadSession();
     }
-  }, [token]);
+  }, [token, passwordVerified]);
 
   // Video controls
   const togglePlay = useCallback(() => {
@@ -225,6 +300,46 @@ export default function ClientReviewPage() {
     return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}:${frames.toString().padStart(2, '0')}`;
   };
 
+  // Password screen
+  if (requiresPassword && !passwordVerified) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <Card className="w-full max-w-md bg-zinc-900 border-zinc-800">
+          <CardHeader className="text-center">
+            <Lock className="h-12 w-12 text-zinc-500 mx-auto mb-2" />
+            <CardTitle className="text-white">Password Required</CardTitle>
+            {sessionName && (
+              <p className="text-zinc-400 text-sm">{sessionName}</p>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Input
+              type="password"
+              placeholder="Enter password"
+              className="bg-zinc-800 border-zinc-700 text-white"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleVerifyPassword()}
+            />
+            {passwordError && (
+              <p className="text-red-500 text-sm">{passwordError}</p>
+            )}
+            <Button 
+              className="w-full" 
+              onClick={handleVerifyPassword}
+              disabled={verifying}
+            >
+              {verifying ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              Access Review
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -299,6 +414,19 @@ export default function ClientReviewPage() {
               <span>{currentIndex + 1} of {session.versions.length}</span>
             </div>
           </div>
+
+          {/* VFX Notes - PROMINENT DISPLAY */}
+          {currentVersion?.shot?.description && (
+            <div className="mb-4 p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+              <div className="flex items-start gap-3">
+                <FileText className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="font-semibold text-amber-400 mb-1">VFX Notes</h3>
+                  <p className="text-white/90">{currentVersion.shot.description}</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Video Player */}
           <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
@@ -514,7 +642,7 @@ export default function ClientReviewPage() {
             <button
               key={version.id}
               className={cn(
-                "flex-shrink-0 w-32 rounded-lg overflow-hidden border-2 transition-all",
+                "flex-shrink-0 w-40 rounded-lg overflow-hidden border-2 transition-all text-left",
                 i === currentIndex 
                   ? "border-white" 
                   : "border-transparent hover:border-white/50"
@@ -524,9 +652,14 @@ export default function ClientReviewPage() {
               <div className="aspect-video bg-white/10 flex items-center justify-center">
                 <Film className="h-6 w-6 text-white/30" />
               </div>
-              <div className="p-1.5 bg-white/5">
+              <div className="p-2 bg-white/5">
                 <p className="font-mono text-xs truncate">{version.shot.code}</p>
                 <p className="text-[10px] text-white/60">{version.version_code}</p>
+                {version.shot.description && (
+                  <p className="text-[10px] text-amber-400/80 truncate mt-1" title={version.shot.description}>
+                    {version.shot.description}
+                  </p>
+                )}
               </div>
               {version.client_status && (
                 <div className={cn(
