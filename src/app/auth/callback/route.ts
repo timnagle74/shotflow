@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   if (token_hash && type) {
     const { error } = await supabase.auth.verifyOtp({
       token_hash,
-      type: type as "email" | "sms" | "magiclink" | "recovery" | "invite" | "email_change",
+      type: type as "email" | "magiclink" | "recovery" | "invite" | "email_change",
     });
     
     if (!error) {
