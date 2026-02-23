@@ -37,6 +37,8 @@ interface ShotCountSheetProps {
     plate_source: string | null;
     due_date: string | null;
   };
+  // Primary plate video_id for thumbnail (preferred over ref)
+  plateVideoId?: string | null;
   sequenceName: string;
   sequenceCode: string;
   projectName: string;
@@ -110,17 +112,19 @@ export function ShotCountSheet({
   cdl,
   resolution,
   shootDate,
+  plateVideoId,
 }: ShotCountSheetProps) {
   const [generating, setGenerating] = useState(false);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
 
-  // Get thumbnail from Bunny Stream
+  // Get thumbnail from Bunny Stream - prefer plate over ref
+  const thumbnailVideoId = plateVideoId || shot.ref_video_id;
   useEffect(() => {
-    if (shot.ref_video_id) {
+    if (thumbnailVideoId) {
       const cdn = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN || '';
-      setThumbnailUrl(`${cdn}/${shot.ref_video_id}/thumbnail.jpg`);
+      setThumbnailUrl(`${cdn}/${thumbnailVideoId}/thumbnail.jpg`);
     }
-  }, [shot.ref_video_id]);
+  }, [thumbnailVideoId]);
 
   // Calculate frame counts
   const handleHead = shot.handle_head || 8;
@@ -156,11 +160,12 @@ export function ShotCountSheet({
       const margin = 14;
       
       // Load thumbnail via img element and canvas (avoids CORS issues with server-side fetch)
+      // Prefer plate thumbnail over ref thumbnail
       let thumbnailData: string | null = null;
-      if (shot.ref_video_id) {
+      if (thumbnailVideoId) {
         try {
           const cdnBase = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN || '';
-          const cdnUrl = `${cdnBase}/${shot.ref_video_id}/thumbnail.jpg`;
+          const cdnUrl = `${cdnBase}/${thumbnailVideoId}/thumbnail.jpg`;
           console.log('Loading thumbnail from:', cdnUrl);
           
           thumbnailData = await new Promise((resolve) => {
@@ -207,7 +212,7 @@ export function ShotCountSheet({
           console.error('Could not load thumbnail for PDF:', e);
         }
       } else {
-        console.log('No ref_video_id for shot');
+        console.log('No plate or ref video_id for shot');
       }
       
       // Header bar

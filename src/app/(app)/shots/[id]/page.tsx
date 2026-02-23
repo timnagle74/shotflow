@@ -1033,6 +1033,7 @@ export default function ShotDetailPage() {
           {/* Count Sheet */}
           <ShotCountSheet
             shot={shot}
+            plateVideoId={plates[0]?.video_id}
             sequenceName={sequence?.name || ""}
             sequenceCode={sequence?.code || ""}
             projectName={project?.name || ""}
