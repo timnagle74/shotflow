@@ -500,6 +500,24 @@ export default function VendorTurnoverDetailPage() {
             <FileDown className="h-4 w-4 mr-2" />
             Download PDF
           </Button>
+          {plates.length > 0 && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                // Trigger download via API
+                const link = document.createElement('a');
+                link.href = `/api/turnovers/${turnoverId}/download-plates`;
+                link.download = '';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Download All Plates
+            </Button>
+          )}
         </div>
       </div>
 

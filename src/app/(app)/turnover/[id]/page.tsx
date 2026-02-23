@@ -18,6 +18,7 @@ import {
   Play,
   Trash2,
   X,
+  Download,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -313,6 +314,23 @@ export default function TurnoverDetailPage() {
           >
             {turnover.status}
           </Badge>
+          {plates.length > 0 && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                const link = document.createElement('a');
+                link.href = `/api/turnovers/${turnoverId}/download-plates`;
+                link.download = '';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Download Plates
+            </Button>
+          )}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50">
