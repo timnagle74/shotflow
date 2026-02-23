@@ -10,6 +10,7 @@
  * Matches to existing turnover_refs records by filename.
  */
 
+import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 import * as path from 'path';
