@@ -316,8 +316,12 @@ export function AnnotationCanvas({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (readOnly) return;
+      
+      // Ignore if typing in an input or textarea
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      
       if (e.key === "Delete" || e.key === "Backspace") {
-        // Don't delete if we're editing text
+        // Don't delete if we're editing text in canvas
         const canvas = fabricRef.current;
         if (canvas) {
           const activeObj = canvas.getActiveObject();
