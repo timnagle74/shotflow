@@ -13,14 +13,14 @@ export const maxDuration = 60;
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Auth check
     const auth = await authenticateRequest(request);
     if (auth.error) return auth.error;
 
-    const { id } = params;
+    const { id } = await params;
     const supabaseAdmin = getServiceClient();
 
     // Get turnover with project info
