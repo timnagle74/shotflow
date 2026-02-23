@@ -30,9 +30,9 @@ export async function GET(
         id,
         name,
         turnover_number,
-        sequence:sequences!inner(
+        sequence:sequences(
           code,
-          project:projects!inner(code)
+          project:projects(code)
         )
       `)
       .eq('id', id)
@@ -45,6 +45,9 @@ export async function GET(
         { status: 404 }
       );
     }
+    
+    // Get project code (may be nested or null)
+    const projectCode = (turnover.sequence as any)?.project?.code || 'PROJECT';
 
     // Get all shots in this turnover
     const { data: turnoverShots, error: shotsError } = await supabaseAdmin
@@ -108,7 +111,6 @@ export async function GET(
     });
 
     // Build ZIP filename
-    const projectCode = (turnover.sequence as any).project.code;
     const toNumber = turnover.turnover_number || 1;
     const zipFilename = `${projectCode}_TO${toNumber}_plates.zip`;
 
