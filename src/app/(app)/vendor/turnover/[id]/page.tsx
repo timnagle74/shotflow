@@ -23,7 +23,16 @@ import {
   Send,
   CheckCircle2,
   FileDown,
+  MessageSquare,
+  Eye,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { AnnotatedPlayer } from "@/components/annotated-player";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
@@ -123,6 +132,14 @@ export default function VendorTurnoverDetailPage() {
   const [bidNotes, setBidNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+
+  // Annotation viewer state
+  const [viewerShot, setViewerShot] = useState<{
+    shotCode: string;
+    plateId: string | null;
+    plateUrl: string | null;
+    shotId: string;
+  } | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -635,6 +652,24 @@ export default function VendorTurnoverDetailPage() {
                         TC: {shot.record_in} → {shot.record_out}
                       </p>
                     )}
+
+                    {/* View Notes Button */}
+                    {plate?.preview_url && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2"
+                        onClick={() => setViewerShot({
+                          shotCode: shot.shot.code,
+                          plateId: plate.id,
+                          plateUrl: plate.preview_url,
+                          shotId: shot.shot_id,
+                        })}
+                      >
+                        <Eye className="h-3 w-3 mr-2" />
+                        View with Notes
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               );
@@ -788,6 +823,41 @@ export default function VendorTurnoverDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Annotation Viewer Modal */}
+      <Dialog open={!!viewerShot} onOpenChange={(open) => !open && setViewerShot(null)}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Film className="h-5 w-5" />
+              {viewerShot?.shotCode} - Plate with Notes
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-auto">
+            {viewerShot?.plateUrl && viewerShot?.plateId && (
+              <AnnotatedPlayer
+                key={viewerShot.plateId}
+                src={viewerShot.plateUrl}
+                source={{ type: 'plate', id: viewerShot.plateId }}
+                readOnly={true}
+              />
+            )}
+          </div>
+          {/* Link to shot versions */}
+          <div className="pt-4 border-t flex justify-end">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setViewerShot(null);
+                router.push(`/vendor`);
+              }}
+            >
+              <MessageSquare className="h-4 w-4 mr-2" />
+              View Version History
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
