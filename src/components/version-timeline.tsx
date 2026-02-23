@@ -24,6 +24,7 @@ interface VersionEntry {
 interface VersionTimelineProps {
   versions: VersionEntry[];
   className?: string;
+  onVersionClick?: (version: VersionEntry) => void;
 }
 
 const STATUS_CONFIG: Record<
@@ -66,6 +67,7 @@ const STATUS_CONFIG: Record<
 export function VersionTimeline({
   versions,
   className,
+  onVersionClick,
 }: VersionTimelineProps) {
   if (versions.length === 0) {
     return (
@@ -89,8 +91,17 @@ export function VersionTimeline({
         const isLatest = i === 0;
         const isLast = i === sorted.length - 1;
 
+        const isClickable = onVersionClick && version.preview_url;
+        
         return (
-          <div key={version.id} className="relative flex gap-3">
+          <div 
+            key={version.id} 
+            className={cn(
+              "relative flex gap-3",
+              isClickable && "cursor-pointer hover:bg-muted/50 rounded-lg -mx-2 px-2 transition-colors"
+            )}
+            onClick={isClickable ? () => onVersionClick(version) : undefined}
+          >
             {/* Timeline line */}
             {!isLast && (
               <div className="absolute left-[11px] top-8 bottom-0 w-px bg-border" />

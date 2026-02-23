@@ -46,6 +46,10 @@ interface AnnotatedPlayerProps {
   poster?: string;
   className?: string;
   fps?: number; // Frames per second, default 24
+  /** Direct video URL (mp4, etc.) - alternative to hlsUrl */
+  src?: string;
+  /** Read-only mode - disables annotation creation */
+  readOnly?: boolean;
 }
 
 export function AnnotatedPlayer({
@@ -56,6 +60,8 @@ export function AnnotatedPlayer({
   poster,
   className,
   fps = 24,
+  src,
+  readOnly = false,
 }: AnnotatedPlayerProps) {
   // Support legacy versionId prop
   const annotationSource: AnnotationSource = source || { type: 'version', id: versionId! };
@@ -75,9 +81,10 @@ export function AnnotatedPlayer({
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
   const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN || "";
-  const streamUrl = hlsUrl || (videoId && BUNNY_STREAM_CDN 
+  const streamUrl = src || hlsUrl || (videoId && BUNNY_STREAM_CDN 
     ? `${BUNNY_STREAM_CDN}/${videoId}/playlist.m3u8` 
     : null);
+  const isHls = !src && (hlsUrl || videoId);
 
   // Calculate frame from time
   // Frame N spans [N/fps, (N+1)/fps), so floor gives correct frame
@@ -471,19 +478,21 @@ export function AnnotatedPlayer({
           </div>
         </div>
 
-        {/* Annotate button */}
-        <Button 
-          onClick={startAnnotating} 
-          disabled={isAnnotating}
-          variant={isAnnotating ? "secondary" : "default"}
-        >
-          {isSaving ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Pencil className="h-4 w-4 mr-2" />
-          )}
-          Add Note
-        </Button>
+        {/* Annotate button - hidden in readOnly mode */}
+        {!readOnly && (
+          <Button 
+            onClick={startAnnotating} 
+            disabled={isAnnotating}
+            variant={isAnnotating ? "secondary" : "default"}
+          >
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Pencil className="h-4 w-4 mr-2" />
+            )}
+            Add Note
+          </Button>
+        )}
       </div>
 
       {/* Annotations list */}

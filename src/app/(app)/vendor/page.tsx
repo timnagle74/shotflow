@@ -48,6 +48,7 @@ import { cn } from "@/lib/utils";
 import { VendorVersionUpload } from "@/components/vendor-version-upload";
 import { VersionTimeline } from "@/components/version-timeline";
 import { VendorBidSubmission } from "@/components/vendor-bid-submission";
+import { AnnotatedPlayer } from "@/components/annotated-player";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -182,6 +183,10 @@ export default function VendorPortalPage() {
   // Bid requests state
   const [bidRequests, setBidRequests] = useState<any[]>([]);
   const [loadingBidRequests, setLoadingBidRequests] = useState(false);
+
+  // Version viewer modal state
+  const [viewerVersion, setViewerVersion] = useState<VersionEntry | null>(null);
+  const [viewerShotCode, setViewerShotCode] = useState<string>("");
 
   // ─── Step 1: Resolve the user's vendor(s) ──────────────────────────────
 
@@ -1340,7 +1345,13 @@ export default function VendorPortalPage() {
                                     }
                                   />
                                 </div>
-                                <VersionTimeline versions={shot.versions} />
+                                <VersionTimeline 
+                                  versions={shot.versions} 
+                                  onVersionClick={(version) => {
+                                    setViewerVersion(version);
+                                    setViewerShotCode(shot.shot?.code || "");
+                                  }}
+                                />
                               </div>
                             </div>
                           )}
@@ -1354,6 +1365,28 @@ export default function VendorPortalPage() {
           )}
         </>
       )}
+
+      {/* Version Viewer Modal */}
+      <Dialog open={!!viewerVersion} onOpenChange={(open) => !open && setViewerVersion(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Film className="h-5 w-5" />
+              {viewerShotCode} - {viewerVersion?.version_code || `v${String(viewerVersion?.version_number || 0).padStart(3, "0")}`}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-auto">
+            {viewerVersion?.preview_url && (
+              <AnnotatedPlayer
+                key={viewerVersion.id}
+                src={viewerVersion.preview_url}
+                versionId={viewerVersion.id}
+                readOnly={true}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
