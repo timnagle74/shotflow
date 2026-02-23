@@ -230,6 +230,7 @@ export default function ShotDetailPage() {
   const [selectedPlateId, setSelectedPlateId] = useState<string | null>(null);
   const [showLut, setShowLut] = useState<{ name: string; url: string } | null>(null);
   const [siblingShots, setSiblingShots] = useState<{ id: string; code: string }[]>([]);
+  const [sequenceShots, setSequenceShots] = useState<{ id: string; code: string }[]>([]);
   const [shotRefs, setShotRefs] = useState<ShotRef[]>([]);
   const [turnoverShotId, setTurnoverShotId] = useState<string | null>(null);
   const [sourceMedia, setSourceMedia] = useState<SourceMediaData | null>(null);
@@ -315,6 +316,17 @@ export default function ShotDetailPage() {
           
           if (siblingsData) {
             setSiblingShots(siblingsData);
+          }
+
+          // Fetch ALL shots in sequence for prev/next navigation
+          const { data: allSeqShots } = await supabase
+            .from("shots")
+            .select("id, code")
+            .eq("sequence_id", seqData.id)
+            .order("code", { ascending: true });
+          
+          if (allSeqShots) {
+            setSequenceShots(allSeqShots);
           }
 
           // Fetch project
@@ -816,6 +828,11 @@ export default function ShotDetailPage() {
   const allowedTransitions = STATUS_TRANSITIONS[currentStatus] || [];
   const selectedVersionData = versions.find(v => v.id === selectedVersion);
 
+  // Prev/Next shot navigation
+  const currentShotIndex = sequenceShots.findIndex(s => s.id === shotId);
+  const prevShot = currentShotIndex > 0 ? sequenceShots[currentShotIndex - 1] : null;
+  const nextShot = currentShotIndex < sequenceShots.length - 1 ? sequenceShots[currentShotIndex + 1] : null;
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb + Title */}
@@ -823,6 +840,35 @@ export default function ShotDetailPage() {
         <Link href="/shots">
           <Button variant="ghost" size="icon" className="shrink-0"><ArrowLeft className="h-4 w-4" /></Button>
         </Link>
+        {/* Prev/Next Shot Navigation */}
+        <div className="flex items-center gap-1 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!prevShot}
+            onClick={() => prevShot && router.push(`/shots/${prevShot.id}`)}
+            className="px-2"
+            title={prevShot ? `Previous: ${prevShot.code}` : "No previous shot"}
+          >
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            Prev
+          </Button>
+          <span className="text-xs text-muted-foreground px-1">
+            {currentShotIndex + 1}/{sequenceShots.length}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!nextShot}
+            onClick={() => nextShot && router.push(`/shots/${nextShot.id}`)}
+            className="px-2"
+            title={nextShot ? `Next: ${nextShot.code}` : "No next shot"}
+          >
+            Next
+            <ArrowRight className="h-4 w-4 ml-1" />
+          </Button>
+        </div>
+        <Separator orientation="vertical" className="h-6" />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-2xl font-bold font-mono">{shot.code}</h1>
