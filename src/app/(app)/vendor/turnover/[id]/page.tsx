@@ -504,9 +504,24 @@ export default function VendorTurnoverDetailPage() {
             <Button 
               variant="outline" 
               size="sm" 
-              onClick={() => {
-                // Navigate to download endpoint (includes auth cookies)
-                window.location.href = `/api/turnovers/${turnoverId}/download-plates`;
+              onClick={async () => {
+                try {
+                  const res = await fetch(`/api/turnovers/${turnoverId}/download-plates`);
+                  if (!res.ok) {
+                    const err = await res.json();
+                    alert(err.error || 'Failed to get download URLs');
+                    return;
+                  }
+                  const data = await res.json();
+                  // Open each download URL
+                  for (const item of data.downloads) {
+                    window.open(item.url, '_blank');
+                    // Small delay between downloads
+                    await new Promise(r => setTimeout(r, 300));
+                  }
+                } catch (err) {
+                  alert('Download failed');
+                }
               }}
             >
               <Download className="h-4 w-4 mr-2" />

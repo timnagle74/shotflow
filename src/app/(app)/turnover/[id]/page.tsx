@@ -318,8 +318,22 @@ export default function TurnoverDetailPage() {
             <Button 
               variant="outline" 
               size="sm"
-              onClick={() => {
-                window.location.href = `/api/turnovers/${turnoverId}/download-plates`;
+              onClick={async () => {
+                try {
+                  const res = await fetch(`/api/turnovers/${turnoverId}/download-plates`);
+                  if (!res.ok) {
+                    const err = await res.json();
+                    alert(err.error || 'Failed to get download URLs');
+                    return;
+                  }
+                  const data = await res.json();
+                  for (const item of data.downloads) {
+                    window.open(item.url, '_blank');
+                    await new Promise(r => setTimeout(r, 300));
+                  }
+                } catch (err) {
+                  alert('Download failed');
+                }
               }}
             >
               <Download className="h-4 w-4 mr-2" />
