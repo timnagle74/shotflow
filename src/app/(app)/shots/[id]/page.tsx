@@ -318,17 +318,7 @@ export default function ShotDetailPage() {
             setSiblingShots(siblingsData);
           }
 
-          // Fetch ALL shots in sequence for prev/next navigation
-          const { data: allSeqShots } = await supabase
-            .from("shots")
-            .select("id, code")
-            .eq("sequence_id", seqData.id)
-            .order("code", { ascending: true });
-          
-          if (allSeqShots) {
-            setSequenceShots(allSeqShots);
-          }
-
+          // Fetch project first (needed for project-wide shot navigation)
           // Fetch project
           const { data: projData } = await supabase
             .from("projects")
@@ -338,6 +328,17 @@ export default function ShotDetailPage() {
 
           if (projData) {
             setProject(projData);
+            
+            // Fetch ALL shots in PROJECT for prev/next navigation (across all sequences)
+            const { data: allProjectShots } = await supabase
+              .from("shots")
+              .select("id, code, sequences!inner(project_id)")
+              .eq("sequences.project_id", projData.id)
+              .order("code", { ascending: true });
+            
+            if (allProjectShots) {
+              setSequenceShots(allProjectShots.map(s => ({ id: s.id, code: s.code })));
+            }
             
             // Fetch default show LUT
             const { data: lutData } = await supabase
