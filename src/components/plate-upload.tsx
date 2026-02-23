@@ -122,44 +122,67 @@ export function PlateUpload({
           throw new Error(errorData.error || `Failed to prepare upload: ${prepareResponse.status}`);
         }
 
-        const { plate: plateRecord, tusUpload, videoId } = await prepareResponse.json();
+        const { plate: plateRecord, tusUpload, storageUpload, videoId } = await prepareResponse.json();
 
-        if (!tusUpload) {
-          throw new Error("No upload credentials received - video files only");
+        if (!storageUpload && !tusUpload) {
+          throw new Error("No upload credentials received");
         }
 
         setCurrentUpload(`Uploading ${plate.file.name} (${i + 1}/${plates.length})`);
 
-        // Upload using TUS (direct to Bunny Stream)
-        await new Promise<void>((resolve, reject) => {
-          const upload = new tus.Upload(plate.file, {
-            endpoint: tusUpload.url,
+        // Upload to Bunny Storage (for original file download)
+        if (storageUpload) {
+          setCurrentUpload(`Uploading original ${plate.file.name} (${i + 1}/${plates.length})`);
+          const storageRes = await fetch(storageUpload.url, {
+            method: 'PUT',
             headers: {
-              'AuthorizationSignature': tusUpload.authSignature,
-              'AuthorizationExpire': String(tusUpload.expiresAt),
-              'VideoId': tusUpload.videoId,
-              'LibraryId': tusUpload.libraryId,
+              'Content-Type': plate.file.type || 'application/octet-stream',
             },
-            metadata: {
-              filename: plate.file.name,
-              filetype: plate.file.type || 'video/quicktime',
-            },
-            onError: (error) => {
-              console.error("TUS upload error:", error);
-              reject(new Error(`Upload failed: ${error.message}`));
-            },
-            onProgress: (bytesUploaded, bytesTotal) => {
-              const fileProgress = bytesUploaded / bytesTotal;
-              const overallProgress = ((i + fileProgress) / plates.length) * 100;
-              setUploadProgress(Math.round(overallProgress));
-            },
-            onSuccess: () => {
-              console.log("TUS upload complete for:", plate.file.name);
-              resolve();
-            },
+            body: plate.file,
           });
-          upload.start();
-        });
+          
+          if (!storageRes.ok) {
+            console.error("Storage upload failed:", storageRes.status);
+            // Continue anyway - preview might still work
+          } else {
+            console.log("Storage upload complete for:", plate.file.name);
+          }
+        }
+
+        // Upload to Bunny Stream (for preview playback) - if available
+        if (tusUpload) {
+          setCurrentUpload(`Processing preview ${plate.file.name} (${i + 1}/${plates.length})`);
+          await new Promise<void>((resolve, reject) => {
+            const upload = new tus.Upload(plate.file, {
+              endpoint: tusUpload.url,
+              headers: {
+                'AuthorizationSignature': tusUpload.authSignature,
+                'AuthorizationExpire': String(tusUpload.expiresAt),
+                'VideoId': tusUpload.videoId,
+                'LibraryId': tusUpload.libraryId,
+              },
+              metadata: {
+                filename: plate.file.name,
+                filetype: plate.file.type || 'video/quicktime',
+              },
+              onError: (error) => {
+                console.error("TUS upload error:", error);
+                // Don't reject - storage upload succeeded, preview is optional
+                resolve();
+              },
+              onProgress: (bytesUploaded, bytesTotal) => {
+                const fileProgress = bytesUploaded / bytesTotal;
+                const overallProgress = ((i + 0.5 + fileProgress * 0.5) / plates.length) * 100;
+                setUploadProgress(Math.round(overallProgress));
+              },
+              onSuccess: () => {
+                console.log("TUS upload complete for:", plate.file.name);
+                resolve();
+              },
+            });
+            upload.start();
+          });
+        }
 
         uploadedPlates.push(plateRecord);
       }

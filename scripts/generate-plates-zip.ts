@@ -77,7 +77,8 @@ async function generateZipForTurnover(turnoverId: string): Promise<string | null
 
   for (const plate of plates) {
     const shotCode = shotCodeMap.get(plate.shot_id) || 'unknown';
-    const url = plate.cdn_url || (plate.storage_path ? `${bunnyCdnUrl}${plate.storage_path}` : null);
+    // Use cdn_url directly - it's already the full URL
+    const url = plate.cdn_url;
     
     if (!url) {
       console.log(`    Skipping ${plate.filename} - no URL`);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { authenticateRequest, requireInternal, getServiceClient } from "@/lib/auth";
+import { generateSignedUploadUrl, bunnyConfig } from "@/lib/bunny";
 
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
@@ -37,8 +38,28 @@ export async function POST(request: NextRequest) {
     let videoId: string | null = null;
     let previewUrl: string | null = null;
     let tusUpload: { url: string; authSignature: string; libraryId: string; videoId: string; expiresAt: number } | null = null;
+    
+    // Storage upload for original file (downloadable)
+    let storageUpload: { url: string; storagePath: string; cdnUrl: string } | null = null;
 
-    // For video files, create Bunny Stream entry and get TUS credentials
+    // Generate Storage upload URL for original file download
+    const timestamp = Date.now();
+    const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = `/plates/${projectCode}/${shotCode}/${timestamp}_${safeFilename}`;
+    
+    try {
+      const signedUploadUrl = generateSignedUploadUrl(storagePath, 3600); // 1 hour
+      storageUpload = {
+        url: signedUploadUrl,
+        storagePath,
+        cdnUrl: `${bunnyConfig.storage.cdnUrl}${storagePath}`,
+      };
+    } catch (err) {
+      console.error("Failed to generate storage upload URL:", err);
+      // Continue without storage - at least preview will work
+    }
+
+    // For video files, also create Bunny Stream entry for preview
     if (isVideo && BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
       try {
         const title = `plate_${shotCode}_${filename.replace(/\.[^/.]+$/, "")}`;
@@ -81,34 +102,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (isVideo && !tusUpload) {
+    // Must have at least storage OR stream upload
+    if (!storageUpload && !tusUpload) {
       return NextResponse.json(
-        { error: "Failed to prepare video upload - Bunny Stream not configured or error" },
+        { error: "Failed to prepare upload - neither storage nor stream configured" },
         { status: 500 }
       );
     }
 
-    // For non-video files, we'd need a different approach (proxy or presigned)
-    // For now, only support video uploads
-    if (!isVideo) {
-      return NextResponse.json(
-        { error: "Only video files (MOV, MP4, MXF, M4V) are supported for plate uploads currently" },
-        { status: 400 }
-      );
-    }
-
-    // Create plate record in database
+    // Create plate record in database with both URLs
     const { data: plateData, error: plateError } = await supabase
       .from("shot_plates")
       .insert({
         shot_id: shotId,
         filename,
         description: description || null,
-        storage_path: null, // Stream-based upload, no storage path
-        cdn_url: null, // Stream-based, use preview_url instead
+        storage_path: storageUpload?.storagePath || null,
+        cdn_url: storageUpload?.cdnUrl || null, // Now properly set for downloads!
         video_id: videoId,
         preview_url: previewUrl,
-        file_size: 0, // Will be updated after upload if needed
+        file_size: 0,
         sort_order: sortOrder || 0,
       })
       .select()
@@ -125,7 +138,11 @@ export async function POST(request: NextRequest) {
         shot_id: plateData.shot_id,
         filename: plateData.filename,
         preview_url: plateData.preview_url,
+        cdn_url: plateData.cdn_url,
       },
+      // Storage upload for original file (download)
+      storageUpload,
+      // Stream upload for preview (optional, video files only)
       tusUpload,
       videoId,
     });
