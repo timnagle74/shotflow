@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBrowserSupabaseClient } from "@/lib/supabase-auth";
@@ -13,6 +13,22 @@ import { Loader2, Mail, Lock, Sparkles } from "lucide-react";
 import { GoogleIcon } from "@/components/icons/google";
 
 export default function LoginPage() {
+  // Handle auth tokens in URL hash (from Supabase email links)
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes("access_token")) {
+      // Convert hash fragment to query params and redirect to callback
+      const params = new URLSearchParams(hash.substring(1));
+      window.location.href = `/auth/callback?${params.toString()}`;
+      return;
+    }
+    // Also check for token_hash (invite/recovery links)
+    if (hash && (hash.includes("token_hash") || hash.includes("type="))) {
+      const params = new URLSearchParams(hash.substring(1));
+      window.location.href = `/auth/callback?${params.toString()}`;
+      return;
+    }
+  }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

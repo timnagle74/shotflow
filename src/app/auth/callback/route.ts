@@ -6,6 +6,8 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const token_hash = searchParams.get("token_hash");
   const type = searchParams.get("type");
+  const access_token = searchParams.get("access_token");
+  const refresh_token = searchParams.get("refresh_token");
   const next = searchParams.get("next") ?? "/dashboard";
 
   const supabase = await createServerSupabaseClient();
@@ -19,6 +21,22 @@ export async function GET(request: Request) {
     }
   }
 
+  // Handle direct access token (from hash fragment redirect)
+  if (access_token && refresh_token) {
+    const { error } = await supabase.auth.setSession({
+      access_token,
+      refresh_token,
+    });
+
+    if (!error) {
+      // Check the type param to determine where to redirect
+      if (type === "invite" || type === "recovery") {
+        return NextResponse.redirect(`${origin}/setup-password`);
+      }
+      return NextResponse.redirect(`${origin}${next}`);
+    }
+  }
+
   // Handle magic link / email OTP verification
   if (token_hash && type) {
     const { error } = await supabase.auth.verifyOtp({
@@ -27,9 +45,8 @@ export async function GET(request: Request) {
     });
     
     if (!error) {
-      // For invite tokens, redirect to password setup page
-      // so the new user can set their password
-      if (type === "invite") {
+      // For invite or recovery tokens, redirect to password setup page
+      if (type === "invite" || type === "recovery") {
         return NextResponse.redirect(`${origin}/setup-password`);
       }
       return NextResponse.redirect(`${origin}${next}`);
