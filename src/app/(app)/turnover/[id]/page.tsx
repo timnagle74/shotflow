@@ -36,6 +36,7 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/auth-provider";
 import { BidRequestsPanel } from "@/components/bid-requests-panel";
 import { SendForBidsDialog } from "@/components/send-for-bids-dialog";
+import JSZip from "jszip";
 
 interface TurnoverShot {
   id: string;
@@ -318,8 +319,14 @@ export default function TurnoverDetailPage() {
             <Button 
               variant="outline" 
               size="sm"
-              onClick={async () => {
+              id="download-plates-btn"
+              onClick={async (e) => {
+                const btn = e.currentTarget;
+                const originalText = btn.innerHTML;
                 try {
+                  btn.disabled = true;
+                  btn.innerHTML = '<span class="animate-spin mr-2">⏳</span> Getting file list...';
+                  
                   const res = await fetch(`/api/turnovers/${turnoverId}/download-plates`);
                   if (!res.ok) {
                     const err = await res.json();
@@ -327,12 +334,39 @@ export default function TurnoverDetailPage() {
                     return;
                   }
                   const data = await res.json();
+                  const zip = new JSZip();
+                  
+                  let completed = 0;
+                  const total = data.downloads.length;
+                  
                   for (const item of data.downloads) {
-                    window.open(item.url, '_blank');
-                    await new Promise(r => setTimeout(r, 300));
+                    btn.innerHTML = `<span class="animate-spin mr-2">⏳</span> ${completed + 1}/${total} files...`;
+                    try {
+                      const fileRes = await fetch(item.url);
+                      if (fileRes.ok) {
+                        const blob = await fileRes.blob();
+                        zip.file(`${item.shotCode}/${item.filename}`, blob);
+                      }
+                    } catch (err) {
+                      console.warn(`Failed to fetch ${item.filename}`);
+                    }
+                    completed++;
                   }
+                  
+                  btn.innerHTML = '<span class="animate-spin mr-2">⏳</span> Creating ZIP...';
+                  const zipBlob = await zip.generateAsync({ type: 'blob' });
+                  
+                  const url = URL.createObjectURL(zipBlob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `${data.turnover}_plates.zip`;
+                  a.click();
+                  URL.revokeObjectURL(url);
                 } catch (err) {
                   alert('Download failed');
+                } finally {
+                  btn.disabled = false;
+                  btn.innerHTML = originalText;
                 }
               }}
             >
