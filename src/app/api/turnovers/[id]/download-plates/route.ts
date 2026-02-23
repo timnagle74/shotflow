@@ -2,12 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, getServiceClient } from '@/lib/auth';
 import { generateSignedStorageUrl } from '@/lib/bunny';
 
-// Return signed URLs for client-side download (avoids serverless timeout)
 export const maxDuration = 30;
 
 /**
  * GET /api/turnovers/[id]/download-plates
- * Returns signed download URLs for all plates in a turnover
+ * Returns pre-generated ZIP URL if available, otherwise signed URLs for client-side ZIP
  */
 export async function GET(
   request: NextRequest,
@@ -18,15 +17,14 @@ export async function GET(
     if (auth.error) return auth.error;
 
     const { id } = await params;
-    const supabaseAdmin = getServiceClient();
+    const supabase = getServiceClient();
 
-    // Get turnover
-    const { data: turnover, error: turnoverError } = await supabaseAdmin
+    // Get turnover with ZIP URL
+    const { data: turnover, error: turnoverError } = await supabase
       .from('turnovers')
       .select(`
-        id,
-        title,
-        turnover_number,
+        id, title, turnover_number,
+        plates_zip_url,
         project:projects(code),
         sequence:sequences(code)
       `)
@@ -34,17 +32,28 @@ export async function GET(
       .single();
 
     if (turnoverError || !turnover) {
-      console.error('[download-plates] Turnover not found:', turnoverError);
       return NextResponse.json({ error: 'Turnover not found' }, { status: 404 });
     }
 
-    // Get all shots in this turnover
-    const { data: turnoverShots, error: shotsError } = await supabaseAdmin
+    const projectCode = (turnover.project as any)?.code || 'PROJECT';
+    const toNumber = turnover.turnover_number || 1;
+
+    // If we have a pre-generated ZIP, return that
+    if (turnover.plates_zip_url) {
+      return NextResponse.json({
+        turnover: `${projectCode}_TO${toNumber}`,
+        zipUrl: turnover.plates_zip_url,
+        preGenerated: true,
+      });
+    }
+
+    // Otherwise, return signed URLs for client-side ZIP (fallback)
+    const { data: turnoverShots } = await supabase
       .from('turnover_shots')
       .select(`id, shot:shots!inner(id, code)`)
       .eq('turnover_id', id);
 
-    if (shotsError || !turnoverShots?.length) {
+    if (!turnoverShots?.length) {
       return NextResponse.json({ error: 'No shots in this turnover' }, { status: 404 });
     }
 
@@ -52,19 +61,17 @@ export async function GET(
     const shotCodeMap = new Map<string, string>();
     turnoverShots.forEach((ts: any) => shotCodeMap.set(ts.shot.id, ts.shot.code));
 
-    // Get all plates
-    const { data: plates, error: platesError } = await supabaseAdmin
+    const { data: plates } = await supabase
       .from('shot_plates')
       .select('id, shot_id, filename, storage_path, cdn_url')
       .in('shot_id', shotIds)
       .order('shot_id')
       .order('sort_order');
 
-    if (platesError || !plates?.length) {
+    if (!plates?.length) {
       return NextResponse.json({ error: 'No plates found' }, { status: 404 });
     }
 
-    // Generate signed URLs for each plate
     const downloads = plates.map((plate) => {
       const shotCode = shotCodeMap.get(plate.shot_id) || 'unknown';
       let url: string;
@@ -80,23 +87,17 @@ export async function GET(
         return null;
       }
 
-      return {
-        shotCode,
-        filename: plate.filename,
-        url,
-      };
+      return { shotCode, filename: plate.filename, url };
     }).filter(Boolean);
-
-    const projectCode = (turnover.project as any)?.code || 'PROJECT';
-    const toNumber = turnover.turnover_number || 1;
 
     return NextResponse.json({
       turnover: `${projectCode}_TO${toNumber}`,
       count: downloads.length,
       downloads,
+      preGenerated: false,
     });
   } catch (error) {
     console.error('[download-plates] Error:', error);
-    return NextResponse.json({ error: 'Failed to generate download URLs' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to get download info' }, { status: 500 });
   }
 }

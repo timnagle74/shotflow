@@ -511,17 +511,24 @@ export default function VendorTurnoverDetailPage() {
                 const originalText = btn.innerHTML;
                 try {
                   btn.disabled = true;
-                  btn.innerHTML = '<span class="animate-spin mr-2">⏳</span> Getting file list...';
+                  btn.innerHTML = '<span class="animate-spin mr-2">⏳</span> Preparing...';
                   
                   const res = await fetch(`/api/turnovers/${turnoverId}/download-plates`);
                   if (!res.ok) {
                     const err = await res.json();
-                    alert(err.error || 'Failed to get download URLs');
+                    alert(err.error || 'Failed to get download');
                     return;
                   }
                   const data = await res.json();
-                  const zip = new JSZip();
                   
+                  // If pre-generated ZIP exists, download directly
+                  if (data.zipUrl) {
+                    window.location.href = data.zipUrl;
+                    return;
+                  }
+                  
+                  // Fallback: client-side ZIP generation
+                  const zip = new JSZip();
                   let completed = 0;
                   const total = data.downloads.length;
                   
@@ -542,7 +549,6 @@ export default function VendorTurnoverDetailPage() {
                   btn.innerHTML = '<span class="animate-spin mr-2">⏳</span> Creating ZIP...';
                   const zipBlob = await zip.generateAsync({ type: 'blob' });
                   
-                  // Trigger download
                   const url = URL.createObjectURL(zipBlob);
                   const a = document.createElement('a');
                   a.href = url;
