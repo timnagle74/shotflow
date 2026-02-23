@@ -28,7 +28,7 @@ export async function GET(
       .from('turnovers')
       .select(`
         id,
-        name,
+        title,
         turnover_number,
         sequence:sequences(
           code,
