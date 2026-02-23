@@ -13,6 +13,7 @@ import {
 
 interface VersionEntry {
   id: string;
+  shot_id?: string;
   version_number: number;
   version_code: string;
   status: string;

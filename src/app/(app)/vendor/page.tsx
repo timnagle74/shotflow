@@ -185,7 +185,12 @@ export default function VendorPortalPage() {
   const [loadingBidRequests, setLoadingBidRequests] = useState(false);
 
   // Version viewer modal state
-  const [viewerVersion, setViewerVersion] = useState<VersionEntry | null>(null);
+  const [viewerVersion, setViewerVersion] = useState<{
+    id: string;
+    version_number: number;
+    version_code: string;
+    preview_url: string | null;
+  } | null>(null);
   const [viewerShotCode, setViewerShotCode] = useState<string>("");
 
   // ─── Step 1: Resolve the user's vendor(s) ──────────────────────────────
