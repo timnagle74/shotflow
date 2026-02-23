@@ -30,10 +30,8 @@ export async function GET(
         id,
         title,
         turnover_number,
-        sequence:sequences(
-          code,
-          project:projects(code)
-        )
+        project:projects(code),
+        sequence:sequences(code)
       `)
       .eq('id', id)
       .single();
@@ -46,8 +44,8 @@ export async function GET(
       );
     }
     
-    // Get project code (may be nested or null)
-    const projectCode = (turnover.sequence as any)?.project?.code || 'PROJECT';
+    // Get project code
+    const projectCode = (turnover.project as any)?.code || 'PROJECT';
 
     // Get all shots in this turnover
     const { data: turnoverShots, error: shotsError } = await supabaseAdmin
