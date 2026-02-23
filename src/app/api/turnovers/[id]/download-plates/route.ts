@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, getServiceClient } from '@/lib/auth';
-import { bunnyConfig, generateSignedStorageUrl } from '@/lib/bunny';
+import { generateSignedStorageUrl } from '@/lib/bunny';
 import archiver from 'archiver';
+import { PassThrough } from 'stream';
+
+// Increase timeout for large downloads
+export const maxDuration = 60;
 
 /**
  * GET /api/turnovers/[id]/download-plates
@@ -25,6 +29,7 @@ export async function GET(
       .select(`
         id,
         name,
+        turnover_number,
         sequence:sequences!inner(
           code,
           project:projects!inner(code)
@@ -34,6 +39,7 @@ export async function GET(
       .single();
 
     if (turnoverError || !turnover) {
+      console.error('[download-plates] Turnover not found:', turnoverError);
       return NextResponse.json(
         { error: 'Turnover not found' },
         { status: 404 }
@@ -53,6 +59,7 @@ export async function GET(
       .eq('turnover_id', id);
 
     if (shotsError) {
+      console.error('[download-plates] Failed to fetch shots:', shotsError);
       return NextResponse.json(
         { error: 'Failed to fetch turnover shots' },
         { status: 500 }
@@ -78,6 +85,7 @@ export async function GET(
       .order('sort_order');
 
     if (platesError) {
+      console.error('[download-plates] Failed to fetch plates:', platesError);
       return NextResponse.json(
         { error: 'Failed to fetch plates' },
         { status: 500 }
@@ -91,6 +99,8 @@ export async function GET(
       );
     }
 
+    console.log(`[download-plates] Processing ${plates.length} plates for turnover ${id}`);
+
     // Create a map of shot_id to shot code for folder organization
     const shotCodeMap = new Map<string, string>();
     turnoverShots.forEach((ts: any) => {
@@ -99,76 +109,82 @@ export async function GET(
 
     // Build ZIP filename
     const projectCode = (turnover.sequence as any).project.code;
-    const sequenceCode = (turnover.sequence as any).code;
-    const zipFilename = `${projectCode}_${sequenceCode}_${turnover.name}_plates.zip`;
+    const toNumber = turnover.turnover_number || 1;
+    const zipFilename = `${projectCode}_TO${toNumber}_plates.zip`;
 
-    // Create archive
+    // Create archive with buffer collection
     const archive = archiver('zip', {
-      zlib: { level: 5 } // Balanced compression
+      zlib: { level: 5 }
     });
 
-    // Set up response headers for streaming ZIP
-    const headers = new Headers();
-    headers.set('Content-Type', 'application/zip');
-    headers.set('Content-Disposition', `attachment; filename="${zipFilename}"`);
+    const chunks: Buffer[] = [];
+    const passThrough = new PassThrough();
+    
+    passThrough.on('data', (chunk) => chunks.push(chunk));
+    archive.pipe(passThrough);
 
-    // Create a TransformStream to pipe archive to response
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
-
-    // Pipe archive to writer
-    archive.on('data', (chunk) => writer.write(chunk));
-    archive.on('end', () => writer.close());
-    archive.on('error', (err) => {
-      console.error('Archive error:', err);
-      writer.abort(err);
-    });
-
-    // Process plates in the background
-    (async () => {
-      for (const plate of plates) {
-        try {
-          const shotCode = shotCodeMap.get(plate.shot_id) || 'unknown';
-          
-          // Generate signed URL and fetch the file
-          let fileUrl: string;
-          if (plate.storage_path) {
-            fileUrl = generateSignedStorageUrl(plate.storage_path, {
-              expiresIn: 300,
-              directDownload: true,
-            });
-          } else if (plate.cdn_url) {
-            fileUrl = plate.cdn_url;
-          } else {
-            console.warn(`Plate ${plate.id} has no storage_path or cdn_url, skipping`);
-            continue;
-          }
-
-          const response = await fetch(fileUrl);
-          if (!response.ok) {
-            console.warn(`Failed to fetch plate ${plate.filename}: ${response.status}`);
-            continue;
-          }
-
-          const buffer = await response.arrayBuffer();
-          
-          // Add to archive with folder structure: shotCode/filename
-          archive.append(Buffer.from(buffer), {
-            name: `${shotCode}/${plate.filename}`
+    // Download and add each plate
+    for (const plate of plates) {
+      try {
+        const shotCode = shotCodeMap.get(plate.shot_id) || 'unknown';
+        
+        // Generate signed URL and fetch the file
+        let fileUrl: string;
+        if (plate.storage_path) {
+          fileUrl = generateSignedStorageUrl(plate.storage_path, {
+            expiresIn: 300,
+            directDownload: true,
           });
-        } catch (err) {
-          console.error(`Error processing plate ${plate.filename}:`, err);
-          // Continue with other plates
+        } else if (plate.cdn_url) {
+          fileUrl = plate.cdn_url;
+        } else {
+          console.warn(`[download-plates] Plate ${plate.id} has no URL, skipping`);
+          continue;
         }
+
+        console.log(`[download-plates] Fetching ${plate.filename}...`);
+        const response = await fetch(fileUrl);
+        
+        if (!response.ok) {
+          console.warn(`[download-plates] Failed to fetch ${plate.filename}: ${response.status}`);
+          continue;
+        }
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        
+        // Add to archive with folder structure: shotCode/filename
+        archive.append(buffer, {
+          name: `${shotCode}/${plate.filename}`
+        });
+        
+        console.log(`[download-plates] Added ${shotCode}/${plate.filename} (${buffer.length} bytes)`);
+      } catch (err) {
+        console.error(`[download-plates] Error processing ${plate.filename}:`, err);
+        // Continue with other plates
       }
+    }
 
-      // Finalize archive
-      await archive.finalize();
-    })();
+    // Finalize and wait for completion
+    await archive.finalize();
+    
+    // Wait for all chunks to be collected
+    await new Promise<void>((resolve) => {
+      passThrough.on('end', resolve);
+    });
 
-    return new Response(readable, { headers });
+    const zipBuffer = Buffer.concat(chunks);
+    console.log(`[download-plates] ZIP created: ${zipBuffer.length} bytes`);
+
+    // Return the ZIP file
+    return new Response(zipBuffer, {
+      headers: {
+        'Content-Type': 'application/zip',
+        'Content-Disposition': `attachment; filename="${zipFilename}"`,
+        'Content-Length': zipBuffer.length.toString(),
+      },
+    });
   } catch (error) {
-    console.error('Download plates error:', error);
+    console.error('[download-plates] Unexpected error:', error);
     return NextResponse.json(
       { error: 'Failed to generate download' },
       { status: 500 }

@@ -7,6 +7,9 @@
   "functions": {
     "src/app/api/turnover/upload-file/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/turnovers/[id]/download-plates/route.ts": {
+      "maxDuration": 60
     }
   },
   "headers": [
