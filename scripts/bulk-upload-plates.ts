@@ -121,25 +121,91 @@ async function main() {
     platesByFilename.set(plate.filename.toLowerCase(), plate);
   }
   
+  // Also fetch all shots for creating new plates
+  console.log('Fetching shots for auto-create...');
+  const { data: shots } = await supabase
+    .from('shots')
+    .select(`id, code, sequence:sequences!inner(project:projects!inner(code))`);
+  
+  const shotsByCode = new Map<string, any>();
+  for (const shot of shots || []) {
+    shotsByCode.set(shot.code.toLowerCase(), shot);
+  }
+  console.log(`Found ${shots?.length || 0} shots\n`);
+  
   // Match and upload
   let matched = 0;
   let uploaded = 0;
   let skipped = 0;
   let failed = 0;
+  let created = 0;
   
   for (const filePath of files) {
     const filename = path.basename(filePath);
-    const plate = platesByFilename.get(filename.toLowerCase());
+    let plate = platesByFilename.get(filename.toLowerCase());
+    let projectCode: string;
+    let shotCode: string;
     
     if (!plate) {
-      console.log(`⚠️  No match: ${filename}`);
-      skipped++;
-      continue;
+      // Try to extract shot code from filename and auto-create plate
+      // Pattern: {shot_code}_{type}.mov e.g., 31_0100_bgv1.mov -> shot 31_0100
+      const match = filename.match(/^(\d+_\d+)_/i) || filename.match(/^(VFX_\d+_\d+)_/i);
+      if (!match) {
+        console.log(`⚠️  No match (can't parse shot code): ${filename}`);
+        skipped++;
+        continue;
+      }
+      
+      const extractedShotCode = match[1].replace(/^VFX_/i, '');
+      const shot = shotsByCode.get(extractedShotCode.toLowerCase());
+      
+      if (!shot) {
+        console.log(`⚠️  No match (shot ${extractedShotCode} not found): ${filename}`);
+        skipped++;
+        continue;
+      }
+      
+      projectCode = shot.sequence?.project?.code || 'UNKNOWN';
+      shotCode = shot.code;
+      
+      // Extract description from filename (e.g., bgv1, fgv1)
+      const descMatch = filename.match(/_([a-z]+\d*)\.mov$/i);
+      const description = descMatch ? descMatch[1].toUpperCase() : null;
+      
+      if (!dryRun) {
+        // Create new plate record
+        const { data: newPlate, error: createError } = await supabase
+          .from('shot_plates')
+          .insert({
+            shot_id: shot.id,
+            filename,
+            description,
+            sort_order: 0,
+          })
+          .select()
+          .single();
+        
+        if (createError) {
+          console.log(`❌ Failed to create plate for ${filename}: ${createError.message}`);
+          failed++;
+          continue;
+        }
+        
+        plate = { ...newPlate, shot };
+        console.log(`✨ Created plate record for ${filename} (shot ${shotCode})`);
+        created++;
+      } else {
+        console.log(`📤 ${filename} → [NEW PLATE for shot ${shotCode}]`);
+        console.log(`   [DRY RUN] Would create plate and upload`);
+        created++;
+        continue;
+      }
+    } else {
+      projectCode = plate.shot?.sequence?.project?.code || 'UNKNOWN';
+      shotCode = plate.shot?.code || 'UNKNOWN';
     }
     
     matched++;
-    const projectCode = plate.shot?.sequence?.project?.code || 'UNKNOWN';
-    const shotCode = plate.shot?.code || 'UNKNOWN';
     
     // Check if already has cdn_url that works
     if (plate.cdn_url && !plate.cdn_url.includes('shotflow-pull')) {
@@ -195,6 +261,7 @@ async function main() {
   console.log('\n========== Summary ==========');
   console.log(`Files found:    ${files.length}`);
   console.log(`Matched:        ${matched}`);
+  console.log(`Created:        ${created}`);
   console.log(`Uploaded:       ${uploaded}`);
   console.log(`Skipped:        ${skipped}`);
   console.log(`Failed:         ${failed}`);
