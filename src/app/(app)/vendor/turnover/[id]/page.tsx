@@ -505,13 +505,8 @@ export default function VendorTurnoverDetailPage() {
               variant="outline" 
               size="sm" 
               onClick={() => {
-                // Trigger download via API
-                const link = document.createElement('a');
-                link.href = `/api/turnovers/${turnoverId}/download-plates`;
-                link.download = '';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                // Navigate to download endpoint (includes auth cookies)
+                window.location.href = `/api/turnovers/${turnoverId}/download-plates`;
               }}
             >
               <Download className="h-4 w-4 mr-2" />
