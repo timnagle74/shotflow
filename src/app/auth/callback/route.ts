@@ -27,6 +27,11 @@ export async function GET(request: Request) {
     });
     
     if (!error) {
+      // For invite tokens, redirect to password setup page
+      // so the new user can set their password
+      if (type === "invite") {
+        return NextResponse.redirect(`${origin}/setup-password`);
+      }
       return NextResponse.redirect(`${origin}${next}`);
     }
   }
