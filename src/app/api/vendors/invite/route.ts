@@ -77,9 +77,13 @@ export async function POST(req: NextRequest) {
     // 2. Invite user via Supabase Auth (or find existing)
     let userId: string | null = null;
 
+    // Get the app URL from environment or use default
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://shotflow-eight.vercel.app";
+
     const { data: authData, error: authError } =
       await adminClient.auth.admin.inviteUserByEmail(contactEmail, {
         data: { name: contactName, role: userRole },
+        redirectTo: `${appUrl}/auth/callback`,
       });
 
     if (authError) {

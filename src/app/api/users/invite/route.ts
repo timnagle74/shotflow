@@ -62,10 +62,14 @@ export async function POST(req: NextRequest) {
 
     // Try invite first, fall back to direct user creation
     console.log("Attempting to invite user:", { email, name, role });
+
+    // Get the app URL from environment or use default
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://shotflow-eight.vercel.app";
     
     const { data: authData, error: authError } =
       await adminClient.auth.admin.inviteUserByEmail(email, {
         data: { name, role },
+        redirectTo: `${appUrl}/auth/callback`,
       });
 
     if (authError) {
