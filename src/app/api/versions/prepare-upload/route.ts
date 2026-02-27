@@ -105,14 +105,15 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    // Prepare signed Storage upload URL for ProRes (no raw key exposed)
+    // Prepare Storage upload via proxy (Bunny doesn't support client-side token auth for uploads)
     if (hasProres && BUNNY_STORAGE_ZONE && BUNNY_STORAGE_PASSWORD) {
       const ext = proresFilename?.split('.').pop() || 'mov';
-      const storagePath = `${basePath}/${shotCode}_${versionStr}.${ext}`;
+      const storagePath = `/${basePath}/${shotCode}_${versionStr}.${ext}`;
 
       result.storageUpload = {
-        url: generateSignedUploadUrl(storagePath),
+        url: `/api/versions/upload-proxy?path=${encodeURIComponent(storagePath)}`,
         path: storagePath,
+        useProxy: true,
       };
     }
 

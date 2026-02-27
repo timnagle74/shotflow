@@ -105,6 +105,7 @@ export function VersionUpload({
       });
 
       xhr.open("PUT", url);
+      xhr.withCredentials = true; // Include auth cookies for proxy uploads
       Object.entries(headers).forEach(([key, value]) => {
         xhr.setRequestHeader(key, value);
       });
@@ -146,22 +147,26 @@ export function VersionUpload({
 
       const prepareData = await prepareResponse.json();
 
-      // Step 2: Upload video directly to Bunny Storage
+      // Step 2: Upload video via proxy (or directly if signed URL provided)
       if (prepareData.storageUpload) {
         setUploadStatus("uploading");
         setStatusMessage(`Uploading ${formatFileSize(videoFile.file.size)}...`);
 
+        const uploadUrl = prepareData.storageUpload.url;
+        const headers: Record<string, string> = {
+          "Content-Type": "application/octet-stream",
+        };
+
         const response = await uploadWithProgress(
-          prepareData.storageUpload.url,
+          uploadUrl,
           videoFile.file,
-          {
-            "Content-Type": "application/octet-stream",
-          },
+          headers,
           (progress) => setUploadProgress(progress)
         );
 
         if (!response.ok && response.status !== 201) {
-          throw new Error(`Upload failed: ${response.status}`);
+          const errorText = await response.text().catch(() => '');
+          throw new Error(`Upload failed: ${response.status}${errorText ? ` - ${errorText}` : ''}`);
         }
       }
 
