@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
       storageUpload?: {
         url: string;
         path: string;
+        useProxy?: boolean;
       };
       streamUpload?: {
         libraryId: string;
