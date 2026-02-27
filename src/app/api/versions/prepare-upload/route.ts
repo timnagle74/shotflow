@@ -106,15 +106,15 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    // Prepare Storage upload via proxy (Bunny doesn't support client-side token auth for uploads)
+    // Prepare Storage upload with signed URL (direct to Bunny CDN, bypasses Vercel size limits)
     if (hasProres && BUNNY_STORAGE_ZONE && BUNNY_STORAGE_PASSWORD) {
       const ext = proresFilename?.split('.').pop() || 'mov';
       const storagePath = `/${basePath}/${shotCode}_${versionStr}.${ext}`;
 
       result.storageUpload = {
-        url: `/api/versions/upload-proxy?path=${encodeURIComponent(storagePath)}`,
+        url: generateSignedUploadUrl(storagePath, 7200), // 2 hour expiry for large files
         path: storagePath,
-        useProxy: true,
+        useProxy: false, // Direct upload to Bunny CDN
       };
     }
 

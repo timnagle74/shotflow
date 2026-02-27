@@ -81,7 +81,8 @@ export function VersionUpload({
     url: string,
     file: File,
     headers: Record<string, string>,
-    onProgress: (progress: number) => void
+    onProgress: (progress: number) => void,
+    useProxy: boolean = false
   ): Promise<Response> => {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -105,7 +106,8 @@ export function VersionUpload({
       });
 
       xhr.open("PUT", url);
-      xhr.withCredentials = true; // Include auth cookies for proxy uploads
+      // Only include credentials for proxy uploads (not direct CDN uploads)
+      xhr.withCredentials = useProxy;
       Object.entries(headers).forEach(([key, value]) => {
         xhr.setRequestHeader(key, value);
       });
@@ -147,10 +149,11 @@ export function VersionUpload({
 
       const prepareData = await prepareResponse.json();
 
-      // Step 2: Upload video via proxy (or directly if signed URL provided)
+      // Step 2: Upload video directly to Bunny CDN (signed URL) or via proxy
       if (prepareData.storageUpload) {
         setUploadStatus("uploading");
-        setStatusMessage(`Uploading ${formatFileSize(videoFile.file.size)}...`);
+        const useProxy = prepareData.storageUpload.useProxy === true;
+        setStatusMessage(`Uploading ${formatFileSize(videoFile.file.size)}${useProxy ? '' : ' (direct)'}...`);
 
         const uploadUrl = prepareData.storageUpload.url;
         const headers: Record<string, string> = {
@@ -161,7 +164,8 @@ export function VersionUpload({
           uploadUrl,
           videoFile.file,
           headers,
-          (progress) => setUploadProgress(progress)
+          (progress) => setUploadProgress(progress),
+          useProxy
         );
 
         if (!response.ok && response.status !== 201) {
