@@ -8,6 +8,7 @@ const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
 /**
  * PUT /api/versions/upload-proxy
  * Proxies file uploads to Bunny Storage with server-side authentication.
+ * Uses streaming to avoid buffering large files in memory.
  * Query params: path (required) - the storage path to upload to
  */
 export async function PUT(request: NextRequest) {
@@ -27,20 +28,31 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Storage not configured' }, { status: 500 });
     }
 
-    // Get the file data from request body
-    const fileData = await request.arrayBuffer();
-    
-    // Upload to Bunny Storage
+    // Get request body as a stream - don't buffer!
+    const body = request.body;
+    if (!body) {
+      return NextResponse.json({ error: 'No file data provided' }, { status: 400 });
+    }
+
+    // Upload to Bunny Storage - stream directly without buffering
     const normalizedPath = storagePath.startsWith('/') ? storagePath : `/${storagePath}`;
     const bunnyUrl = `https://${BUNNY_STORAGE_HOSTNAME}/${BUNNY_STORAGE_ZONE}${normalizedPath}`;
 
+    // Stream the request body directly to Bunny
     const bunnyResponse = await fetch(bunnyUrl, {
       method: 'PUT',
       headers: {
         'AccessKey': BUNNY_STORAGE_PASSWORD,
         'Content-Type': 'application/octet-stream',
+        // Forward content-length if available
+        ...(request.headers.get('content-length') 
+          ? { 'Content-Length': request.headers.get('content-length')! }
+          : {}),
       },
-      body: fileData,
+      // @ts-expect-error - Node fetch supports ReadableStream body
+      body: body,
+      // Vercel edge supports duplex streaming
+      duplex: 'half',
     });
 
     if (!bunnyResponse.ok) {
@@ -55,7 +67,6 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ 
       success: true, 
       path: normalizedPath,
-      size: fileData.byteLength
     }, { status: 201 });
 
   } catch (error) {
@@ -67,6 +78,5 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-// Configure for large file uploads (Next.js App Router)
-export const runtime = 'nodejs';
-export const maxDuration = 300; // 5 minutes for large uploads
+// Use Edge runtime for streaming support
+export const runtime = 'edge';

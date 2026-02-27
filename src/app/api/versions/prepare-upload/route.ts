@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, requireUploader, getServiceClient } from '@/lib/auth';
-import { generateSignedUploadUrl } from '@/lib/bunny';
 
 const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
 const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
@@ -106,15 +105,15 @@ export async function POST(request: NextRequest) {
       },
     };
 
-    // Prepare Storage upload with signed URL (direct to Bunny CDN, bypasses Vercel size limits)
+    // Prepare Storage upload via streaming proxy (Edge runtime streams to Bunny without buffering)
     if (hasProres && BUNNY_STORAGE_ZONE && BUNNY_STORAGE_PASSWORD) {
       const ext = proresFilename?.split('.').pop() || 'mov';
       const storagePath = `/${basePath}/${shotCode}_${versionStr}.${ext}`;
 
       result.storageUpload = {
-        url: generateSignedUploadUrl(storagePath, 7200), // 2 hour expiry for large files
+        url: `/api/versions/upload-proxy?path=${encodeURIComponent(storagePath)}`,
         path: storagePath,
-        useProxy: false, // Direct upload to Bunny CDN
+        useProxy: true, // Streaming proxy to Bunny Storage
       };
     }
 

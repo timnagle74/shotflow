@@ -37,33 +37,24 @@ ShotFlow uses [Bunny.net](https://bunny.net) for file storage and video streamin
                                                └─────────────────────┘
 ```
 
-### Why Direct Upload?
+### Why Streaming Proxy?
 
 **Problem:** Vercel serverless functions have a **4.5MB request body limit**. VFX files are typically 100MB - 10GB+.
 
-**Solution:** Generate signed URLs server-side, upload directly from browser to Bunny CDN. The Vercel function only handles:
-- Authentication (verify user is logged in)
-- URL signing (generate time-limited upload URL)
-- Database records (after upload completes)
+**Problem #2:** Bunny Storage requires `AccessKey` header authentication, which can't be exposed to browsers (signed URLs only work for downloads, not uploads).
 
-### Signed URL Security
+**Solution:** Use Vercel Edge Runtime with streaming proxy:
+- Edge functions can stream request bodies without buffering
+- Server-side auth (AccessKey added by proxy, never exposed to client)
+- No file size limits (streaming, not buffering)
 
-Signed URLs use SHA256 HMAC with:
-- Storage API password (never exposed to client)
-- File path
-- Expiration timestamp (2 hours for large files)
+### Streaming Proxy Architecture
 
-The browser gets a pre-signed URL like:
-```
-https://storage.bunnycdn.com/zone/path/file.mov?token=abc123&expires=1234567890
-```
-
-This URL:
-- ✅ Works for PUT requests (upload)
-- ✅ Expires after 2 hours
-- ✅ Only valid for the specific path
-- ❌ Cannot be reused after expiry
-- ❌ Cannot be used for different paths
+The proxy route (`/api/versions/upload-proxy`) runs on Edge runtime and:
+1. Authenticates the user (session cookie)
+2. Streams request body directly to Bunny Storage
+3. Adds `AccessKey` header server-side
+4. Never buffers the full file in memory
 
 ## File Types
 
