@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useCallback, useRef } from "react";
+import * as tus from "tus-js-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -76,45 +76,6 @@ export function VersionUpload({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
-  // Upload file with progress using XMLHttpRequest
-  const uploadWithProgress = (
-    url: string,
-    file: File,
-    headers: Record<string, string>,
-    onProgress: (progress: number) => void,
-    useProxy: boolean = false
-  ): Promise<Response> => {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      
-      xhr.upload.addEventListener("progress", (e) => {
-        if (e.lengthComputable) {
-          const percent = Math.round((e.loaded / e.total) * 100);
-          onProgress(percent);
-        }
-      });
-
-      xhr.addEventListener("load", () => {
-        resolve(new Response(xhr.response, {
-          status: xhr.status,
-          statusText: xhr.statusText,
-        }));
-      });
-
-      xhr.addEventListener("error", () => {
-        reject(new Error("Upload failed"));
-      });
-
-      xhr.open("PUT", url);
-      // Only include credentials for proxy uploads (not direct CDN uploads)
-      xhr.withCredentials = useProxy;
-      Object.entries(headers).forEach(([key, value]) => {
-        xhr.setRequestHeader(key, value);
-      });
-      xhr.send(file);
-    });
-  };
-
   const handleUpload = useCallback(async () => {
     if (!videoFile.file) {
       setErrorMessage("Please select a video file to upload");
@@ -127,7 +88,7 @@ export function VersionUpload({
     setStatusMessage("Preparing upload...");
 
     try {
-      // Step 1: Get upload URL from API
+      // Step 1: Get TUS upload credentials from API
       const prepareResponse = await fetch("/api/versions/prepare-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,10 +96,7 @@ export function VersionUpload({
           shotId,
           versionNumber: nextVersionNumber,
           description: description.trim() || undefined,
-          createdById,
-          hasProres: true,
-          hasPreview: false, // No separate preview - we'll transcode
-          proresFilename: videoFile.file.name,
+          filename: videoFile.file.name,
         }),
       });
 
@@ -148,46 +106,56 @@ export function VersionUpload({
       }
 
       const prepareData = await prepareResponse.json();
+      const { tusUpload, version } = prepareData;
 
-      // Step 2: Upload video directly to Bunny CDN (signed URL) or via proxy
-      if (prepareData.storageUpload) {
-        setUploadStatus("uploading");
-        const useProxy = prepareData.storageUpload.useProxy === true;
-        setStatusMessage(`Uploading ${formatFileSize(videoFile.file.size)}${useProxy ? '' : ' (direct)'}...`);
-
-        const uploadUrl = prepareData.storageUpload.url;
-        const headers: Record<string, string> = {
-          "Content-Type": "application/octet-stream",
-        };
-
-        const response = await uploadWithProgress(
-          uploadUrl,
-          videoFile.file,
-          headers,
-          (progress) => setUploadProgress(progress),
-          useProxy
-        );
-
-        if (!response.ok && response.status !== 201) {
-          const errorText = await response.text().catch(() => '');
-          throw new Error(`Upload failed: ${response.status}${errorText ? ` - ${errorText}` : ''}`);
-        }
+      if (!tusUpload) {
+        throw new Error("TUS upload not configured - check Bunny Stream credentials");
       }
 
-      // Step 3: Finalize - create version record & trigger transcoding
+      // Step 2: Upload via TUS (direct to Bunny Stream, no Vercel limit!)
+      setUploadStatus("uploading");
+      setStatusMessage(`Uploading ${formatFileSize(videoFile.file.size)}...`);
+
+      await new Promise<void>((resolve, reject) => {
+        const upload = new tus.Upload(videoFile.file!, {
+          endpoint: tusUpload.url,
+          headers: {
+            'AuthorizationSignature': tusUpload.authSignature,
+            'AuthorizationExpire': String(tusUpload.expiresAt),
+            'VideoId': tusUpload.videoId,
+            'LibraryId': tusUpload.libraryId,
+          },
+          metadata: {
+            filename: videoFile.file!.name,
+            filetype: videoFile.file!.type || 'video/quicktime',
+          },
+          onError: (error) => {
+            console.error("TUS upload error:", error);
+            reject(new Error(`Upload failed: ${error.message}`));
+          },
+          onProgress: (bytesUploaded, bytesTotal) => {
+            const progress = Math.round((bytesUploaded / bytesTotal) * 100);
+            setUploadProgress(progress);
+          },
+          onSuccess: () => {
+            console.log("TUS upload complete");
+            resolve();
+          },
+        });
+        upload.start();
+      });
+
+      // Step 3: Finalize - update version record
       setUploadStatus("finalizing");
       setUploadProgress(100);
-      setStatusMessage("Creating version & starting transcode...");
+      setStatusMessage("Finalizing version...");
 
       const finalizeResponse = await fetch("/api/versions/finalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          shotId,
-          versionNumber: nextVersionNumber,
-          description: description.trim() || undefined,
-          createdById,
-          storagePath: prepareData.storageUpload?.path,
+          versionId: version.id,
+          videoId: tusUpload.videoId,
         }),
       });
 
@@ -199,11 +167,7 @@ export function VersionUpload({
       const result = await finalizeResponse.json();
 
       setUploadStatus("success");
-      setStatusMessage(
-        result.transcoding 
-          ? "Upload complete! Web preview will be ready in ~1 min."
-          : "Upload complete!"
-      );
+      setStatusMessage("Upload complete! Web preview will be ready in ~1 min.");
 
       // Notify parent
       if (onUploadComplete) {
@@ -226,7 +190,6 @@ export function VersionUpload({
     shotId,
     nextVersionNumber,
     description,
-    createdById,
     videoFile.file,
     onUploadComplete,
     resetForm,
@@ -330,7 +293,7 @@ export function VersionUpload({
             <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/30 rounded-lg p-3">
               <Sparkles className="h-4 w-4 text-primary shrink-0 mt-0.5" />
               <span>
-                Your video will be stored for download and automatically transcoded to H.264 for web playback.
+                Your video will be uploaded directly and transcoded to H.264 for web playback.
               </span>
             </div>
           )}

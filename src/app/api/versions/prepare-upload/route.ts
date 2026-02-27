@@ -1,26 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'crypto';
 import { authenticateRequest, requireUploader, getServiceClient } from '@/lib/auth';
 
-const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE;
-const BUNNY_STORAGE_PASSWORD = process.env.BUNNY_STORAGE_PASSWORD;
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
+const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN;
+
+// Generate TUS upload signature for Bunny Stream
+function generateTusSignature(libraryId: string, apiKey: string, videoId: string, expiresAt: number): string {
+  const signatureData = `${libraryId}${apiKey}${expiresAt}${videoId}`;
+  return createHash('sha256').update(signatureData).digest('hex');
+}
 
 interface PrepareUploadPayload {
   shotId: string;
   versionNumber: number;
   description?: string;
-  createdById?: string; // DEPRECATED: ignored, creator is derived from auth session
-  hasProres: boolean;
-  hasPreview: boolean;
-  proresFilename?: string;
-  previewFilename?: string;
+  filename: string;
 }
 
 /**
  * POST /api/versions/prepare-upload
- * Prepares signed upload URLs for direct browser upload to Bunny.net.
- * No raw credentials are returned to the client.
+ * Creates a version record and returns TUS upload credentials for direct browser upload to Bunny Stream.
+ * No file data passes through Vercel - uploads go directly to Bunny.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -31,21 +33,27 @@ export async function POST(request: NextRequest) {
     if (roleCheck) return roleCheck;
 
     const body: PrepareUploadPayload = await request.json();
-    const { shotId, versionNumber, description, hasProres, hasPreview, proresFilename, previewFilename } = body;
-    // Always use the authenticated user as the creator — never trust client input
+    const { shotId, versionNumber, description, filename } = body;
     const createdById = auth.user.userId;
 
-    if (!shotId || !versionNumber) {
+    if (!shotId || !versionNumber || !filename) {
       return NextResponse.json(
-        { error: 'Missing required fields: shotId, versionNumber' },
+        { error: 'Missing required fields: shotId, versionNumber, filename' },
         { status: 400 }
       );
     }
 
-    const supabaseAdmin = getServiceClient();
+    if (!BUNNY_STREAM_LIBRARY_ID || !BUNNY_STREAM_API_KEY) {
+      return NextResponse.json(
+        { error: 'Bunny Stream not configured' },
+        { status: 500 }
+      );
+    }
 
-    // Get shot info for path construction
-    const { data: shot, error: shotError } = await supabaseAdmin
+    const supabase = getServiceClient();
+
+    // Get shot info for naming
+    const { data: shot, error: shotError } = await supabase
       .from('shots')
       .select(`
         id,
@@ -65,95 +73,77 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Type assertion for nested data
     const sequenceData = shot.sequence as unknown as { code: string; project: { code: string; name: string } };
-    const projectCode = sequenceData.project.code;
     const projectName = sequenceData.project.name;
     const shotCode = shot.code;
     const versionStr = `v${String(versionNumber).padStart(3, '0')}`;
-    const basePath = `${projectCode}/${shotCode}/${versionStr}`;
 
-    const result: {
-      storageUpload?: {
-        url: string;
-        path: string;
-        useProxy?: boolean;
-      };
-      streamUpload?: {
-        libraryId: string;
-        videoId: string;
-        uploadUrl: string;
-      };
-      metadata: {
-        shotId: string;
-        versionNumber: number;
-        description?: string;
-        createdById: string;
-        projectCode: string;
-        shotCode: string;
-        basePath: string;
-      };
-    } = {
-      metadata: {
-        shotId,
-        versionNumber,
-        description,
-        createdById,
-        projectCode,
-        shotCode,
-        basePath,
-      },
-    };
-
-    // Prepare Storage upload via streaming proxy (Edge runtime streams to Bunny without buffering)
-    if (hasProres && BUNNY_STORAGE_ZONE && BUNNY_STORAGE_PASSWORD) {
-      const ext = proresFilename?.split('.').pop() || 'mov';
-      const storagePath = `/${basePath}/${shotCode}_${versionStr}.${ext}`;
-
-      result.storageUpload = {
-        url: `/api/versions/upload-proxy?path=${encodeURIComponent(storagePath)}`,
-        path: storagePath,
-        useProxy: true, // Streaming proxy to Bunny Storage
-      };
-    }
-
-    // Create Stream video entry for preview and return a TUS upload URL
-    if (hasPreview && BUNNY_STREAM_LIBRARY_ID && BUNNY_STREAM_API_KEY) {
-      const title = `${projectName}_${shotCode}_${versionStr}`;
-      
-      // Create video entry in Bunny Stream
-      const createResponse = await fetch(
-        `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos`,
-        {
-          method: 'POST',
-          headers: {
-            'AccessKey': BUNNY_STREAM_API_KEY,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ title }),
-        }
-      );
-
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        console.error('Bunny Stream create error:', errorText);
-        return NextResponse.json(
-          { error: 'Failed to create video entry in Bunny Stream' },
-          { status: 500 }
-        );
+    // Create Bunny Stream video entry
+    const videoTitle = `${projectName}_${shotCode}_${versionStr}`;
+    const createRes = await fetch(
+      `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos`,
+      {
+        method: 'POST',
+        headers: {
+          'AccessKey': BUNNY_STREAM_API_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title: videoTitle }),
       }
+    );
 
-      const videoData = await createResponse.json();
-      
-      // Return the TUS upload URL (no raw API key needed by client)
-      result.streamUpload = {
-        libraryId: BUNNY_STREAM_LIBRARY_ID,
-        videoId: videoData.guid,
-        uploadUrl: `https://video.bunnycdn.com/tusupload`,
-      };
+    if (!createRes.ok) {
+      const errorText = await createRes.text();
+      console.error('Bunny Stream create error:', errorText);
+      return NextResponse.json(
+        { error: 'Failed to create video entry in Bunny Stream' },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json(result);
+    const videoData = await createRes.json();
+    const videoId = videoData.guid;
+
+    // Generate TUS upload credentials
+    const expiresAt = Math.floor(Date.now() / 1000) + 7200; // 2 hours for large files
+    const authSignature = generateTusSignature(BUNNY_STREAM_LIBRARY_ID, BUNNY_STREAM_API_KEY, videoId, expiresAt);
+
+    // Create version record in database (with pending status)
+    const previewUrl = BUNNY_STREAM_CDN ? `${BUNNY_STREAM_CDN}/${videoId}/playlist.m3u8` : null;
+    
+    const { data: version, error: versionError } = await supabase
+      .from('versions')
+      .insert({
+        shot_id: shotId,
+        version_number: versionNumber,
+        created_by_id: createdById,
+        status: 'WIP',
+        description: description || null,
+        bunny_video_id: videoId,
+        preview_url: previewUrl,
+        filename: filename,
+      })
+      .select()
+      .single();
+
+    if (versionError) {
+      console.error('Failed to create version:', versionError);
+      return NextResponse.json(
+        { error: 'Failed to create version record', details: versionError.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      version,
+      tusUpload: {
+        url: 'https://video.bunnycdn.com/tusupload',
+        authSignature,
+        libraryId: BUNNY_STREAM_LIBRARY_ID,
+        videoId,
+        expiresAt,
+      },
+    });
   } catch (error) {
     console.error('Prepare upload error:', error);
     return NextResponse.json(
