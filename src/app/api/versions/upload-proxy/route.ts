@@ -62,10 +62,9 @@ export async function PUT(request: NextRequest) {
     const bunnyResponse = await fetch(bunnyUrl, {
       method: 'PUT',
       headers,
-      // @ts-expect-error - ReadableStream body is valid
       body: body,
       duplex: 'half',
-    } as RequestInit);
+    } as RequestInit & { duplex: string });
 
     console.log('[upload-proxy] Bunny response status:', bunnyResponse.status);
 
