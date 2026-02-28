@@ -108,19 +108,21 @@ export async function POST(request: NextRequest) {
     const expiresAt = Math.floor(Date.now() / 1000) + 7200; // 2 hours for large files
     const authSignature = generateTusSignature(BUNNY_STREAM_LIBRARY_ID, BUNNY_STREAM_API_KEY, videoId, expiresAt);
 
-    // Create version record in database (with pending status)
+    // Create version record in shot_versions table (primary table for versions)
     const previewUrl = BUNNY_STREAM_CDN ? `${BUNNY_STREAM_CDN}/${videoId}/playlist.m3u8` : null;
     
     const { data: version, error: versionError } = await supabase
-      .from('versions')
+      .from('shot_versions')
       .insert({
         shot_id: shotId,
         version_number: versionNumber,
-        created_by_id: createdById,
-        status: 'WIP',
-        description: description || null,
-        bunny_video_id: videoId,
+        version_code: versionStr,
+        submitted_by_id: createdById,
+        status: 'wip',
+        filename: filename,
+        video_id: videoId,
         preview_url: previewUrl,
+        submitted_at: new Date().toISOString(),
       })
       .select()
       .single();

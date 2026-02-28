@@ -33,13 +33,11 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceClient();
 
-    // Update version with thumbnail path
-    const thumbnailPath = BUNNY_STREAM_CDN ? `${BUNNY_STREAM_CDN}/${videoId}/thumbnail.jpg` : null;
-
+    // Update version in shot_versions table
     const { data: version, error: updateError } = await supabase
-      .from('versions')
+      .from('shot_versions')
       .update({
-        thumbnail_path: thumbnailPath,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', versionId)
       .select()
