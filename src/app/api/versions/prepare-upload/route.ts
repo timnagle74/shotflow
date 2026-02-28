@@ -135,6 +135,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Also insert into legacy versions table (notes table has FK to this)
+    await supabase
+      .from('versions')
+      .insert({
+        id: version.id, // Use same ID so notes work
+        shot_id: shotId,
+        version_number: versionNumber,
+        created_by_id: createdById,
+        status: 'WIP',
+        bunny_video_id: videoId,
+        preview_url: previewUrl,
+      })
+      .single();
+
     return NextResponse.json({
       version,
       tusUpload: {
