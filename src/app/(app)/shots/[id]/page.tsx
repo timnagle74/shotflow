@@ -1545,6 +1545,25 @@ export default function ShotDetailPage() {
                                 </span>
                               )}
                             </div>
+                            {/* Show notes inline */}
+                            {notes.filter(n => n.version_id === version.id).length > 0 && (
+                              <div className="mt-2 space-y-1.5">
+                                {notes.filter(n => n.version_id === version.id).slice(0, 3).map(note => {
+                                  const noteAuthor = users.find(u => u.id === note.author_id);
+                                  return (
+                                    <div key={note.id} className="text-xs bg-muted/50 rounded px-2 py-1.5">
+                                      <span className="text-muted-foreground">{noteAuthor?.name || 'Unknown'}: </span>
+                                      <span className="text-foreground">{note.content}</span>
+                                    </div>
+                                  );
+                                })}
+                                {notes.filter(n => n.version_id === version.id).length > 3 && (
+                                  <p className="text-xs text-muted-foreground pl-2">
+                                    +{notes.filter(n => n.version_id === version.id).length - 3} more...
+                                  </p>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
