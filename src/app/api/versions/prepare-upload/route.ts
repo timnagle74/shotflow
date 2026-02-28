@@ -121,7 +121,6 @@ export async function POST(request: NextRequest) {
         description: description || null,
         bunny_video_id: videoId,
         preview_url: previewUrl,
-        filename: filename,
       })
       .select()
       .single();
