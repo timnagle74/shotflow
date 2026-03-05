@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateSignedStorageUrl } from '@/lib/bunny';
 import { authenticateRequest, getServiceClient } from '@/lib/auth';
+import { getPresignedDownloadUrl, isS3Configured } from '@/lib/s3';
 
 /**
  * GET /api/versions/[id]/download
- * Generate a signed download URL for the ProRes file
+ * Generate a presigned download URL for the original file
  */
 export async function GET(
   request: NextRequest,
@@ -19,27 +19,23 @@ export async function GET(
     const supabaseAdmin = getServiceClient();
     
     // Try shot_versions first (primary table), fallback to versions (legacy)
-    let downloadPath: string | null = null;
+    let storageKey: string | null = null;
+    let filename: string | null = null;
 
     // Check shot_versions table
     const { data: shotVersion } = await supabaseAdmin
       .from('shot_versions')
-      .select('id, storage_path, cdn_url')
+      .select('id, storage_path, filename')
       .eq('id', id)
       .single();
 
     if (shotVersion?.storage_path) {
-      downloadPath = shotVersion.storage_path;
-    } else if (shotVersion?.cdn_url) {
-      // If cdn_url is a full URL, return it directly
-      return NextResponse.json({
-        downloadUrl: shotVersion.cdn_url,
-        expiresIn: null,
-      });
+      storageKey = shotVersion.storage_path;
+      filename = shotVersion.filename;
     }
 
     // Fallback to versions table
-    if (!downloadPath) {
+    if (!storageKey) {
       const { data: version } = await supabaseAdmin
         .from('versions')
         .select('id, download_url')
@@ -47,25 +43,29 @@ export async function GET(
         .single();
 
       if (version?.download_url) {
-        downloadPath = version.download_url;
+        storageKey = version.download_url;
       }
     }
 
-    if (!downloadPath) {
+    if (!storageKey) {
       return NextResponse.json(
         { error: 'No download file available for this version' },
         { status: 404 }
       );
     }
 
-    // Generate signed URL (valid for 1 hour)
-    const signedUrl = generateSignedStorageUrl(downloadPath, {
-      expiresIn: 3600,
-      directDownload: true,
-    });
+    if (!isS3Configured()) {
+      return NextResponse.json(
+        { error: 'S3 storage not configured' },
+        { status: 500 }
+      );
+    }
+
+    // Generate presigned URL (valid for 1 hour)
+    const downloadUrl = await getPresignedDownloadUrl(storageKey, 3600, filename || undefined);
 
     return NextResponse.json({
-      downloadUrl: signedUrl,
+      downloadUrl,
       expiresIn: 3600,
     });
   } catch (error) {

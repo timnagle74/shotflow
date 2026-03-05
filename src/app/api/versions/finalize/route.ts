@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, requireUploader, getServiceClient } from '@/lib/auth';
-import { fetchVideoToStream, bunnyConfig, generateSignedStorageUrl } from '@/lib/bunny';
+import { fetchVideoToStream } from '@/lib/bunny';
+import { getPresignedDownloadUrl } from '@/lib/s3';
 
 const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN;
 
 interface FinalizeUploadPayload {
   versionId: string;
-  storagePath: string; // Path in Bunny Storage
+  storageKey: string; // S3 key where file was uploaded
   title: string; // Video title for Stream
 }
 
 /**
  * POST /api/versions/finalize
- * Called after file upload to Bunny Storage completes.
- * Triggers Bunny Stream to fetch and transcode the video.
+ * Called after file upload to S3/MinIO completes.
+ * Triggers Bunny Stream to fetch and transcode the video for web preview.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -24,19 +25,28 @@ export async function POST(request: NextRequest) {
     if (roleCheck) return roleCheck;
 
     const body: FinalizeUploadPayload = await request.json();
-    const { versionId, storagePath, title } = body;
+    const { versionId, storageKey, title } = body;
 
-    if (!versionId || !storagePath) {
+    if (!versionId || !storageKey) {
       return NextResponse.json(
-        { error: 'Missing required fields: versionId, storagePath' },
+        { error: 'Missing required fields: versionId, storageKey' },
         { status: 400 }
       );
     }
 
     const supabase = getServiceClient();
 
-    // Generate a signed URL for Stream to fetch from (valid for 1 hour)
-    const sourceUrl = generateSignedStorageUrl(storagePath, { expiresIn: 3600 });
+    // Generate a presigned URL for Stream to fetch from (valid for 1 hour)
+    let sourceUrl: string;
+    try {
+      sourceUrl = await getPresignedDownloadUrl(storageKey, 3600);
+    } catch (err) {
+      console.error('Failed to generate presigned URL for Stream fetch:', err);
+      return NextResponse.json(
+        { error: 'Failed to generate download URL for transcoding' },
+        { status: 500 }
+      );
+    }
 
     // Trigger Bunny Stream to fetch and transcode the video
     let videoId: string | null = null;
@@ -90,12 +100,10 @@ export async function POST(request: NextRequest) {
       legacyUpdate.preview_url = previewUrl;
     }
     
-    if (Object.keys(legacyUpdate).length > 0) {
-      await supabase
-        .from('versions')
-        .update(legacyUpdate)
-        .eq('id', versionId);
-    }
+    await supabase
+      .from('versions')
+      .update(legacyUpdate)
+      .eq('id', versionId);
 
     return NextResponse.json({
       success: true,

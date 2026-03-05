@@ -87,7 +87,7 @@ export function VersionUpload({
     setStatusMessage("Preparing upload...");
 
     try {
-      // Step 1: Get TUS upload credentials from API
+      // Step 1: Prepare upload - creates version record, returns signed Storage URL
       const prepareResponse = await fetch("/api/versions/prepare-upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -153,7 +153,7 @@ export function VersionUpload({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           versionId: version.id,
-          storagePath: storageUpload.path,
+          storageKey: storageUpload.key,
           title: videoTitle,
         }),
       });

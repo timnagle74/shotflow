@@ -176,7 +176,7 @@ export function VendorVersionUpload({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             versionId: prepareData.version.id,
-            storagePath: prepareData.storageUpload.path,
+            storageKey: prepareData.storageUpload.key,
             title: prepareData.videoTitle,
           }),
         });

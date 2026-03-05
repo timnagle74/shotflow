@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, requireUploader, getServiceClient } from '@/lib/auth';
-import { generateSignedUploadUrl, isStorageConfigured } from '@/lib/bunny';
+import { isS3Configured, getPresignedUploadUrl, getVersionStorageKey } from '@/lib/s3';
 
 interface PrepareUploadPayload {
   shotId: string;
@@ -11,7 +11,7 @@ interface PrepareUploadPayload {
 
 /**
  * POST /api/versions/prepare-upload
- * Creates a version record and returns signed URL for direct browser upload to Bunny Storage.
+ * Creates a version record and returns presigned URL for direct browser upload to S3/MinIO.
  * After upload completes, client calls /api/versions/finalize to trigger Stream transcoding.
  */
 export async function POST(request: NextRequest) {
@@ -33,9 +33,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!isStorageConfigured()) {
+    if (!isS3Configured()) {
       return NextResponse.json(
-        { error: 'Bunny Storage not configured' },
+        { error: 'S3 storage not configured' },
         { status: 500 }
       );
     }
@@ -69,13 +69,22 @@ export async function POST(request: NextRequest) {
     const shotCode = shot.code;
     const versionStr = `v${String(versionNumber).padStart(3, '0')}`;
 
-    // Build storage path and video title
-    const ext = filename.split('.').pop() || 'mov';
-    const storagePath = `/${projectCode}/${shotCode}/${versionStr}/${shotCode}_${versionStr}.${ext}`;
+    // Generate S3 storage key and presigned upload URL
+    const storageKey = getVersionStorageKey(projectCode, shotCode, versionNumber, filename);
     const videoTitle = `${projectName}_${shotCode}_${versionStr}`;
 
-    // Generate signed upload URL (valid for 2 hours)
-    const signedUploadUrl = generateSignedUploadUrl(storagePath, 7200);
+    // Get content type from filename
+    const ext = filename.split('.').pop()?.toLowerCase() || 'mov';
+    const contentTypeMap: Record<string, string> = {
+      'mov': 'video/quicktime',
+      'mp4': 'video/mp4',
+      'mxf': 'application/mxf',
+      'exr': 'image/x-exr',
+      'dpx': 'image/x-dpx',
+    };
+    const contentType = contentTypeMap[ext] || 'application/octet-stream';
+
+    const { url: presignedUrl, key } = await getPresignedUploadUrl(storageKey, contentType, 7200);
 
     // Create version record in shot_versions table
     const { data: version, error: versionError } = await supabase
@@ -87,7 +96,7 @@ export async function POST(request: NextRequest) {
         submitted_by_id: createdById,
         status: 'wip',
         filename: filename,
-        storage_path: storagePath, // Path for generating signed download URLs
+        storage_path: storageKey, // S3 key for downloads
         submitted_at: new Date().toISOString(),
       })
       .select()
@@ -111,15 +120,15 @@ export async function POST(request: NextRequest) {
         created_by_id: createdById,
         status: 'WIP',
         description: description || null,
-        download_url: storagePath,
+        download_url: storageKey, // S3 key for downloads
       })
       .single();
 
     return NextResponse.json({
       version,
       storageUpload: {
-        url: signedUploadUrl,
-        path: storagePath,
+        url: presignedUrl,
+        key: storageKey,
       },
       videoTitle, // Pass to finalize for Stream naming
     });
