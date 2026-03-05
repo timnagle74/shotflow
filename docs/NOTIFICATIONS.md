@@ -146,8 +146,13 @@ curl -X POST "https://xwvqcloimcstevsmlbfb.supabase.co/functions/v1/send-notific
 ### Dropped to dashboard after login
 - Fixed in commit `0d6037b` - middleware now preserves `redirectTo` param
 
+## Known Limitations
+
+- **Deep link after OAuth:** When clicking email link → Google login, user lands on dashboard instead of the specific shot. They can navigate from there. (Email/password login preserves the redirect correctly.)
+
 ## Future Improvements
 
+- [ ] Fix deep linking after Google OAuth
 - [ ] Notification preferences UI in settings
 - [ ] Email preference for immediate vs digest
 - [ ] Slack/Discord webhook option

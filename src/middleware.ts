@@ -77,7 +77,6 @@ export async function middleware(request: NextRequest) {
     const internalOnlyRoutes = [
       "/dashboard",
       "/projects",
-      "/shots",
       "/artists",
       "/vendors",
       "/deliveries",
@@ -90,7 +89,16 @@ export async function middleware(request: NextRequest) {
       "/settings",
       "/account",
     ];
+    
+    // Routes that vendors CAN access (for uploading versions, etc.)
+    const vendorAllowedRoutes = [
+      "/shots",
+    ];
+    
     const isInternalOnlyRoute = internalOnlyRoutes.some((route) => 
+      pathname.startsWith(route)
+    );
+    const isVendorAllowedRoute = vendorAllowedRoutes.some((route) =>
       pathname.startsWith(route)
     );
 
@@ -101,8 +109,8 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // If vendor tries to access internal routes, redirect to vendor portal
-    if (isVendor && isInternalOnlyRoute) {
+    // If vendor tries to access internal routes (except allowed ones), redirect to vendor portal
+    if (isVendor && isInternalOnlyRoute && !isVendorAllowedRoute) {
       const url = request.nextUrl.clone();
       url.pathname = "/vendor";
       return NextResponse.redirect(url);
