@@ -8,7 +8,7 @@ export async function GET(request: Request) {
   const type = searchParams.get("type");
   const access_token = searchParams.get("access_token");
   const refresh_token = searchParams.get("refresh_token");
-  const next = searchParams.get("next") ?? "/dashboard";
+  const next = searchParams.get("redirectTo") ?? searchParams.get("next") ?? "/dashboard";
 
   const supabase = await createServerSupabaseClient();
 

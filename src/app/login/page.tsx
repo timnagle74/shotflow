@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { createBrowserSupabaseClient } from "@/lib/supabase-auth";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,8 @@ export default function LoginPage() {
   const [isMagicLinkLoading, setIsMagicLinkLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get("redirectTo") || "/";
   const supabase = createBrowserSupabaseClient();
 
   const handleGoogleLogin = async () => {
@@ -44,10 +46,13 @@ export default function LoginPage() {
     setIsGoogleLoading(true);
 
     try {
+      const callbackUrl = redirectTo !== "/" 
+        ? `${window.location.origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}`
+        : `${window.location.origin}/auth/callback`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin + '/auth/callback',
+          redirectTo: callbackUrl,
         },
       });
 
@@ -77,7 +82,7 @@ export default function LoginPage() {
       if (error) {
         setError(error.message);
       } else {
-        router.push("/");
+        router.push(redirectTo);
         router.refresh();
       }
     } catch {

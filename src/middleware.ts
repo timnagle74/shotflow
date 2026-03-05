@@ -46,7 +46,9 @@ export async function middleware(request: NextRequest) {
   // If user is not authenticated and trying to access protected route
   if (!user && !isPublicRoute && pathname !== "/") {
     const url = request.nextUrl.clone();
+    const redirectTo = request.nextUrl.pathname + request.nextUrl.search;
     url.pathname = "/login";
+    url.searchParams.set("redirectTo", redirectTo);
     return NextResponse.redirect(url);
   }
 
