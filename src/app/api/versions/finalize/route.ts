@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
     // Update version records with video info
     const updateData: Record<string, any> = {
       updated_at: new Date().toISOString(),
+      status: 'internal_review', // Mark as ready for review
     };
     
     if (videoId) {
@@ -79,7 +80,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Also update legacy versions table
-    const legacyUpdate: Record<string, any> = {};
+    const legacyUpdate: Record<string, any> = {
+      status: 'INTERNAL_REVIEW',
+    };
     if (videoId) {
       legacyUpdate.bunny_video_id = videoId;
     }
