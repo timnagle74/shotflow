@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useCallback, useRef } from "react";
-import * as tus from "tus-js-client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -106,56 +105,56 @@ export function VersionUpload({
       }
 
       const prepareData = await prepareResponse.json();
-      const { tusUpload, version } = prepareData;
+      const { storageUpload, version, videoTitle } = prepareData;
 
-      if (!tusUpload) {
-        throw new Error("TUS upload not configured - check Bunny Stream credentials");
+      if (!storageUpload) {
+        throw new Error("Storage upload not configured - check Bunny Storage credentials");
       }
 
-      // Step 2: Upload via TUS (direct to Bunny Stream, no Vercel limit!)
+      // Step 2: Upload to Bunny Storage (single upload, original file preserved)
       setUploadStatus("uploading");
       setStatusMessage(`Uploading ${formatFileSize(videoFile.file.size)}...`);
 
+      // Use XMLHttpRequest for progress tracking
       await new Promise<void>((resolve, reject) => {
-        const upload = new tus.Upload(videoFile.file!, {
-          endpoint: tusUpload.url,
-          headers: {
-            'AuthorizationSignature': tusUpload.authSignature,
-            'AuthorizationExpire': String(tusUpload.expiresAt),
-            'VideoId': tusUpload.videoId,
-            'LibraryId': tusUpload.libraryId,
-          },
-          metadata: {
-            filename: videoFile.file!.name,
-            filetype: videoFile.file!.type || 'video/quicktime',
-          },
-          onError: (error) => {
-            console.error("TUS upload error:", error);
-            reject(new Error(`Upload failed: ${error.message}`));
-          },
-          onProgress: (bytesUploaded, bytesTotal) => {
-            const progress = Math.round((bytesUploaded / bytesTotal) * 100);
+        const xhr = new XMLHttpRequest();
+        
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const progress = Math.round((e.loaded / e.total) * 100);
             setUploadProgress(progress);
-          },
-          onSuccess: () => {
-            console.log("TUS upload complete");
-            resolve();
-          },
+          }
         });
-        upload.start();
+        
+        xhr.addEventListener("load", () => {
+          if (xhr.status === 200 || xhr.status === 201) {
+            resolve();
+          } else {
+            reject(new Error(`Upload failed: ${xhr.status}`));
+          }
+        });
+        
+        xhr.addEventListener("error", () => {
+          reject(new Error("Upload failed: network error"));
+        });
+        
+        xhr.open("PUT", storageUpload.url);
+        xhr.setRequestHeader("Content-Type", "application/octet-stream");
+        xhr.send(videoFile.file);
       });
 
-      // Step 3: Finalize - update version record
+      // Step 3: Finalize - triggers Stream to fetch for preview transcoding
       setUploadStatus("finalizing");
       setUploadProgress(100);
-      setStatusMessage("Finalizing version...");
+      setStatusMessage("Processing for web preview...");
 
       const finalizeResponse = await fetch("/api/versions/finalize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           versionId: version.id,
-          videoId: tusUpload.videoId,
+          storagePath: storageUpload.path,
+          title: videoTitle,
         }),
       });
 
