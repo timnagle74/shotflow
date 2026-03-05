@@ -96,94 +96,115 @@ export function VendorVersionUpload({
     setError(null);
 
     try {
-      let previewUrl: string | null = null;
-      let filePath: string | null = null;
-
       if (uploadMode === "link") {
-        // Store the external link as preview URL
-        previewUrl = externalLink.trim();
-      } else if (selectedFile) {
-        // If we have the prepare-upload API, use it
-        try {
-          const prepareRes = await fetch("/api/versions/prepare-upload", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              shotId,
-              versionNumber: nextVersionNumber,
-              description: description.trim() || undefined,
-              // createdById is ignored by the API — creator is derived from auth session
-              hasProres: true,
-              hasPreview: false,
-              proresFilename: selectedFile.name,
-            }),
-          });
-
-          if (prepareRes.ok) {
-            const prepareData = await prepareRes.json();
-
-            if (prepareData.storageUpload) {
-              // Upload to Bunny storage
-              const uploadRes = await fetch(prepareData.storageUpload.url, {
-                method: "PUT",
-                headers: {
-                  "Content-Type": "application/octet-stream",
-                },
-                body: selectedFile,
-              });
-
-              if (uploadRes.ok || uploadRes.status === 201) {
-                filePath = prepareData.storageUpload.path;
-              }
-            }
-          }
-        } catch {
-          // If prepare-upload fails, continue — we'll create the DB record anyway
-          console.warn("File upload skipped — storage not configured");
-        }
-      }
-
-      // Create shot_versions record
-      const { data: version, error: dbError } = await (supabase as any)
-        .from("shot_versions")
-        .insert({
-          shot_id: shotId,
-          version_number: nextVersionNumber,
-          version_code: versionCode,
-          status: "INTERNAL_REVIEW",
-          description: description.trim() || null,
-          preview_url: previewUrl,
-          file_path: filePath,
-          submitted_at: new Date().toISOString(),
-        })
-        .select()
-        .single();
-
-      if (dbError) {
-        // Fallback: try the versions table
-        const { data: fallbackVersion, error: fallbackError } = await (supabase as any)
-          .from("versions")
+        // Store the external link as preview URL - create DB record directly
+        const { data: version, error: dbError } = await (supabase as any)
+          .from("shot_versions")
           .insert({
             shot_id: shotId,
             version_number: nextVersionNumber,
-            status: "PENDING_REVIEW",
+            version_code: versionCode,
+            status: "INTERNAL_REVIEW",
             description: description.trim() || null,
-            preview_url: previewUrl,
+            preview_url: externalLink.trim(),
+            submitted_at: new Date().toISOString(),
           })
           .select()
           .single();
 
-        if (fallbackError) throw fallbackError;
+        if (dbError) {
+          // Fallback: try the versions table
+          const { data: fallbackVersion, error: fallbackError } = await (supabase as any)
+            .from("versions")
+            .insert({
+              shot_id: shotId,
+              version_number: nextVersionNumber,
+              status: "PENDING_REVIEW",
+              description: description.trim() || null,
+              preview_url: externalLink.trim(),
+            })
+            .select()
+            .single();
 
-        if (onUploadComplete) onUploadComplete(fallbackVersion);
-      } else {
+          if (fallbackError) throw fallbackError;
+          if (onUploadComplete) onUploadComplete(fallbackVersion);
+        } else {
+          await (supabase as any)
+            .from("shots")
+            .update({ status: "INTERNAL_REVIEW" })
+            .eq("id", shotId);
+          if (onUploadComplete) onUploadComplete(version);
+        }
+      } else if (selectedFile) {
+        // Use prepare-upload API which creates DB record and returns upload URLs
+        const prepareRes = await fetch("/api/versions/prepare-upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            shotId,
+            versionNumber: nextVersionNumber,
+            description: description.trim() || undefined,
+            filename: selectedFile.name,
+          }),
+        });
+
+        if (!prepareRes.ok) {
+          const errorData = await prepareRes.json();
+          throw new Error(errorData.error || "Failed to prepare upload");
+        }
+
+        const prepareData = await prepareRes.json();
+        const uploadPromises: Promise<any>[] = [];
+
+        // Upload to Bunny Storage (original file for editorial download)
+        if (prepareData.storageUpload) {
+          uploadPromises.push(
+            fetch(prepareData.storageUpload.url, {
+              method: "PUT",
+              headers: { "Content-Type": "application/octet-stream" },
+              body: selectedFile,
+            }).then(res => {
+              if (!res.ok && res.status !== 201) {
+                console.warn("Storage upload failed:", res.status);
+              }
+              return res;
+            })
+          );
+        }
+
+        // Upload to Bunny Stream via TUS (for web preview)
+        if (prepareData.tusUpload) {
+          const { url, authSignature, libraryId, videoId, expiresAt } = prepareData.tusUpload;
+          uploadPromises.push(
+            fetch(`${url}?AuthorizationSignature=${authSignature}&AuthorizationExpire=${expiresAt}&VideoId=${videoId}&LibraryId=${libraryId}`, {
+              method: "POST",
+              headers: {
+                "Tus-Resumable": "1.0.0",
+                "Upload-Length": String(selectedFile.size),
+                "Content-Type": "application/offset+octet-stream",
+                "Upload-Offset": "0",
+              },
+              body: selectedFile,
+            }).then(res => {
+              if (!res.ok) {
+                console.warn("Stream upload failed:", res.status);
+              }
+              return res;
+            })
+          );
+        }
+
+        // Wait for all uploads (don't fail if one fails - at least partial upload is useful)
+        await Promise.allSettled(uploadPromises);
+
         // Update shot status to INTERNAL_REVIEW
         await (supabase as any)
           .from("shots")
           .update({ status: "INTERNAL_REVIEW" })
           .eq("id", shotId);
 
-        if (onUploadComplete) onUploadComplete(version);
+        // Version was already created by prepare-upload
+        if (onUploadComplete) onUploadComplete(prepareData.version);
       }
 
       setSuccess(true);

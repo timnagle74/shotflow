@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { authenticateRequest, requireUploader, getServiceClient } from '@/lib/auth';
+import { generateSignedUploadUrl, isStorageConfigured } from '@/lib/bunny';
 
 const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
 const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
@@ -135,6 +136,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Generate signed URL for Bunny Storage (original file download)
+    let storageUpload = null;
+    const ext = filename.split('.').pop() || 'mov';
+    const storagePath = `/${sequenceData.project.code}/${shotCode}/${versionStr}/${shotCode}_${versionStr}.${ext}`;
+    
+    if (isStorageConfigured()) {
+      try {
+        const signedUploadUrl = generateSignedUploadUrl(storagePath, 7200); // 2 hours
+        storageUpload = {
+          url: signedUploadUrl,
+          path: storagePath,
+        };
+        
+        // Update version with download_url path (will be used to generate signed download URLs)
+        await supabase
+          .from('shot_versions')
+          .update({ download_url: storagePath })
+          .eq('id', version.id);
+      } catch (err) {
+        console.warn('Storage upload URL generation failed:', err);
+        // Continue without storage - preview will still work
+      }
+    }
+
     // Also insert into legacy versions table (notes table has FK to this)
     await supabase
       .from('versions')
@@ -146,6 +171,7 @@ export async function POST(request: NextRequest) {
         status: 'WIP',
         bunny_video_id: videoId,
         preview_url: previewUrl,
+        download_url: storagePath, // Store path for downloads
       })
       .single();
 
@@ -158,6 +184,7 @@ export async function POST(request: NextRequest) {
         videoId,
         expiresAt,
       },
+      storageUpload, // Signed URL for original file upload
     });
   } catch (error) {
     console.error('Prepare upload error:', error);

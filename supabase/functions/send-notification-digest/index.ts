@@ -109,12 +109,11 @@ function buildDigestEmail(
   let projectsHtml = ''
   for (const [projectId, group] of projectGroups) {
     const versionsHtml = group.versions.map(v => {
-      const fullShotCode = `${v.shot.sequence.code}_${v.shot.code}`
       const reviewLink = `${APP_URL}/shots/${v.shot.id}?version=${v.versionId}`
       return `
         <tr>
           <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb;">
-            <a href="${reviewLink}" style="color: #6366f1; text-decoration: none; font-weight: 500;">${fullShotCode}</a>
+            <a href="${reviewLink}" style="color: #6366f1; text-decoration: none; font-weight: 500;">${v.shot.code}</a>
           </td>
           <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">
             ${formatVersionNumber(v.versionNumber)}
