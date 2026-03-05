@@ -46,9 +46,9 @@ function LoginForm() {
     setIsGoogleLoading(true);
 
     try {
-      // Store redirectTo in cookie since OAuth doesn't preserve query params
+      // Store redirectTo in localStorage since OAuth doesn't preserve query params
       if (redirectTo && redirectTo !== "/") {
-        document.cookie = `authRedirectTo=${encodeURIComponent(redirectTo)}; path=/; max-age=300; SameSite=Lax`;
+        localStorage.setItem("authRedirectTo", redirectTo);
       }
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
