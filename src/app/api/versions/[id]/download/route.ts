@@ -18,21 +18,40 @@ export async function GET(
     const { id } = params;
     const supabaseAdmin = getServiceClient();
     
-    // Get version with download path
-    const { data: version, error } = await supabaseAdmin
-      .from('versions')
-      .select('id, download_url, shot:shots!inner(code)')
+    // Try shot_versions first (primary table), fallback to versions (legacy)
+    let downloadPath: string | null = null;
+
+    // Check shot_versions table
+    const { data: shotVersion } = await supabaseAdmin
+      .from('shot_versions')
+      .select('id, storage_path, cdn_url')
       .eq('id', id)
       .single();
 
-    if (error || !version) {
-      return NextResponse.json(
-        { error: 'Version not found' },
-        { status: 404 }
-      );
+    if (shotVersion?.storage_path) {
+      downloadPath = shotVersion.storage_path;
+    } else if (shotVersion?.cdn_url) {
+      // If cdn_url is a full URL, return it directly
+      return NextResponse.json({
+        downloadUrl: shotVersion.cdn_url,
+        expiresIn: null,
+      });
     }
 
-    if (!version.download_url) {
+    // Fallback to versions table
+    if (!downloadPath) {
+      const { data: version } = await supabaseAdmin
+        .from('versions')
+        .select('id, download_url')
+        .eq('id', id)
+        .single();
+
+      if (version?.download_url) {
+        downloadPath = version.download_url;
+      }
+    }
+
+    if (!downloadPath) {
       return NextResponse.json(
         { error: 'No download file available for this version' },
         { status: 404 }
@@ -40,7 +59,7 @@ export async function GET(
     }
 
     // Generate signed URL (valid for 1 hour)
-    const signedUrl = generateSignedStorageUrl(version.download_url, {
+    const signedUrl = generateSignedStorageUrl(downloadPath, {
       expiresIn: 3600,
       directDownload: true,
     });

@@ -86,9 +86,8 @@ export async function POST(request: NextRequest) {
         version_code: versionStr,
         submitted_by_id: createdById,
         status: 'wip',
-        description: description || null,
         filename: filename,
-        download_url: storagePath, // Path for generating signed download URLs
+        storage_path: storagePath, // Path for generating signed download URLs
         submitted_at: new Date().toISOString(),
       })
       .select()
