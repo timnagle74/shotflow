@@ -70,6 +70,7 @@ const vendorSections: NavSection[] = [
     label: "VENDOR",
     items: [
       { name: "My Projects", href: "/vendor", icon: FolderKanban },
+      { name: "Shots", href: "/shots", icon: Film },
       { name: "Deliveries", href: "/deliveries", icon: Truck },
     ],
   },
