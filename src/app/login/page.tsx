@@ -47,8 +47,12 @@ function LoginForm() {
 
     try {
       // Store redirectTo in localStorage since OAuth doesn't preserve query params
+      console.log("[ShotFlow Auth] redirectTo value:", redirectTo);
       if (redirectTo && redirectTo !== "/") {
         localStorage.setItem("authRedirectTo", redirectTo);
+        console.log("[ShotFlow Auth] Saved to localStorage:", redirectTo);
+      } else {
+        console.log("[ShotFlow Auth] No redirectTo to save (value is / or empty)");
       }
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
