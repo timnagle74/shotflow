@@ -46,13 +46,14 @@ function LoginForm() {
     setIsGoogleLoading(true);
 
     try {
-      const callbackUrl = redirectTo !== "/" 
-        ? `${window.location.origin}/auth/callback?redirectTo=${encodeURIComponent(redirectTo)}`
-        : `${window.location.origin}/auth/callback`;
+      // Store redirectTo in cookie since OAuth doesn't preserve query params
+      if (redirectTo && redirectTo !== "/") {
+        document.cookie = `authRedirectTo=${encodeURIComponent(redirectTo)}; path=/; max-age=300; SameSite=Lax`;
+      }
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: callbackUrl,
+          redirectTo: `${window.location.origin}/auth/callback`,
         },
       });
 
