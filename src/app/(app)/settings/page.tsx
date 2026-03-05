@@ -1,9 +1,9 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Settings, Film, Bell, Palette, Shield, Database } from "lucide-react";
+import { Settings, Film, Palette, Shield, Database } from "lucide-react";
+import { NotificationSettings } from "@/components/settings/notification-settings";
 
 export default function SettingsPage() {
   return (
@@ -13,12 +13,17 @@ export default function SettingsPage() {
         <p className="text-muted-foreground mt-1">Configure your ShotFlow workspace</p>
       </div>
 
+      {/* Notification Settings - Fully Functional */}
+      <NotificationSettings />
+
+      {/* Other Settings Cards - Placeholders */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card className="hover:border-primary/30 transition-colors cursor-pointer">
+        <Card className="hover:border-primary/30 transition-colors cursor-pointer opacity-60">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Film className="h-5 w-5 text-primary" />
               Project Defaults
+              <Badge variant="outline" className="ml-auto text-xs">Coming Soon</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -28,25 +33,12 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card className="hover:border-primary/30 transition-colors cursor-pointer">
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Bell className="h-5 w-5 text-primary" />
-              Notifications
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">
-              Email alerts, review notifications, and delivery reminders.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="hover:border-primary/30 transition-colors cursor-pointer">
+        <Card className="hover:border-primary/30 transition-colors cursor-pointer opacity-60">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Palette className="h-5 w-5 text-primary" />
               Color Pipeline
+              <Badge variant="outline" className="ml-auto text-xs">Coming Soon</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -56,11 +48,12 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card className="hover:border-primary/30 transition-colors cursor-pointer">
+        <Card className="hover:border-primary/30 transition-colors cursor-pointer opacity-60">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Database className="h-5 w-5 text-primary" />
               Storage
+              <Badge variant="outline" className="ml-auto text-xs">Coming Soon</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -70,11 +63,12 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card className="hover:border-primary/30 transition-colors cursor-pointer">
+        <Card className="hover:border-primary/30 transition-colors cursor-pointer opacity-60">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Shield className="h-5 w-5 text-primary" />
               Security
+              <Badge variant="outline" className="ml-auto text-xs">Coming Soon</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -84,11 +78,12 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card className="hover:border-primary/30 transition-colors cursor-pointer">
+        <Card className="hover:border-primary/30 transition-colors cursor-pointer opacity-60">
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Settings className="h-5 w-5 text-primary" />
               Integrations
+              <Badge variant="outline" className="ml-auto text-xs">Coming Soon</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
