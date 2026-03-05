@@ -10,14 +10,12 @@ export default function AuthRedirectPage() {
   useEffect(() => {
     // Check localStorage for saved redirect destination
     const redirectTo = localStorage.getItem("authRedirectTo");
-    console.log("[ShotFlow Auth] Redirect page - localStorage value:", redirectTo);
     
     // Clear it after reading
     localStorage.removeItem("authRedirectTo");
     
     // Redirect to the saved destination or dashboard
     const destination = redirectTo || "/dashboard";
-    console.log("[ShotFlow Auth] Redirecting to:", destination);
     router.replace(destination);
   }, [router]);
 
