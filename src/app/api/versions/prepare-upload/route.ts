@@ -1,17 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createHash } from 'crypto';
 import { authenticateRequest, requireUploader, getServiceClient } from '@/lib/auth';
 import { generateSignedUploadUrl, isStorageConfigured } from '@/lib/bunny';
-
-const BUNNY_STREAM_LIBRARY_ID = process.env.BUNNY_STREAM_LIBRARY_ID;
-const BUNNY_STREAM_API_KEY = process.env.BUNNY_STREAM_API_KEY;
-const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN;
-
-// Generate TUS upload signature for Bunny Stream
-function generateTusSignature(libraryId: string, apiKey: string, videoId: string, expiresAt: number): string {
-  const signatureData = `${libraryId}${apiKey}${expiresAt}${videoId}`;
-  return createHash('sha256').update(signatureData).digest('hex');
-}
 
 interface PrepareUploadPayload {
   shotId: string;
@@ -22,8 +11,8 @@ interface PrepareUploadPayload {
 
 /**
  * POST /api/versions/prepare-upload
- * Creates a version record and returns TUS upload credentials for direct browser upload to Bunny Stream.
- * No file data passes through Vercel - uploads go directly to Bunny.
+ * Creates a version record and returns signed URL for direct browser upload to Bunny Storage.
+ * After upload completes, client calls /api/versions/finalize to trigger Stream transcoding.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -44,9 +33,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!BUNNY_STREAM_LIBRARY_ID || !BUNNY_STREAM_API_KEY) {
+    if (!isStorageConfigured()) {
       return NextResponse.json(
-        { error: 'Bunny Stream not configured' },
+        { error: 'Bunny Storage not configured' },
         { status: 500 }
       );
     }
@@ -75,43 +64,20 @@ export async function POST(request: NextRequest) {
     }
 
     const sequenceData = shot.sequence as unknown as { code: string; project: { code: string; name: string } };
+    const projectCode = sequenceData.project.code;
     const projectName = sequenceData.project.name;
     const shotCode = shot.code;
     const versionStr = `v${String(versionNumber).padStart(3, '0')}`;
 
-    // Create Bunny Stream video entry
+    // Build storage path and video title
+    const ext = filename.split('.').pop() || 'mov';
+    const storagePath = `/${projectCode}/${shotCode}/${versionStr}/${shotCode}_${versionStr}.${ext}`;
     const videoTitle = `${projectName}_${shotCode}_${versionStr}`;
-    const createRes = await fetch(
-      `https://video.bunnycdn.com/library/${BUNNY_STREAM_LIBRARY_ID}/videos`,
-      {
-        method: 'POST',
-        headers: {
-          'AccessKey': BUNNY_STREAM_API_KEY,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ title: videoTitle }),
-      }
-    );
 
-    if (!createRes.ok) {
-      const errorText = await createRes.text();
-      console.error('Bunny Stream create error:', errorText);
-      return NextResponse.json(
-        { error: 'Failed to create video entry in Bunny Stream' },
-        { status: 500 }
-      );
-    }
+    // Generate signed upload URL (valid for 2 hours)
+    const signedUploadUrl = generateSignedUploadUrl(storagePath, 7200);
 
-    const videoData = await createRes.json();
-    const videoId = videoData.guid;
-
-    // Generate TUS upload credentials
-    const expiresAt = Math.floor(Date.now() / 1000) + 7200; // 2 hours for large files
-    const authSignature = generateTusSignature(BUNNY_STREAM_LIBRARY_ID, BUNNY_STREAM_API_KEY, videoId, expiresAt);
-
-    // Create version record in shot_versions table (primary table for versions)
-    const previewUrl = BUNNY_STREAM_CDN ? `${BUNNY_STREAM_CDN}/${videoId}/playlist.m3u8` : null;
-    
+    // Create version record in shot_versions table
     const { data: version, error: versionError } = await supabase
       .from('shot_versions')
       .insert({
@@ -120,9 +86,9 @@ export async function POST(request: NextRequest) {
         version_code: versionStr,
         submitted_by_id: createdById,
         status: 'wip',
+        description: description || null,
         filename: filename,
-        video_id: videoId,
-        preview_url: previewUrl,
+        download_url: storagePath, // Path for generating signed download URLs
         submitted_at: new Date().toISOString(),
       })
       .select()
@@ -136,30 +102,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate signed URL for Bunny Storage (original file download)
-    let storageUpload = null;
-    const ext = filename.split('.').pop() || 'mov';
-    const storagePath = `/${sequenceData.project.code}/${shotCode}/${versionStr}/${shotCode}_${versionStr}.${ext}`;
-    
-    if (isStorageConfigured()) {
-      try {
-        const signedUploadUrl = generateSignedUploadUrl(storagePath, 7200); // 2 hours
-        storageUpload = {
-          url: signedUploadUrl,
-          path: storagePath,
-        };
-        
-        // Update version with download_url path (will be used to generate signed download URLs)
-        await supabase
-          .from('shot_versions')
-          .update({ download_url: storagePath })
-          .eq('id', version.id);
-      } catch (err) {
-        console.warn('Storage upload URL generation failed:', err);
-        // Continue without storage - preview will still work
-      }
-    }
-
     // Also insert into legacy versions table (notes table has FK to this)
     await supabase
       .from('versions')
@@ -169,22 +111,18 @@ export async function POST(request: NextRequest) {
         version_number: versionNumber,
         created_by_id: createdById,
         status: 'WIP',
-        bunny_video_id: videoId,
-        preview_url: previewUrl,
-        download_url: storagePath, // Store path for downloads
+        description: description || null,
+        download_url: storagePath,
       })
       .single();
 
     return NextResponse.json({
       version,
-      tusUpload: {
-        url: 'https://video.bunnycdn.com/tusupload',
-        authSignature,
-        libraryId: BUNNY_STREAM_LIBRARY_ID,
-        videoId,
-        expiresAt,
+      storageUpload: {
+        url: signedUploadUrl,
+        path: storagePath,
       },
-      storageUpload, // Signed URL for original file upload
+      videoTitle, // Pass to finalize for Stream naming
     });
   } catch (error) {
     console.error('Prepare upload error:', error);

@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { authenticateRequest, requireUploader, getServiceClient } from '@/lib/auth';
+import { fetchVideoToStream, bunnyConfig, generateSignedStorageUrl } from '@/lib/bunny';
 
 const BUNNY_STREAM_CDN = process.env.NEXT_PUBLIC_BUNNY_STREAM_CDN;
 
 interface FinalizeUploadPayload {
   versionId: string;
-  videoId: string;
+  storagePath: string; // Path in Bunny Storage
+  title: string; // Video title for Stream
 }
 
 /**
  * POST /api/versions/finalize
- * Finalizes version after TUS upload completes.
- * Updates version record with thumbnail URL.
+ * Called after file upload to Bunny Storage completes.
+ * Triggers Bunny Stream to fetch and transcode the video.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -22,38 +24,81 @@ export async function POST(request: NextRequest) {
     if (roleCheck) return roleCheck;
 
     const body: FinalizeUploadPayload = await request.json();
-    const { versionId, videoId } = body;
+    const { versionId, storagePath, title } = body;
 
-    if (!versionId || !videoId) {
+    if (!versionId || !storagePath) {
       return NextResponse.json(
-        { error: 'Missing required fields: versionId, videoId' },
+        { error: 'Missing required fields: versionId, storagePath' },
         { status: 400 }
       );
     }
 
     const supabase = getServiceClient();
 
-    // Update version in shot_versions table
+    // Generate a signed URL for Stream to fetch from (valid for 1 hour)
+    const sourceUrl = generateSignedStorageUrl(storagePath, { expiresIn: 3600 });
+
+    // Trigger Bunny Stream to fetch and transcode the video
+    let videoId: string | null = null;
+    let previewUrl: string | null = null;
+
+    try {
+      const fetchResult = await fetchVideoToStream(sourceUrl, title || 'Untitled');
+      videoId = fetchResult.videoId;
+      
+      if (videoId && BUNNY_STREAM_CDN) {
+        previewUrl = `${BUNNY_STREAM_CDN}/${videoId}/playlist.m3u8`;
+      }
+    } catch (streamError) {
+      console.error('Stream fetch failed (continuing without preview):', streamError);
+      // Don't fail the whole request - download still works without preview
+    }
+
+    // Update version records with video info
+    const updateData: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+    
+    if (videoId) {
+      updateData.video_id = videoId;
+    }
+    if (previewUrl) {
+      updateData.preview_url = previewUrl;
+    }
+
+    // Update shot_versions table
     const { data: version, error: updateError } = await supabase
       .from('shot_versions')
-      .update({
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq('id', versionId)
       .select()
       .single();
 
     if (updateError) {
-      console.error('Failed to update version:', updateError);
-      return NextResponse.json(
-        { error: 'Failed to update version', details: updateError.message },
-        { status: 500 }
-      );
+      console.error('Failed to update shot_versions:', updateError);
+    }
+
+    // Also update legacy versions table
+    const legacyUpdate: Record<string, any> = {};
+    if (videoId) {
+      legacyUpdate.bunny_video_id = videoId;
+    }
+    if (previewUrl) {
+      legacyUpdate.preview_url = previewUrl;
+    }
+    
+    if (Object.keys(legacyUpdate).length > 0) {
+      await supabase
+        .from('versions')
+        .update(legacyUpdate)
+        .eq('id', versionId);
     }
 
     return NextResponse.json({
       success: true,
       version,
+      videoId,
+      previewUrl,
     });
   } catch (error) {
     console.error('Finalize upload error:', error);

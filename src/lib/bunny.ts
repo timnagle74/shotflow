@@ -307,6 +307,47 @@ export async function getStreamVideo(videoId: string): Promise<BunnyStreamVideo>
 }
 
 /**
+ * Fetch a video into Bunny Stream from an external URL
+ * Used to transcode files already in Bunny Storage
+ */
+export async function fetchVideoToStream(
+  sourceUrl: string,
+  title: string
+): Promise<{ videoId: string; success: boolean }> {
+  const { libraryId, apiKey } = bunnyConfig.stream;
+
+  if (!libraryId || !apiKey) {
+    throw new Error('Bunny Stream credentials not configured');
+  }
+
+  const response = await fetch(
+    `https://video.bunnycdn.com/library/${libraryId}/videos/fetch`,
+    {
+      method: 'POST',
+      headers: {
+        'AccessKey': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url: sourceUrl,
+        title,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to fetch video to Stream: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  return {
+    videoId: data.id || data.guid || data.videoId,
+    success: data.success !== false,
+  };
+}
+
+/**
  * Delete a video from Bunny Stream
  */
 export async function deleteFromStream(videoId: string): Promise<boolean> {

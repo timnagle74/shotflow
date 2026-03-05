@@ -136,7 +136,7 @@ export function VendorVersionUpload({
           if (onUploadComplete) onUploadComplete(version);
         }
       } else if (selectedFile) {
-        // Use prepare-upload API which creates DB record and returns upload URLs
+        // Step 1: Prepare upload - creates DB record and returns signed Storage URL
         const prepareRes = await fetch("/api/versions/prepare-upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -154,48 +154,37 @@ export function VendorVersionUpload({
         }
 
         const prepareData = await prepareRes.json();
-        const uploadPromises: Promise<any>[] = [];
 
-        // Upload to Bunny Storage (original file for editorial download)
-        if (prepareData.storageUpload) {
-          uploadPromises.push(
-            fetch(prepareData.storageUpload.url, {
-              method: "PUT",
-              headers: { "Content-Type": "application/octet-stream" },
-              body: selectedFile,
-            }).then(res => {
-              if (!res.ok && res.status !== 201) {
-                console.warn("Storage upload failed:", res.status);
-              }
-              return res;
-            })
-          );
+        // Step 2: Upload file to Bunny Storage (single upload)
+        if (!prepareData.storageUpload) {
+          throw new Error("Storage upload not configured");
         }
 
-        // Upload to Bunny Stream via TUS (for web preview)
-        if (prepareData.tusUpload) {
-          const { url, authSignature, libraryId, videoId, expiresAt } = prepareData.tusUpload;
-          uploadPromises.push(
-            fetch(`${url}?AuthorizationSignature=${authSignature}&AuthorizationExpire=${expiresAt}&VideoId=${videoId}&LibraryId=${libraryId}`, {
-              method: "POST",
-              headers: {
-                "Tus-Resumable": "1.0.0",
-                "Upload-Length": String(selectedFile.size),
-                "Content-Type": "application/offset+octet-stream",
-                "Upload-Offset": "0",
-              },
-              body: selectedFile,
-            }).then(res => {
-              if (!res.ok) {
-                console.warn("Stream upload failed:", res.status);
-              }
-              return res;
-            })
-          );
+        const uploadRes = await fetch(prepareData.storageUpload.url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/octet-stream" },
+          body: selectedFile,
+        });
+
+        if (!uploadRes.ok && uploadRes.status !== 201) {
+          throw new Error(`Upload failed: ${uploadRes.status}`);
         }
 
-        // Wait for all uploads (don't fail if one fails - at least partial upload is useful)
-        await Promise.allSettled(uploadPromises);
+        // Step 3: Finalize - triggers Stream to fetch and transcode for preview
+        const finalizeRes = await fetch("/api/versions/finalize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            versionId: prepareData.version.id,
+            storagePath: prepareData.storageUpload.path,
+            title: prepareData.videoTitle,
+          }),
+        });
+
+        if (!finalizeRes.ok) {
+          // Don't fail - file is uploaded, just preview won't work immediately
+          console.warn("Finalize failed, preview may not be available:", await finalizeRes.text());
+        }
 
         // Update shot status to INTERNAL_REVIEW
         await (supabase as any)
@@ -203,7 +192,7 @@ export function VendorVersionUpload({
           .update({ status: "INTERNAL_REVIEW" })
           .eq("id", shotId);
 
-        // Version was already created by prepare-upload
+        // Version was created by prepare-upload
         if (onUploadComplete) onUploadComplete(prepareData.version);
       }
 
