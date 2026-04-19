@@ -45,6 +45,8 @@ export interface BunnyStreamVideo {
   thumbnailUrl: string;
   embedUrl: string;
   hlsUrl: string;
+  encodeProgress: number; // 0-100, percent of transcoding complete
+  availableResolutions: string; // e.g. "240p,360p,480p,720p,1080p"
 }
 
 export interface BunnyStreamUploadResult {
@@ -303,6 +305,8 @@ export async function getStreamVideo(videoId: string): Promise<BunnyStreamVideo>
     thumbnailUrl: `${cdnHostname}/${data.guid}/thumbnail.jpg`,
     embedUrl: `https://iframe.mediadelivery.net/embed/${libraryId}/${data.guid}`,
     hlsUrl: `${cdnHostname}/${data.guid}/playlist.m3u8`,
+    encodeProgress: typeof data.encodeProgress === 'number' ? data.encodeProgress : 0,
+    availableResolutions: data.availableResolutions || '',
   };
 }
 

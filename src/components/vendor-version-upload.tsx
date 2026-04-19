@@ -54,8 +54,14 @@ export function VendorVersionUpload({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState<"idle" | "preparing" | "uploading" | "finalizing" | "transcoding">("idle");
+  const [transcodeProgress, setTranscodeProgress] = useState(0);
+  const [transcodeStatusLabel, setTranscodeStatusLabel] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const versionCode = `v${String(nextVersionNumber).padStart(3, "0")}`;
 
   const resetForm = useCallback(() => {
@@ -66,7 +72,88 @@ export function VendorVersionUpload({
     setError(null);
     setSuccess(false);
     setUploadMode("file");
+    setUploadProgress(0);
+    setUploadPhase("idle");
+    setTranscodeProgress(0);
+    setTranscodeStatusLabel("");
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
   }, []);
+
+  const cancelUpload = useCallback(() => {
+    xhrRef.current?.abort();
+    xhrRef.current = null;
+    setSubmitting(false);
+    setUploadPhase("idle");
+    setUploadProgress(0);
+    setError("Upload cancelled");
+  }, []);
+
+  const pollTranscode = useCallback((versionId: string) => {
+    let attempts = 0;
+    const MAX_ATTEMPTS = 100; // ~5 min at 3s interval — most ProRes finish well before this
+    const tick = async () => {
+      attempts++;
+      try {
+        const res = await fetch(`/api/versions/${versionId}/video-status`);
+        if (!res.ok) return; // transient — keep polling
+        const data = await res.json();
+        if (typeof data.encodeProgress === "number") setTranscodeProgress(data.encodeProgress);
+        if (data.statusLabel) setTranscodeStatusLabel(data.statusLabel);
+        if (data.isReady) {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          setSuccess(true);
+          setTimeout(() => { setOpen(false); resetForm(); }, 1500);
+        } else if (data.hasError) {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          setError("Bunny Stream reported a transcoding error — original file is safe in R2");
+          setSubmitting(false);
+        }
+      } catch {
+        // network blip — keep polling
+      }
+      if (attempts >= MAX_ATTEMPTS && pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+        setSuccess(true); // don't show error; preview will eventually be ready
+        setTimeout(() => { setOpen(false); resetForm(); }, 1500);
+      }
+    };
+    void tick();
+    pollIntervalRef.current = setInterval(tick, 3000);
+  }, [resetForm]);
+
+  const putWithProgress = useCallback(
+    (url: string, file: File, contentType: string): Promise<void> =>
+      new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhrRef.current = xhr;
+        xhr.open("PUT", url);
+        xhr.setRequestHeader("Content-Type", contentType);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+          xhrRef.current = null;
+          if (xhr.status >= 200 && xhr.status < 300) resolve();
+          else reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText || ""}`.trim()));
+        };
+        xhr.onerror = () => {
+          xhrRef.current = null;
+          reject(new Error("Network error during upload"));
+        };
+        xhr.onabort = () => {
+          xhrRef.current = null;
+          reject(new Error("Upload aborted"));
+        };
+        xhr.send(file);
+      }),
+    []
+  );
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,10 +181,10 @@ export function VendorVersionUpload({
 
     setSubmitting(true);
     setError(null);
+    setUploadProgress(0);
 
     try {
       if (uploadMode === "link") {
-        // Store the external link as preview URL - create DB record directly
         const { data: version, error: dbError } = await (supabase as any)
           .from("shot_versions")
           .insert({
@@ -112,31 +199,17 @@ export function VendorVersionUpload({
           .select()
           .single();
 
-        if (dbError) {
-          // Fallback: try the versions table
-          const { data: fallbackVersion, error: fallbackError } = await (supabase as any)
-            .from("versions")
-            .insert({
-              shot_id: shotId,
-              version_number: nextVersionNumber,
-              status: "PENDING_REVIEW",
-              description: description.trim() || null,
-              preview_url: externalLink.trim(),
-            })
-            .select()
-            .single();
+        if (dbError) throw dbError;
 
-          if (fallbackError) throw fallbackError;
-          if (onUploadComplete) onUploadComplete(fallbackVersion);
-        } else {
-          await (supabase as any)
-            .from("shots")
-            .update({ status: "INTERNAL_REVIEW" })
-            .eq("id", shotId);
-          if (onUploadComplete) onUploadComplete(version);
-        }
+        await (supabase as any)
+          .from("shots")
+          .update({ status: "INTERNAL_REVIEW" })
+          .eq("id", shotId);
+
+        if (onUploadComplete) onUploadComplete(version);
       } else if (selectedFile) {
-        // Step 1: Prepare upload - creates DB record and returns signed Storage URL
+        // Step 1: Prepare — create version row + presigned PUT URL
+        setUploadPhase("preparing");
         const prepareRes = await fetch("/api/versions/prepare-upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -149,28 +222,29 @@ export function VendorVersionUpload({
         });
 
         if (!prepareRes.ok) {
-          const errorData = await prepareRes.json();
-          throw new Error(errorData.error || "Failed to prepare upload");
+          const errorData = await prepareRes.json().catch(() => ({}));
+          const msg = errorData.details
+            ? `${errorData.error}: ${errorData.details}`
+            : errorData.error || `Prepare failed: ${prepareRes.status}`;
+          throw new Error(msg);
         }
 
         const prepareData = await prepareRes.json();
-
-        // Step 2: Upload file to Bunny Storage (single upload)
-        if (!prepareData.storageUpload) {
-          throw new Error("Storage upload not configured");
+        if (!prepareData.storageUpload?.url) {
+          throw new Error("Storage upload URL missing — server misconfigured");
         }
 
-        const uploadRes = await fetch(prepareData.storageUpload.url, {
-          method: "PUT",
-          headers: { "Content-Type": "application/octet-stream" },
-          body: selectedFile,
-        });
+        // Step 2: Direct browser → S3/R2 PUT with progress
+        // CRITICAL: Content-Type must match what the server signed (SigV4 includes it)
+        setUploadPhase("uploading");
+        await putWithProgress(
+          prepareData.storageUpload.url,
+          selectedFile,
+          prepareData.storageUpload.contentType || "application/octet-stream"
+        );
 
-        if (!uploadRes.ok && uploadRes.status !== 201) {
-          throw new Error(`Upload failed: ${uploadRes.status}`);
-        }
-
-        // Step 3: Finalize - triggers Stream to fetch and transcode for preview
+        // Step 3: Finalize — triggers Bunny Stream fetch + shot status update
+        setUploadPhase("finalizing");
         const finalizeRes = await fetch("/api/versions/finalize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -182,32 +256,34 @@ export function VendorVersionUpload({
         });
 
         if (!finalizeRes.ok) {
-          // Don't fail - file is uploaded, just preview won't work immediately
+          // File is uploaded; preview transcode failed but the master is safe.
           console.warn("Finalize failed, preview may not be available:", await finalizeRes.text());
         }
 
-        // Update shot status to INTERNAL_REVIEW
-        await (supabase as any)
-          .from("shots")
-          .update({ status: "INTERNAL_REVIEW" })
-          .eq("id", shotId);
-
-        // Version was created by prepare-upload
         if (onUploadComplete) onUploadComplete(prepareData.version);
+
+        // Stay open and poll Bunny Stream for transcode progress.
+        // Don't return — fall through to skip the auto-close at the bottom.
+        setUploadPhase("transcoding");
+        pollTranscode(prepareData.version.id);
+        return;
       }
 
+      // Link mode: nothing to transcode, close immediately.
       setSuccess(true);
+      setUploadPhase("idle");
       setTimeout(() => {
         setOpen(false);
         resetForm();
       }, 1500);
     } catch (err) {
       console.error("Version submit error:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to submit version"
-      );
+      setError(err instanceof Error ? err.message : "Failed to submit version");
+      setUploadPhase("idle");
     } finally {
-      setSubmitting(false);
+      // Keep submitting=true while transcoding is in flight so the dialog stays in busy state.
+      // For non-transcode paths (link mode, errors), the explicit setSubmitting(false) calls handle it.
+      if (uploadPhase !== "transcoding") setSubmitting(false);
     }
   }, [
     shotId,
@@ -219,6 +295,9 @@ export function VendorVersionUpload({
     externalLink,
     onUploadComplete,
     resetForm,
+    putWithProgress,
+    pollTranscode,
+    uploadPhase,
   ]);
 
   const formatFileSize = (bytes: number): string => {
@@ -380,6 +459,48 @@ export function VendorVersionUpload({
             />
           </div>
 
+          {/* Upload + transcode progress */}
+          {submitting && uploadMode === "file" && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  {uploadPhase === "preparing" && "Preparing upload…"}
+                  {uploadPhase === "uploading" && `Uploading ${selectedFile?.name ?? ""}`}
+                  {uploadPhase === "finalizing" && "Handing off to Bunny Stream…"}
+                  {uploadPhase === "transcoding" && (
+                    <>Transcoding preview{transcodeStatusLabel ? ` (${transcodeStatusLabel})` : ""}…</>
+                  )}
+                </span>
+                {uploadPhase === "uploading" && (
+                  <span className="font-mono text-muted-foreground">{uploadProgress}%</span>
+                )}
+                {uploadPhase === "transcoding" && transcodeProgress > 0 && (
+                  <span className="font-mono text-muted-foreground">{transcodeProgress}%</span>
+                )}
+              </div>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width:
+                      uploadPhase === "uploading"
+                        ? `${uploadProgress}%`
+                        : uploadPhase === "finalizing"
+                        ? "100%"
+                        : uploadPhase === "transcoding"
+                        ? `${Math.max(transcodeProgress, 5)}%`
+                        : "10%",
+                  }}
+                />
+              </div>
+              {uploadPhase === "transcoding" && (
+                <p className="text-xs text-muted-foreground">
+                  Your file is in R2 and safe. The web preview is being generated by Bunny Stream — this can take a minute or two for ProRes. You can close this dialog; the version will appear with a preview once ready.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Status */}
           {error && (
             <div className="flex items-center gap-2 text-red-400 text-sm">
@@ -399,12 +520,19 @@ export function VendorVersionUpload({
             <Button
               variant="outline"
               onClick={() => {
-                setOpen(false);
-                resetForm();
+                if (submitting && uploadPhase === "uploading") {
+                  cancelUpload();
+                } else {
+                  setOpen(false);
+                  resetForm();
+                }
               }}
-              disabled={submitting}
             >
-              Cancel
+              {submitting && uploadPhase === "uploading"
+                ? "Cancel Upload"
+                : uploadPhase === "transcoding"
+                ? "Close (transcode continues)"
+                : "Cancel"}
             </Button>
             <Button
               onClick={handleSubmit}
@@ -417,7 +545,7 @@ export function VendorVersionUpload({
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Submitting...
+                  {uploadPhase === "transcoding" ? "Transcoding…" : "Submitting…"}
                 </>
               ) : (
                 <>

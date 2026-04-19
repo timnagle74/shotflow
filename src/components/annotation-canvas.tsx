@@ -82,73 +82,41 @@ export function AnnotationCanvas({
 
     fabricRef.current = canvas;
 
-    // Load initial data if provided
     if (initialData) {
       try {
-        // Handle both string and object formats (DB might have double-encoded JSON)
+        // Legacy rows were double-JSON-encoded; unwrap if so.
         let dataToLoad: any = initialData;
         if (typeof initialData === "string") {
           dataToLoad = JSON.parse(initialData);
-          // Check if it's still a string (double-encoded)
           if (typeof dataToLoad === "string") {
             dataToLoad = JSON.parse(dataToLoad);
           }
         }
-        // Ensure dataToLoad is an object with the expected structure
-        if (dataToLoad && typeof dataToLoad === "object") {
-          console.log("Loading annotation data:", dataToLoad);
-          console.log("Objects to load:", dataToLoad.objects?.length);
-          console.log("Canvas dimensions:", width, "x", height);
-          console.log("Original dimensions:", dataToLoad.originalWidth, "x", dataToLoad.originalHeight);
-          
-          // Only scale if original dimensions were explicitly stored
-          // Don't scale old annotations - let them stay at their saved positions
+        if (dataToLoad && typeof dataToLoad === "object" && dataToLoad.objects?.length > 0) {
           const hasOriginalDimensions = dataToLoad.originalWidth && dataToLoad.originalHeight;
-          let scaleX = 1;
-          let scaleY = 1;
-          let needsScaling = false;
-          
-          if (hasOriginalDimensions) {
-            scaleX = width / dataToLoad.originalWidth;
-            scaleY = height / dataToLoad.originalHeight;
-            needsScaling = Math.abs(scaleX - 1) > 0.01 || Math.abs(scaleY - 1) > 0.01;
-            if (needsScaling) {
-              console.log("Scaling objects by:", scaleX, scaleY);
-            }
-          } else {
-            console.log("No original dimensions - showing at saved positions");
-          }
-          
-          // Use enlivenObjects for more reliable deserialization
+          const scaleX = hasOriginalDimensions ? width / dataToLoad.originalWidth : 1;
+          const scaleY = hasOriginalDimensions ? height / dataToLoad.originalHeight : 1;
+          const needsScaling = hasOriginalDimensions &&
+            (Math.abs(scaleX - 1) > 0.01 || Math.abs(scaleY - 1) > 0.01);
+
           import("fabric").then(({ util }) => {
-            if (dataToLoad.objects && dataToLoad.objects.length > 0) {
-              util.enlivenObjects(dataToLoad.objects).then((enlivenedObjects: any[]) => {
-                console.log("Enlivened objects:", enlivenedObjects.length);
-                enlivenedObjects.forEach((obj: any, idx: number) => {
-                  console.log(`Object ${idx}:`, obj.type, "at", obj.left, obj.top, "visible:", obj.visible);
-                  // Scale position and size if canvas dimensions changed
-                  if (needsScaling) {
-                    obj.set({
-                      left: (obj.left || 0) * scaleX,
-                      top: (obj.top || 0) * scaleY,
-                      scaleX: (obj.scaleX || 1) * scaleX,
-                      scaleY: (obj.scaleY || 1) * scaleY,
-                    });
-                    obj.setCoords();
-                  }
-                  canvas.add(obj);
-                });
-                console.log("After adding, canvas objects:", canvas.getObjects().length);
-                canvas.requestRenderAll();
-                // Extra render after delay
-                setTimeout(() => {
-                  console.log("Delayed check - canvas objects:", canvas.getObjects().length);
-                  canvas.requestRenderAll();
-                }, 200);
-              }).catch((err: Error) => {
-                console.error("Failed to enliven objects:", err);
+            util.enlivenObjects(dataToLoad.objects).then((enlivenedObjects: any[]) => {
+              enlivenedObjects.forEach((obj: any) => {
+                if (needsScaling) {
+                  obj.set({
+                    left: (obj.left || 0) * scaleX,
+                    top: (obj.top || 0) * scaleY,
+                    scaleX: (obj.scaleX || 1) * scaleX,
+                    scaleY: (obj.scaleY || 1) * scaleY,
+                  });
+                  obj.setCoords();
+                }
+                canvas.add(obj);
               });
-            }
+              canvas.requestRenderAll();
+            }).catch((err: Error) => {
+              console.error("Failed to enliven annotation objects:", err);
+            });
           });
         }
       } catch (err) {
@@ -196,87 +164,168 @@ export function AnnotationCanvas({
     canvas.freeDrawingBrush.color = activeColor;
   }, [activeColor]);
 
-  // Handle shape drawing
-  const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+  // Drag-to-draw shape handlers (rectangle, circle, arrow, text)
+  useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas || readOnly) return;
-    
-    // Don't create shapes if in select mode
-    if (activeTool === "select") return;
+    if (activeTool === "select" || activeTool === "pen" || activeTool === "eraser") return;
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    // Check if clicking on an existing object - if so, don't create new shape
-    const pointer = canvas.getPointer(e.nativeEvent);
-    const target = canvas.findTarget(e.nativeEvent);
-    if (target) {
-      // Clicked on existing object, select it instead
-      canvas.setActiveObject(target);
-      setActiveTool("select");
-      return;
-    }
+    let isDown = false;
+    let startX = 0;
+    let startY = 0;
+    let currentShape: FabricObject | null = null;
 
-    if (activeTool === "rectangle") {
-      const shape = new FabricRect({
-        left: x - 25,
-        top: y - 25,
-        width: 50,
-        height: 50,
-        fill: "transparent",
-        stroke: activeColor,
-        strokeWidth: 3,
-      });
-      canvas.add(shape);
-      canvas.setActiveObject(shape);
+    const onMouseDown = (opt: any) => {
+      // Clicking an existing object — let Fabric handle it (select mode will pick it up on next tool switch)
+      if (opt.target) return;
+      const p = canvas.getPointer(opt.e);
+      startX = p.x;
+      startY = p.y;
+      isDown = true;
+
+      if (activeTool === "rectangle") {
+        currentShape = new FabricRect({
+          left: startX,
+          top: startY,
+          width: 1,
+          height: 1,
+          fill: "transparent",
+          stroke: activeColor,
+          strokeWidth: 3,
+          selectable: false,
+        });
+        canvas.add(currentShape);
+      } else if (activeTool === "circle") {
+        currentShape = new FabricCircle({
+          left: startX,
+          top: startY,
+          radius: 1,
+          fill: "transparent",
+          stroke: activeColor,
+          strokeWidth: 3,
+          originX: "center",
+          originY: "center",
+          selectable: false,
+        });
+        canvas.add(currentShape);
+      } else if (activeTool === "arrow") {
+        currentShape = new FabricLine([startX, startY, startX, startY], {
+          stroke: activeColor,
+          strokeWidth: 3,
+          selectable: false,
+        });
+        canvas.add(currentShape);
+      } else if (activeTool === "text") {
+        const text = new FabricIText("", {
+          left: startX,
+          top: startY,
+          fontSize: 20,
+          fill: activeColor,
+          fontFamily: "sans-serif",
+        });
+        canvas.add(text);
+        canvas.setActiveObject(text);
+        text.enterEditing();
+        setActiveTool("select");
+        isDown = false;
+      }
+    };
+
+    const onMouseMove = (opt: any) => {
+      if (!isDown || !currentShape) return;
+      const p = canvas.getPointer(opt.e);
+
+      if (activeTool === "rectangle") {
+        (currentShape as FabricRect).set({
+          left: Math.min(startX, p.x),
+          top: Math.min(startY, p.y),
+          width: Math.abs(p.x - startX),
+          height: Math.abs(p.y - startY),
+        });
+      } else if (activeTool === "circle") {
+        const dx = p.x - startX;
+        const dy = p.y - startY;
+        const radius = Math.sqrt(dx * dx + dy * dy) / 2;
+        (currentShape as FabricCircle).set({
+          left: (startX + p.x) / 2,
+          top: (startY + p.y) / 2,
+          radius: Math.max(radius, 1),
+        });
+      } else if (activeTool === "arrow") {
+        (currentShape as FabricLine).set({ x2: p.x, y2: p.y });
+      }
+      canvas.requestRenderAll();
+    };
+
+    const onMouseUp = () => {
+      if (!isDown || !currentShape) {
+        isDown = false;
+        currentShape = null;
+        return;
+      }
+
+      if (activeTool === "arrow") {
+        // Replace the bare line with a line+arrowhead group
+        const line = currentShape as FabricLine;
+        const x1 = line.x1 ?? 0;
+        const y1 = line.y1 ?? 0;
+        const x2 = line.x2 ?? 0;
+        const y2 = line.y2 ?? 0;
+        const len = Math.hypot(x2 - x1, y2 - y1);
+        canvas.remove(line);
+        if (len >= 5) {
+          const angleDeg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI + 90;
+          const arrowLine = new FabricLine([x1, y1, x2, y2], {
+            stroke: activeColor,
+            strokeWidth: 3,
+          });
+          const arrowHead = new FabricTriangle({
+            left: x2,
+            top: y2,
+            width: 15,
+            height: 20,
+            fill: activeColor,
+            angle: angleDeg,
+            originX: "center",
+            originY: "center",
+          });
+          const group = new FabricGroup([arrowLine, arrowHead]);
+          canvas.add(group);
+          canvas.setActiveObject(group);
+        }
+      } else if (activeTool === "rectangle") {
+        const rect = currentShape as FabricRect;
+        if ((rect.width ?? 0) < 5 || (rect.height ?? 0) < 5) {
+          canvas.remove(rect);
+        } else {
+          rect.set({ selectable: true });
+          canvas.setActiveObject(rect);
+        }
+      } else if (activeTool === "circle") {
+        const circle = currentShape as FabricCircle;
+        if ((circle.radius ?? 0) < 3) {
+          canvas.remove(circle);
+        } else {
+          circle.set({ selectable: true });
+          canvas.setActiveObject(circle);
+        }
+      }
+
+      canvas.requestRenderAll();
       setActiveTool("select");
-    } else if (activeTool === "circle") {
-      const shape = new FabricCircle({
-        left: x - 25,
-        top: y - 25,
-        radius: 25,
-        fill: "transparent",
-        stroke: activeColor,
-        strokeWidth: 3,
-      });
-      canvas.add(shape);
-      canvas.setActiveObject(shape);
-      setActiveTool("select");
-    } else if (activeTool === "arrow") {
-      const line = new FabricLine([x, y, x + 80, y], {
-        stroke: activeColor,
-        strokeWidth: 3,
-      });
-      const arrowHead = new FabricTriangle({
-        left: x + 80,
-        top: y,
-        width: 15,
-        height: 20,
-        fill: activeColor,
-        angle: 90,
-        originX: "center",
-        originY: "center",
-      });
-      const arrow = new FabricGroup([line, arrowHead], {
-        left: x,
-        top: y - 10,
-      });
-      canvas.add(arrow);
-      canvas.setActiveObject(arrow);
-      setActiveTool("select");
-    } else if (activeTool === "text") {
-      const text = new FabricIText("Note", {
-        left: x,
-        top: y,
-        fontSize: 20,
-        fill: activeColor,
-        fontFamily: "sans-serif",
-      });
-      canvas.add(text);
-      canvas.setActiveObject(text);
-      text.enterEditing();
-    }
+      isDown = false;
+      currentShape = null;
+    };
+
+    canvas.on("mouse:down", onMouseDown);
+    canvas.on("mouse:move", onMouseMove);
+    canvas.on("mouse:up", onMouseUp);
+
+    return () => {
+      canvas.off("mouse:down", onMouseDown);
+      canvas.off("mouse:move", onMouseMove);
+      canvas.off("mouse:up", onMouseUp);
+    };
   }, [activeTool, activeColor, readOnly]);
 
   // Undo
@@ -460,7 +509,7 @@ export function AnnotationCanvas({
       )}
 
       {/* Canvas */}
-      <div onClick={handleCanvasClick}>
+      <div>
         <canvas ref={canvasRef} />
       </div>
     </div>
