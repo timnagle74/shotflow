@@ -67,10 +67,21 @@ export async function POST(request: NextRequest) {
     const projectCode = sequenceData.project.code;
     const projectName = sequenceData.project.name;
     const shotCode = shot.code;
-    const versionStr = `v${String(versionNumber).padStart(3, '0')}`;
+
+    // Compute the real next version number from DB instead of trusting client.
+    // Avoids unique-constraint collisions when previous attempts left orphan rows.
+    const { data: latest } = await supabase
+      .from('shot_versions')
+      .select('version_number')
+      .eq('shot_id', shotId)
+      .order('version_number', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const effectiveVersionNumber = (latest?.version_number ?? 0) + 1;
+    const versionStr = `v${String(effectiveVersionNumber).padStart(3, '0')}`;
 
     // Generate S3 storage key and presigned upload URL
-    const storageKey = getVersionStorageKey(projectCode, shotCode, versionNumber, filename);
+    const storageKey = getVersionStorageKey(projectCode, shotCode, effectiveVersionNumber, filename);
     const videoTitle = `${projectName}_${shotCode}_${versionStr}`;
 
     // Get content type from filename
@@ -91,7 +102,7 @@ export async function POST(request: NextRequest) {
       .from('shot_versions')
       .insert({
         shot_id: shotId,
-        version_number: versionNumber,
+        version_number: effectiveVersionNumber,
         version_code: versionStr,
         submitted_by_id: createdById,
         status: 'wip',
@@ -116,7 +127,7 @@ export async function POST(request: NextRequest) {
       .insert({
         id: version.id, // Use same ID so notes work
         shot_id: shotId,
-        version_number: versionNumber,
+        version_number: effectiveVersionNumber,
         created_by_id: createdById,
         status: 'WIP',
         description: description || null,
@@ -129,6 +140,7 @@ export async function POST(request: NextRequest) {
       storageUpload: {
         url: presignedUrl,
         key: storageKey,
+        contentType, // Client MUST send this exact Content-Type in PUT or SigV4 rejects
       },
       videoTitle, // Pass to finalize for Stream naming
     });

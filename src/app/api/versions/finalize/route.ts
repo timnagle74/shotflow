@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
       .from('shot_versions')
       .update(updateData)
       .eq('id', versionId)
-      .select()
+      .select('id, shot_id')
       .single();
 
     if (updateError) {
@@ -99,11 +99,19 @@ export async function POST(request: NextRequest) {
     if (previewUrl) {
       legacyUpdate.preview_url = previewUrl;
     }
-    
+
     await supabase
       .from('versions')
       .update(legacyUpdate)
       .eq('id', versionId);
+
+    // Flip the parent shot into internal review atomically with the version finalize
+    if (version?.shot_id) {
+      await supabase
+        .from('shots')
+        .update({ status: 'INTERNAL_REVIEW' })
+        .eq('id', version.shot_id);
+    }
 
     return NextResponse.json({
       success: true,

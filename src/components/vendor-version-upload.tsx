@@ -54,8 +54,11 @@ export function VendorVersionUpload({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState<"idle" | "preparing" | "uploading" | "finalizing">("idle");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const xhrRef = useRef<XMLHttpRequest | null>(null);
   const versionCode = `v${String(nextVersionNumber).padStart(3, "0")}`;
 
   const resetForm = useCallback(() => {
@@ -66,7 +69,46 @@ export function VendorVersionUpload({
     setError(null);
     setSuccess(false);
     setUploadMode("file");
+    setUploadProgress(0);
+    setUploadPhase("idle");
   }, []);
+
+  const cancelUpload = useCallback(() => {
+    xhrRef.current?.abort();
+    xhrRef.current = null;
+    setSubmitting(false);
+    setUploadPhase("idle");
+    setUploadProgress(0);
+    setError("Upload cancelled");
+  }, []);
+
+  const putWithProgress = useCallback(
+    (url: string, file: File, contentType: string): Promise<void> =>
+      new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhrRef.current = xhr;
+        xhr.open("PUT", url);
+        xhr.setRequestHeader("Content-Type", contentType);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => {
+          xhrRef.current = null;
+          if (xhr.status >= 200 && xhr.status < 300) resolve();
+          else reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText || ""}`.trim()));
+        };
+        xhr.onerror = () => {
+          xhrRef.current = null;
+          reject(new Error("Network error during upload"));
+        };
+        xhr.onabort = () => {
+          xhrRef.current = null;
+          reject(new Error("Upload aborted"));
+        };
+        xhr.send(file);
+      }),
+    []
+  );
 
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,10 +136,10 @@ export function VendorVersionUpload({
 
     setSubmitting(true);
     setError(null);
+    setUploadProgress(0);
 
     try {
       if (uploadMode === "link") {
-        // Store the external link as preview URL - create DB record directly
         const { data: version, error: dbError } = await (supabase as any)
           .from("shot_versions")
           .insert({
@@ -112,31 +154,17 @@ export function VendorVersionUpload({
           .select()
           .single();
 
-        if (dbError) {
-          // Fallback: try the versions table
-          const { data: fallbackVersion, error: fallbackError } = await (supabase as any)
-            .from("versions")
-            .insert({
-              shot_id: shotId,
-              version_number: nextVersionNumber,
-              status: "PENDING_REVIEW",
-              description: description.trim() || null,
-              preview_url: externalLink.trim(),
-            })
-            .select()
-            .single();
+        if (dbError) throw dbError;
 
-          if (fallbackError) throw fallbackError;
-          if (onUploadComplete) onUploadComplete(fallbackVersion);
-        } else {
-          await (supabase as any)
-            .from("shots")
-            .update({ status: "INTERNAL_REVIEW" })
-            .eq("id", shotId);
-          if (onUploadComplete) onUploadComplete(version);
-        }
+        await (supabase as any)
+          .from("shots")
+          .update({ status: "INTERNAL_REVIEW" })
+          .eq("id", shotId);
+
+        if (onUploadComplete) onUploadComplete(version);
       } else if (selectedFile) {
-        // Step 1: Prepare upload - creates DB record and returns signed Storage URL
+        // Step 1: Prepare — create version row + presigned PUT URL
+        setUploadPhase("preparing");
         const prepareRes = await fetch("/api/versions/prepare-upload", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -149,28 +177,29 @@ export function VendorVersionUpload({
         });
 
         if (!prepareRes.ok) {
-          const errorData = await prepareRes.json();
-          throw new Error(errorData.error || "Failed to prepare upload");
+          const errorData = await prepareRes.json().catch(() => ({}));
+          const msg = errorData.details
+            ? `${errorData.error}: ${errorData.details}`
+            : errorData.error || `Prepare failed: ${prepareRes.status}`;
+          throw new Error(msg);
         }
 
         const prepareData = await prepareRes.json();
-
-        // Step 2: Upload file to Bunny Storage (single upload)
-        if (!prepareData.storageUpload) {
-          throw new Error("Storage upload not configured");
+        if (!prepareData.storageUpload?.url) {
+          throw new Error("Storage upload URL missing — server misconfigured");
         }
 
-        const uploadRes = await fetch(prepareData.storageUpload.url, {
-          method: "PUT",
-          headers: { "Content-Type": "application/octet-stream" },
-          body: selectedFile,
-        });
+        // Step 2: Direct browser → S3/R2 PUT with progress
+        // CRITICAL: Content-Type must match what the server signed (SigV4 includes it)
+        setUploadPhase("uploading");
+        await putWithProgress(
+          prepareData.storageUpload.url,
+          selectedFile,
+          prepareData.storageUpload.contentType || "application/octet-stream"
+        );
 
-        if (!uploadRes.ok && uploadRes.status !== 201) {
-          throw new Error(`Upload failed: ${uploadRes.status}`);
-        }
-
-        // Step 3: Finalize - triggers Stream to fetch and transcode for preview
+        // Step 3: Finalize — triggers Bunny Stream fetch + shot status update
+        setUploadPhase("finalizing");
         const finalizeRes = await fetch("/api/versions/finalize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -182,30 +211,23 @@ export function VendorVersionUpload({
         });
 
         if (!finalizeRes.ok) {
-          // Don't fail - file is uploaded, just preview won't work immediately
+          // File is uploaded; preview transcode failed but the master is safe.
           console.warn("Finalize failed, preview may not be available:", await finalizeRes.text());
         }
 
-        // Update shot status to INTERNAL_REVIEW
-        await (supabase as any)
-          .from("shots")
-          .update({ status: "INTERNAL_REVIEW" })
-          .eq("id", shotId);
-
-        // Version was created by prepare-upload
         if (onUploadComplete) onUploadComplete(prepareData.version);
       }
 
       setSuccess(true);
+      setUploadPhase("idle");
       setTimeout(() => {
         setOpen(false);
         resetForm();
       }, 1500);
     } catch (err) {
       console.error("Version submit error:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to submit version"
-      );
+      setError(err instanceof Error ? err.message : "Failed to submit version");
+      setUploadPhase("idle");
     } finally {
       setSubmitting(false);
     }
@@ -219,6 +241,7 @@ export function VendorVersionUpload({
     externalLink,
     onUploadComplete,
     resetForm,
+    putWithProgress,
   ]);
 
   const formatFileSize = (bytes: number): string => {
@@ -380,6 +403,35 @@ export function VendorVersionUpload({
             />
           </div>
 
+          {/* Upload progress */}
+          {submitting && uploadMode === "file" && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">
+                  {uploadPhase === "preparing" && "Preparing upload…"}
+                  {uploadPhase === "uploading" && `Uploading ${selectedFile?.name ?? ""}`}
+                  {uploadPhase === "finalizing" && "Transcoding preview…"}
+                </span>
+                {uploadPhase === "uploading" && (
+                  <span className="font-mono text-muted-foreground">{uploadProgress}%</span>
+                )}
+              </div>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width:
+                      uploadPhase === "uploading"
+                        ? `${uploadProgress}%`
+                        : uploadPhase === "finalizing"
+                        ? "100%"
+                        : "10%",
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           {/* Status */}
           {error && (
             <div className="flex items-center gap-2 text-red-400 text-sm">
@@ -399,12 +451,15 @@ export function VendorVersionUpload({
             <Button
               variant="outline"
               onClick={() => {
-                setOpen(false);
-                resetForm();
+                if (submitting && uploadPhase === "uploading") {
+                  cancelUpload();
+                } else {
+                  setOpen(false);
+                  resetForm();
+                }
               }}
-              disabled={submitting}
             >
-              Cancel
+              {submitting && uploadPhase === "uploading" ? "Cancel Upload" : "Cancel"}
             </Button>
             <Button
               onClick={handleSubmit}
