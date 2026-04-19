@@ -55,10 +55,13 @@ export function VendorVersionUpload({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadPhase, setUploadPhase] = useState<"idle" | "preparing" | "uploading" | "finalizing">("idle");
+  const [uploadPhase, setUploadPhase] = useState<"idle" | "preparing" | "uploading" | "finalizing" | "transcoding">("idle");
+  const [transcodeProgress, setTranscodeProgress] = useState(0);
+  const [transcodeStatusLabel, setTranscodeStatusLabel] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const versionCode = `v${String(nextVersionNumber).padStart(3, "0")}`;
 
   const resetForm = useCallback(() => {
@@ -71,6 +74,12 @@ export function VendorVersionUpload({
     setUploadMode("file");
     setUploadProgress(0);
     setUploadPhase("idle");
+    setTranscodeProgress(0);
+    setTranscodeStatusLabel("");
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
   }, []);
 
   const cancelUpload = useCallback(() => {
@@ -81,6 +90,42 @@ export function VendorVersionUpload({
     setUploadProgress(0);
     setError("Upload cancelled");
   }, []);
+
+  const pollTranscode = useCallback((versionId: string) => {
+    let attempts = 0;
+    const MAX_ATTEMPTS = 100; // ~5 min at 3s interval — most ProRes finish well before this
+    const tick = async () => {
+      attempts++;
+      try {
+        const res = await fetch(`/api/versions/${versionId}/video-status`);
+        if (!res.ok) return; // transient — keep polling
+        const data = await res.json();
+        if (typeof data.encodeProgress === "number") setTranscodeProgress(data.encodeProgress);
+        if (data.statusLabel) setTranscodeStatusLabel(data.statusLabel);
+        if (data.isReady) {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          setSuccess(true);
+          setTimeout(() => { setOpen(false); resetForm(); }, 1500);
+        } else if (data.hasError) {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          setError("Bunny Stream reported a transcoding error — original file is safe in R2");
+          setSubmitting(false);
+        }
+      } catch {
+        // network blip — keep polling
+      }
+      if (attempts >= MAX_ATTEMPTS && pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+        setSuccess(true); // don't show error; preview will eventually be ready
+        setTimeout(() => { setOpen(false); resetForm(); }, 1500);
+      }
+    };
+    void tick();
+    pollIntervalRef.current = setInterval(tick, 3000);
+  }, [resetForm]);
 
   const putWithProgress = useCallback(
     (url: string, file: File, contentType: string): Promise<void> =>
@@ -216,8 +261,15 @@ export function VendorVersionUpload({
         }
 
         if (onUploadComplete) onUploadComplete(prepareData.version);
+
+        // Stay open and poll Bunny Stream for transcode progress.
+        // Don't return — fall through to skip the auto-close at the bottom.
+        setUploadPhase("transcoding");
+        pollTranscode(prepareData.version.id);
+        return;
       }
 
+      // Link mode: nothing to transcode, close immediately.
       setSuccess(true);
       setUploadPhase("idle");
       setTimeout(() => {
@@ -229,7 +281,9 @@ export function VendorVersionUpload({
       setError(err instanceof Error ? err.message : "Failed to submit version");
       setUploadPhase("idle");
     } finally {
-      setSubmitting(false);
+      // Keep submitting=true while transcoding is in flight so the dialog stays in busy state.
+      // For non-transcode paths (link mode, errors), the explicit setSubmitting(false) calls handle it.
+      if (uploadPhase !== "transcoding") setSubmitting(false);
     }
   }, [
     shotId,
@@ -242,6 +296,8 @@ export function VendorVersionUpload({
     onUploadComplete,
     resetForm,
     putWithProgress,
+    pollTranscode,
+    uploadPhase,
   ]);
 
   const formatFileSize = (bytes: number): string => {
@@ -403,17 +459,23 @@ export function VendorVersionUpload({
             />
           </div>
 
-          {/* Upload progress */}
+          {/* Upload + transcode progress */}
           {submitting && uploadMode === "file" && (
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">
                   {uploadPhase === "preparing" && "Preparing upload…"}
                   {uploadPhase === "uploading" && `Uploading ${selectedFile?.name ?? ""}`}
-                  {uploadPhase === "finalizing" && "Transcoding preview…"}
+                  {uploadPhase === "finalizing" && "Handing off to Bunny Stream…"}
+                  {uploadPhase === "transcoding" && (
+                    <>Transcoding preview{transcodeStatusLabel ? ` (${transcodeStatusLabel})` : ""}…</>
+                  )}
                 </span>
                 {uploadPhase === "uploading" && (
                   <span className="font-mono text-muted-foreground">{uploadProgress}%</span>
+                )}
+                {uploadPhase === "transcoding" && transcodeProgress > 0 && (
+                  <span className="font-mono text-muted-foreground">{transcodeProgress}%</span>
                 )}
               </div>
               <div className="h-1.5 bg-muted rounded-full overflow-hidden">
@@ -425,10 +487,17 @@ export function VendorVersionUpload({
                         ? `${uploadProgress}%`
                         : uploadPhase === "finalizing"
                         ? "100%"
+                        : uploadPhase === "transcoding"
+                        ? `${Math.max(transcodeProgress, 5)}%`
                         : "10%",
                   }}
                 />
               </div>
+              {uploadPhase === "transcoding" && (
+                <p className="text-xs text-muted-foreground">
+                  Your file is in R2 and safe. The web preview is being generated by Bunny Stream — this can take a minute or two for ProRes. You can close this dialog; the version will appear with a preview once ready.
+                </p>
+              )}
             </div>
           )}
 
@@ -459,7 +528,11 @@ export function VendorVersionUpload({
                 }
               }}
             >
-              {submitting && uploadPhase === "uploading" ? "Cancel Upload" : "Cancel"}
+              {submitting && uploadPhase === "uploading"
+                ? "Cancel Upload"
+                : uploadPhase === "transcoding"
+                ? "Close (transcode continues)"
+                : "Cancel"}
             </Button>
             <Button
               onClick={handleSubmit}
@@ -472,7 +545,7 @@ export function VendorVersionUpload({
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Submitting...
+                  {uploadPhase === "transcoding" ? "Transcoding…" : "Submitting…"}
                 </>
               ) : (
                 <>
